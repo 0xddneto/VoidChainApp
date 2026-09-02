@@ -1,0 +1,10 @@
+{
+  "name": "voidchainapp",
+  "private": true,
+  "version": "0.1.0",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0"
+  },
+  "description": "1,111 NFTs, each one a blockchain its holder owns",
+  "license": "MIT"
+}

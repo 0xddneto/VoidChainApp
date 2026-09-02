@@ -1,0 +1,7 @@
+node_modules/
+.env
+
+# Deployment addresses are written here by deploy-testnet.ts. The file the site
+# actually reads is apps/web/lib/deployment.json, which is versioned; this copy
+# is the local record of a run and changes on every redeploy.
+deployments/

@@ -1,0 +1,14 @@
+{
+  "name": "voids-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy:testnet": "tsx deploy-testnet.ts",
+    "prove:purchase": "tsx prove-purchase.ts"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "tsx": "^4.23.13",
+    "viem": "^2.56.0"
+  }
+}

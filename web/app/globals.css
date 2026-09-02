@@ -1,0 +1,95 @@
+/* ---------------------------------------------------------------------------
+   VoidScan — tokens
+   The light theme is the base; dark redefines only the tokens, never components.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --ground:      #eef1f5;
+  --surface:     #ffffff;
+  --surface-2:   #f5f7fa;
+  --line:        #dbe1e9;
+  --line-strong: #c3ccd8;
+  --ink:         #0d141c;
+  --ink-2:       #4a5a6b;
+  --ink-3:       #7e8e9e;
+
+  --accent:      #c25610;
+  --on-accent:   #ffffff;
+
+  --live:         #0e7c86;
+  --live-soft:    #ddf0f1;
+  --created:      #5a4bc4;
+  --created-soft: #e8e5f9;
+  --dormant:      #7e8e9e;
+  --dormant-soft: #e8ecf1;
+
+  --radius: 6px;
+  --sans: var(--font-archivo), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #080c11;
+    --surface:     #0f151c;
+    --surface-2:   #141c25;
+    --line:        #1e2833;
+    --line-strong: #2c3a48;
+    --ink:         #dfe6ed;
+    --ink-2:       #93a3b3;
+    --ink-3:       #63737f;
+
+    --accent:      #ff9147;
+    --on-accent:   #120802;
+
+    --live:         #3fc7d4;
+    --live-soft:    #0c2427;
+    --created:      #9b8cff;
+    --created-soft: #1a1730;
+    --dormant:      #63737f;
+    --dormant-soft: #161e26;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:      #080c11;
+  --surface:     #0f151c;
+  --surface-2:   #141c25;
+  --line:        #1e2833;
+  --line-strong: #2c3a48;
+  --ink:         #dfe6ed;
+  --ink-2:       #93a3b3;
+  --ink-3:       #63737f;
+  --accent:      #ff9147;
+  --on-accent:   #120802;
+  --live:         #3fc7d4;
+  --live-soft:    #0c2427;
+  --created:      #9b8cff;
+  --created-soft: #1a1730;
+  --dormant:      #63737f;
+  --dormant-soft: #161e26;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers in a column only line up with tabular width. */
+.num, .tabular { font-variant-numeric: tabular-nums; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

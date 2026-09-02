@@ -1,0 +1,46 @@
+# Secrets — never version these
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Dependencies and build output
+node_modules/
+out/
+cache/
+dist/
+build/
+.next/
+next-env.d.ts
+lib/forge-std/
+
+# Deployment records. The addresses the site reads live in
+# web/lib/deployment.json, which IS versioned; these are per-run logs that may
+# sit next to keys.
+script/deployments/
+
+# Working material, kept out on purpose
+#
+# Decisions, research, roadmaps, drafts and correspondence are how the project
+# gets thought through, not what it delivers. If a file is reasoning ABOUT the
+# project rather than the project itself, it does not belong here.
+DECISIONS.md
+docs/
+notes/
+*-NOTES.md
+
+# Editor and tooling configuration, including files some frameworks regenerate
+# on every run
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.claude/
+.cursor/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+*.log

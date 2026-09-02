@@ -1,0 +1,19 @@
+{
+  "name": "voidscan-indexer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "pg": "^8.23.0",
+    "tsx": "^4.23.13",
+    "viem": "^2.56.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
+  }
+}

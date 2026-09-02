@@ -1,0 +1,32 @@
+# Banco do VoidScan.
+#
+# The indexer runs outside Docker during development, to iterate quickly; in
+# production it becomes another service here. Postgres is containerized from the
+# start because it is what needs persistence and consistent configuration.
+
+name: voidscan
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: voidscan-db
+    environment:
+      POSTGRES_USER: voidscan
+      POSTGRES_PASSWORD: voidscan
+      POSTGRES_DB: voidscan
+    ports:
+      # 5433 on the host, so it does not collide with a local Postgres.
+      - "5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Scripts in initdb.d only run when the volume is first created.
+      - ../db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voidscan -d voidscan"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  db-data:

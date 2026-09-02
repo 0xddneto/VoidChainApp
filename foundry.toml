@@ -1,0 +1,44 @@
+[profile.default]
+src = "contracts"
+out = "out"
+libs = ["lib", "node_modules"]
+test = "test"
+
+# Compiler version pinned, not floating.
+#
+# The auditor approves a specific bytecode; what gets deployed has to be exactly
+# that one. With `^0.8.24`, everyone compiling on a different date would produce
+# a binary different from the audited one.
+#
+# The selection criterion: mature, not newest. Freshly released compilers have
+# introduced code-generation bugs before, and Solidity's official list of known
+# bugs should be consulted before changing this number.
+solc_version = "0.8.28"
+
+# EVM version pinned — and this is the critical item for an L3.
+#
+# Modern compilers pick the target EVM on their own, and their default is
+# calibrated for Ethereum. We are not on Ethereum: the VOID Chains are L3s
+# running ArbOS, which adopts Ethereum's instructions on its own schedule.
+# TSTORE, TLOAD and MCOPY (Cancun) only exist on Arbitrum from ArbOS 20 "Atlas".
+#
+# Leaving this at the default means accepting that the compiler may emit
+# instructions some of the 1,111 chains cannot execute — an error that surfaces
+# at deploy time, or worse, at run time.
+#
+# "shanghai" is the safe common denominator: earlier than Cancun, supported by
+# any ArbOS we will meet. Moving to "cancun" is possible and would bring
+# ReentrancyGuardTransient (considerably cheaper), but only after confirming on
+# testnet which ArbOS our chains actually run.
+evm_version = "shanghai"
+
+optimizer = true
+optimizer_runs = 200
+
+# Fail the build on any warning. A contract holding other people's money should
+# not accumulate ignored warnings.
+deny = "warnings"
+
+[fmt]
+line_length = 100
+tab_width = 4

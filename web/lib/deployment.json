@@ -1,0 +1,42 @@
+{
+  "network": {
+    "chainId": 46630,
+    "rpc": "https://robinhood-testnet.drpc.org",
+    "deployBlock": 111821045
+  },
+  "production": {
+    "VoidChainDeed": "0xad22581ca6096dcb41aa8afecbad06a5306377f2",
+    "VoidChainTreasury": "0x1061fe17613affd8c5ef8f1af22969e8f6df746d",
+    "VoidChainAppRuntime": "0x62e01ce1ff2589f290cc2a5314060fbc8edcdb65",
+    "VoidPaymaster": "0x5ed58c6f8d9305ef05bdd6732ac5cbf7ad419557"
+  },
+  "testnet": {
+    "VoidTestToken": "0x9160d9d51a7c22a3523366368789ae79e79ed308",
+    "VoidTestOracle": "0x70e8744258c6ace4266649354963b3a760f51877",
+    "VoidNftAmm": "0xc9ac69b66c0c2b54a00690c4063798ae33ad8fc9"
+  },
+  "parameters": {
+    "nfts": 1111,
+    "tokensPerNFT": "900090000000000000000000",
+    "randomFeeBps": 1000,
+    "specificFeeBps": 1500,
+    "tollUsd": "1000000000000000",
+    "voidUsd": "1000000000000000",
+    "voidPerEth": "2411000000000000000000000",
+    "treasuryKeeps": 100,
+    "inPool": 100
+  },
+  "demoApps": {
+    "101": "0x443797b666369a678e21aaf29eeae6954d9ecf31",
+    "102": "0xc7cfb1748300f994fc44a2c1300ab309f408da23",
+    "103": "0x0612174c43f40146c32a63c34675d4137827d78e",
+    "104": "0x2ec602d2741ac2b62f05e2921878e3d610ff7f07",
+    "105": "0xac89cfccb934ad686a121bb48ae8f93847d97ee1",
+    "106": "0x0e194f7f2ffe8f862e81f6f5062c46d78b1a33a7",
+    "107": "0x669ffdaf6f9ca118861407331500a2657f0872cc",
+    "108": "0xf1337d6f458a8fa1271fb004013d87ccb7a9898f",
+    "109": "0xbf4474a1562ad75057ab2a917a7237364e65ec46",
+    "110": "0xe71d7388beb4eb12bc48fced1428dd493e435364"
+  },
+  "chainIdBase": "46630000"
+}
