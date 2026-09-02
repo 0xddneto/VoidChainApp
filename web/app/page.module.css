@@ -300,3 +300,138 @@
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
+
+/* ---- ticker ---- */
+.ticker {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--radius);
+  height: 34px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  margin-bottom: 20px;
+  /* Fades the ends so items enter and leave instead of being cut. */
+  mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+}
+.tickerIdle { padding: 0 14px; font-size: 12px; color: var(--ink-3); font-family: var(--mono); }
+
+.tickerTrack { display: flex; width: max-content; animation: tickerScroll 60s linear infinite; }
+/* The track holds two identical runs and shifts by exactly one of them, so the
+   loop closes on itself with no visible jump. */
+@keyframes tickerScroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.ticker:hover .tickerTrack { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .tickerTrack { animation: none; }
+}
+
+.tickerRun { display: flex; }
+.tickerItem {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-2);
+  padding: 0 18px;
+  white-space: nowrap;
+}
+.tickerItem::after {
+  content: "·";
+  color: var(--line-strong);
+  margin-left: 18px;
+}
+
+/* ---- the chains card: search, paging, detail ---- */
+.cardSearch { margin-left: auto; }
+.cardSearch input {
+  height: 28px;
+  width: 230px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+.cardSearch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.pager { display: flex; align-items: center; gap: 8px; }
+.pager button {
+  width: 26px; height: 26px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.pager button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.rowLink { cursor: pointer; }
+.rowLink:hover { background: var(--surface-2); }
+.rowLink:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.noHits { padding: 22px 16px; color: var(--ink-3); font-size: 13.5px; text-align: center; }
+
+.back {
+  background: transparent;
+  border: 0;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+.back:hover { color: var(--accent); }
+
+.detailBody { padding: 18px 16px; }
+.detailFacts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 0 0 22px;
+}
+.detailFacts > div { background: var(--surface); padding: 11px 13px; }
+.detailFacts dt {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--ink-3); margin: 0 0 5px;
+}
+.detailFacts dd { margin: 0; font-family: var(--mono); font-size: 13.5px; }
+
+.detailCols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 26px; }
+.detailCols h3 { font-size: 13px; margin: 0 0 10px; letter-spacing: -0.01em; }
+.detailList { list-style: none; margin: 0; padding: 0; }
+.detailList li {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
+}
+.detailList li:last-child { border-bottom: 0; }
+
+/* ---- copyable values ---- */
+.copyable {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-family: var(--mono);
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  /* A truncated address is one token. Letting it wrap splits it across lines
+     and the ellipsis stops reading as an ellipsis. */
+  white-space: nowrap;
+}
+.copyable:hover { color: var(--accent); }
+.copyable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.copyMark { font-size: 0.85em; color: var(--ink-3); }
+.copyable:hover .copyMark { color: var(--accent); }

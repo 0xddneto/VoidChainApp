@@ -3,32 +3,22 @@ import {
   PROTOCOL,
   TOTAL_CHAINS,
   allChainStates,
+  allChains,
   chainIdForToken,
-  listChains,
-  recentBlocks,
-  recentTransactions,
-  shortAddress,
+  recentEvents,
   statusCounts,
   totalExecutions,
   type ChainStatus,
 } from "@/lib/chains";
+import { ChainsCard } from "./ChainsCard";
+import { Copyable } from "./Copyable";
+import { Ticker } from "./Ticker";
 
 // The data comes from the Postgres the indexer keeps current, so the page has
 // to render per request — prerendering would freeze the feed at build time.
 export const dynamic = "force-dynamic";
 
 const nf = new Intl.NumberFormat("en-US");
-
-/**
- * A toll in VOID, readable.
- *
- * Integer division before becoming a Number: a toll can be large enough that
- * converting the wei directly would lose precision silently.
- */
-function voidAmount(wei: bigint): string {
-  const thousandths = wei / 10n ** 15n;
-  return (Number(thousandths) / 1000).toLocaleString("en-US", { maximumFractionDigits: 3 });
-}
 
 // A chainapp has neither a node nor blocks of its own: either the runtime
 // accepts calls for it, or it does not. "Producing blocks" measured something
@@ -40,13 +30,6 @@ const STATUS_LABEL: Record<ChainStatus, string> = {
   reserved: "Reserved",
 };
 
-const PILL_CLASS: Record<ChainStatus, string> = {
-  live: styles.pillLive,
-  created: styles.pillCreated,
-  paused: styles.pillReserved,
-  reserved: styles.pillReserved,
-};
-
 const CELL_CLASS: Record<ChainStatus, string> = {
   live: styles.cellLive,
   created: styles.cellCreated,
@@ -55,12 +38,11 @@ const CELL_CLASS: Record<ChainStatus, string> = {
 };
 
 export default async function Home() {
-  const [counts, states, chains, blocks, txs, totalCalls] = await Promise.all([
+  const [counts, states, chains, events, totalCalls] = await Promise.all([
     statusCounts(),
     allChainStates(),
-    listChains(10),
-    recentBlocks(6),
-    recentTransactions(6),
+    allChains(),
+    recentEvents(30),
     totalExecutions(),
   ]);
 
@@ -94,11 +76,11 @@ export default async function Home() {
           </div>
 
           <div className={styles.actions}>
-            <button type="button" className={styles.btn}>
-              Bridge
-            </button>
+            <a className={styles.btn} href="/u">
+              Profile
+            </a>
             <a className={`${styles.btn} ${styles.btnPrimary}`} href="/mint">
-              Acquire a chain
+              Mint NFTChain
             </a>
           </div>
         </div>
@@ -118,6 +100,8 @@ export default async function Home() {
           />
         </div>
 
+        <Ticker events={events} />
+
         <section className={styles.panel}>
           <div className={styles.panelHead}>
             <h2>All {nf.format(TOTAL_CHAINS)}</h2>
@@ -126,7 +110,6 @@ export default async function Home() {
             </span>
           </div>
           <div className={styles.panelBody}>
-            {/* Rendered on the server: the map comes straight from the indexer. */}
             <div
               className={styles.constellation}
               role="img"
@@ -158,117 +141,24 @@ export default async function Home() {
           </div>
         </section>
 
-        <div className={styles.cols}>
-          <section className={styles.panel}>
-            <div className={styles.panelHead}>
-              <h2>Recent blocks</h2>
-              <span className={styles.note}>live</span>
-            </div>
-            {blocks.length === 0 ? (
-              <Empty message="No blocks indexed yet." />
-            ) : (
-              <ul className={styles.feed}>
-                {blocks.map((b) => (
-                  <li key={`${b.tokenId}-${b.number}`}>
-                    <span className={styles.feedMain}>#{b.number}</span>
-                    <span className={styles.feedMeta}>VOID Chain #{b.tokenId}</span>
-                    <span className={styles.feedRight}>
-                      {b.txCount} {b.txCount === 1 ? "tx" : "txs"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className={styles.panel}>
-            <div className={styles.panelHead}>
-              <h2>Recent transactions</h2>
-              <span className={styles.note}>live</span>
-            </div>
-            {txs.length === 0 ? (
-              <Empty message="No transactions indexed yet." />
-            ) : (
-              <ul className={styles.feed}>
-                {txs.map((t) => (
-                  <li key={`${t.hash}-${t.tokenId}`}>
-                    <span className={styles.feedMain}>{shortAddress(t.hash, 10, 6)}</span>
-                    <span className={styles.feedMeta}>
-                      {t.toll > 0n ? `toll ${voidAmount(t.toll)} VOID` : "no toll"}
-                    </span>
-                    <span className={styles.feedRight}>#{t.tokenId}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-
-        <section className={styles.panel}>
-          <div className={styles.panelHead}>
-            <h2>Chains</h2>
-            <span className={styles.note}>sorted by activity</span>
-          </div>
-          <div className={styles.scroller}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>NFT</th>
-                  <th>Chain ID</th>
-                  <th>State</th>
-                  <th className={styles.numCell}>Transactions</th>
-                  <th className={styles.numCell}>Contracts</th>
-                  <th className={styles.numCell}>Addresses</th>
-                  <th className={styles.numCell}>Revenue</th>
-                </tr>
-              </thead>
-              <tbody>
-                {chains.map((chain) => (
-                  <tr key={chain.tokenId}>
-                    <td>
-                      <div className={styles.chainName}>VOID Chain #{chain.tokenId}</div>
-                      <div className={styles.chainSub}>
-                        {chain.name ??
-                          (chain.status === "reserved"
-                            ? "chain ID reserved"
-                            : "no name set")}
-                      </div>
-                    </td>
-                    <td className={styles.chainId}>{chain.chainId}</td>
-                    <td>
-                      <span className={`${styles.pill} ${PILL_CLASS[chain.status]}`}>
-                        {STATUS_LABEL[chain.status]}
-                      </span>
-                    </td>
-                    <td className={styles.numCell}>
-                      {chain.status === "reserved" ? "—" : nf.format(chain.txCount)}
-                    </td>
-                    <td className={styles.numCell}>
-                      {chain.status === "reserved" ? "—" : nf.format(chain.contractCount)}
-                    </td>
-                    <td className={styles.numCell}>
-                      {chain.status === "reserved" ? "—" : nf.format(chain.addressCount)}
-                    </td>
-                    <td className={styles.numCell}>—</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <ChainsCard chains={chains} />
 
         <footer className={styles.footer}>
           <span>
-            Token <b>VOID</b> · {shortAddress(PROTOCOL.voidToken)}
+            Token <b>VOID</b> · <Copyable value={PROTOCOL.voidToken} short />
           </span>
           <span>
-            Runtime <b>{shortAddress(PROTOCOL.runtime)}</b>
+            Runtime <Copyable value={PROTOCOL.runtime} short />
           </span>
           <span>
-            Deed <b>{shortAddress(PROTOCOL.deed)}</b>
+            Deed <Copyable value={PROTOCOL.deed} short />
           </span>
           <span>
-            Parent chain <b>{PROTOCOL.parentChainName}</b>
+            Paymaster <Copyable value={PROTOCOL.paymaster} short />
+          </span>
+          <span>
+            Parent chain <b>{PROTOCOL.parentChainName}</b> ·{" "}
+            <Copyable value={String(PROTOCOL.parentChainId)} />
           </span>
         </footer>
       </main>
@@ -292,22 +182,6 @@ function LegendItem({ swatch, text }: { swatch: React.ReactNode; text: string })
     <div className={styles.legendItem}>
       {swatch}
       {text}
-    </div>
-  );
-}
-
-/**
- * Empty state of the live feeds.
- *
- * Its own component because this is the state the interface will show most —
- * most of the 1,111 chains have no activity at any given moment. Treating it as
- * an edge case inside a list component would be designing for the exception.
- */
-function Empty({ message }: { message: string }) {
-  return (
-    <div className={styles.empty}>
-      <div className={styles.emptyGlyph}>— — — — —</div>
-      <p>{message}</p>
     </div>
   );
 }

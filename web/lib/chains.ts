@@ -199,6 +199,304 @@ export async function totalExecutions(): Promise<number> {
   return Number(rows[0].n);
 }
 
+// ---------------------------------------------------------------------------
+// The chains card: one list, searched and paged in the browser
+// ---------------------------------------------------------------------------
+
+/** A chain as the card lists it. Compact on purpose — all 1,111 are sent at once. */
+export interface ChainRow {
+  id: number;
+  chainId: number;
+  status: ChainStatus;
+  name: string | null;
+  owner: string | null;
+  txCount: number;
+  contractCount: number;
+  addressCount: number;
+  /** Gross tolls charged on this chain, in VOID wei, as a decimal string. */
+  revenue: string;
+}
+
+/**
+ * Every chain, in one query.
+ *
+ * The card searches by name, id and wallet, and searching a wallet has to look
+ * at all of them — paging on the server would mean a round trip per keystroke
+ * for a dataset that fits in a single response.
+ */
+export async function allChains(): Promise<ChainRow[]> {
+  const { rows } = await pool.query(
+    `SELECT c.id, c.chain_id, c.status, c.name, c.owner_address,
+            COALESCE(s.total_txs, 0)       AS txs,
+            COALESCE(s.total_contracts, 0) AS contracts,
+            COALESCE(s.total_addresses, 0) AS addresses,
+            COALESCE((SELECT sum(toll) FROM transactions t WHERE t.chain_id = c.id), 0) AS revenue
+       FROM chains c
+       LEFT JOIN chain_summary s ON s.chain_id = c.id
+      ORDER BY c.id`,
+  );
+
+  const byId = new Map(
+    rows.map((r) => [
+      r.id as number,
+      {
+        id: r.id as number,
+        chainId: Number(r.chain_id),
+        status: r.status as ChainStatus,
+        name: r.name as string | null,
+        owner: toHex(r.owner_address),
+        txCount: Number(r.txs),
+        contractCount: Number(r.contracts),
+        addressCount: Number(r.addresses),
+        revenue: String(r.revenue),
+      } satisfies ChainRow,
+    ]),
+  );
+
+  // A chain absent from the database is reserved, which is a real state, not a
+  // gap. Filling it here keeps the card at 1,111 rows from the first render.
+  return Array.from({ length: TOTAL_CHAINS }, (_, i) => {
+    const id = i + 1;
+    return (
+      byId.get(id) ?? {
+        id,
+        chainId: chainIdForToken(id),
+        status: 'reserved' as ChainStatus,
+        name: null,
+        owner: null,
+        txCount: 0,
+        contractCount: 0,
+        addressCount: 0,
+        revenue: '0',
+      }
+    );
+  });
+}
+
+/** An application published on a chain. */
+export interface ChainApp {
+  address: string;
+  publisher: string;
+  publishedAt: Date;
+}
+
+/** One call charged on a chain. */
+export interface ChainCall {
+  hash: string;
+  caller: string;
+  target: string;
+  toll: string;
+  at: Date;
+}
+
+export interface ChainDetail {
+  apps: ChainApp[];
+  calls: ChainCall[];
+}
+
+/** What the card shows when a chain is opened. Fetched only on demand. */
+export async function chainDetail(id: number): Promise<ChainDetail> {
+  const [apps, calls] = await Promise.all([
+    pool.query(
+      `SELECT address, deployer, deployed_at FROM contracts
+        WHERE chain_id = $1 ORDER BY deployed_at DESC LIMIT 25`,
+      [id],
+    ),
+    pool.query(
+      `SELECT hash, from_address, to_address, toll, timestamp FROM transactions
+        WHERE chain_id = $1 ORDER BY timestamp DESC, log_index DESC LIMIT 25`,
+      [id],
+    ),
+  ]);
+
+  return {
+    apps: apps.rows.map((r) => ({
+      address: toHex(r.address)!,
+      publisher: toHex(r.deployer)!,
+      publishedAt: r.deployed_at,
+    })),
+    calls: calls.rows.map((r) => ({
+      hash: toHex(r.hash)!,
+      caller: toHex(r.from_address)!,
+      target: toHex(r.to_address)!,
+      toll: String(r.toll),
+      at: r.timestamp,
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The ticker
+// ---------------------------------------------------------------------------
+
+export interface Event {
+  kind: 'call' | 'app' | 'activated';
+  chainId: number;
+  detail: string;
+  at: Date;
+}
+
+/**
+ * Recent activity across every chain, as one stream.
+ *
+ * Three tables, one feed, newest first. It replaces the separate block and
+ * transaction panels: with 1,111 chains the interesting thing is not any single
+ * list but that something is happening at all.
+ */
+export async function recentEvents(limit = 30): Promise<Event[]> {
+  const { rows } = await pool.query(
+    `(SELECT 'call' AS kind, chain_id, toll::text AS detail, timestamp AS at
+        FROM transactions ORDER BY timestamp DESC LIMIT $1)
+     UNION ALL
+     (SELECT 'app' AS kind, chain_id, encode(address, 'hex') AS detail, deployed_at AS at
+        FROM contracts ORDER BY deployed_at DESC LIMIT $1)
+     UNION ALL
+     (SELECT 'activated' AS kind, id AS chain_id, '' AS detail, activated_at AS at
+        FROM chains WHERE activated_at IS NOT NULL ORDER BY activated_at DESC LIMIT $1)
+     ORDER BY at DESC
+     LIMIT $1`,
+    [limit],
+  );
+  return rows.map((r) => ({
+    kind: r.kind as Event['kind'],
+    chainId: r.chain_id as number,
+    detail: r.detail as string,
+    at: r.at as Date,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Profiles
+// ---------------------------------------------------------------------------
+
+export interface Social {
+  platform: string;
+  handle: string;
+}
+
+export interface Profile {
+  address: string;
+  displayName: string | null;
+  avatarUri: string | null;
+  bio: string | null;
+  socials: Social[];
+}
+
+export interface ProfilePage {
+  profile: Profile;
+  /** Chains this address owns, newest id first. */
+  chains: ChainRow[];
+  /** Gross tolls charged across every chain they own, in VOID wei. */
+  revenue: string;
+  calls: number;
+}
+
+/**
+ * Everything shown on a profile.
+ *
+ * The profile row is optional on purpose: an address that never set a name is
+ * still a real holder with real chains, and the page has to work for them. What
+ * is authoritative here is the chain ownership, which comes from the deed
+ * contract through the indexer — never from the profile table.
+ */
+export async function profilePage(address: string): Promise<ProfilePage> {
+  const addr = address.toLowerCase();
+  const bytes = Buffer.from(addr.replace(/^0x/, ''), 'hex');
+
+  const [prof, socials, owned] = await Promise.all([
+    pool.query(
+      'SELECT display_name, avatar_uri, bio FROM user_profiles WHERE address = $1',
+      [bytes],
+    ),
+    pool.query(
+      'SELECT platform, handle FROM user_socials WHERE address = $1 ORDER BY platform',
+      [bytes],
+    ),
+    pool.query(
+      `SELECT c.id, c.chain_id, c.status, c.name, c.owner_address,
+              COALESCE(s.total_txs, 0)       AS txs,
+              COALESCE(s.total_contracts, 0) AS contracts,
+              COALESCE(s.total_addresses, 0) AS addresses,
+              COALESCE((SELECT sum(toll) FROM transactions t WHERE t.chain_id = c.id), 0) AS revenue
+         FROM chains c
+         LEFT JOIN chain_summary s ON s.chain_id = c.id
+        WHERE c.owner_address = $1
+        ORDER BY c.id`,
+      [bytes],
+    ),
+  ]);
+
+  const chains: ChainRow[] = owned.rows.map((r) => ({
+    id: r.id,
+    chainId: Number(r.chain_id),
+    status: r.status,
+    name: r.name,
+    owner: toHex(r.owner_address),
+    txCount: Number(r.txs),
+    contractCount: Number(r.contracts),
+    addressCount: Number(r.addresses),
+    revenue: String(r.revenue),
+  }));
+
+  return {
+    profile: {
+      address: addr,
+      displayName: prof.rows[0]?.display_name ?? null,
+      avatarUri: prof.rows[0]?.avatar_uri ?? null,
+      bio: prof.rows[0]?.bio ?? null,
+      socials: socials.rows.map((r) => ({ platform: r.platform, handle: r.handle })),
+    },
+    chains,
+    revenue: chains.reduce((t, c) => t + BigInt(c.revenue), 0n).toString(),
+    calls: chains.reduce((t, c) => t + c.txCount, 0),
+  };
+}
+
+/**
+ * Writes a profile.
+ *
+ * The address is decided by the caller, which is why the only route that calls
+ * this verifies a signature over the exact payload first. Nothing here trusts
+ * the request body to say who it is.
+ */
+export async function saveProfile(
+  address: string,
+  p: { displayName: string; avatarUri: string; bio: string; socials: Social[] },
+): Promise<void> {
+  const bytes = Buffer.from(address.toLowerCase().replace(/^0x/, ''), 'hex');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO user_profiles (address, display_name, avatar_uri, bio)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (address) DO UPDATE
+         SET display_name = EXCLUDED.display_name,
+             avatar_uri   = EXCLUDED.avatar_uri,
+             bio          = EXCLUDED.bio,
+             updated_at   = now()`,
+      [bytes, p.displayName || null, p.avatarUri || null, p.bio || null],
+    );
+    // Replaced rather than merged: the form sends the whole set, so a handle
+    // the user deleted has to disappear, and merging would keep it forever.
+    await client.query('DELETE FROM user_socials WHERE address = $1', [bytes]);
+    for (const s of p.socials) {
+      if (!s.platform.trim() || !s.handle.trim()) continue;
+      await client.query(
+        `INSERT INTO user_socials (address, platform, handle) VALUES ($1, $2, $3)
+         ON CONFLICT (address, platform) DO UPDATE SET handle = EXCLUDED.handle`,
+        [bytes, s.platform.trim().slice(0, 32), s.handle.trim().slice(0, 64)],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 /** Shortens an address keeping head and tail, which is what people actually check. */
 export function shortAddress(address: string | null, head = 8, tail = 8): string {
   if (!address) return '—';

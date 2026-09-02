@@ -41,6 +41,7 @@ export default function Mint() {
   const [voidBal, setVoidBal] = useState(0n);
   const [ethBal, setEthBal] = useState(0n);
   const [available, setAvailable] = useState(0n);
+  const [tollVoid, setTollVoid] = useState(0n);
   const [price, setPrice] = useState(0n);
   const [deeds, setDeeds] = useState<Deed[]>([]);
 
@@ -55,6 +56,20 @@ export default function Mint() {
     ]);
     setAvailable(avail as bigint);
     setPrice(p as bigint);
+
+    // What the dollar toll comes to in VOID right now. Read from a chain that is
+    // already active rather than computed here, so the number on screen is the
+    // one the contract would charge.
+    const sample = Object.keys(DEPLOY.demoApps)[0];
+    if (sample) {
+      const t = await rpc
+        .readContract({
+          address: P.VoidChainAppRuntime as Address, abi: ABI.runtime,
+          functionName: 'feeOf', args: [BigInt(sample)],
+        })
+        .catch(() => 0n);
+      setTollVoid(t as bigint);
+    }
 
     if (!who) { setVoidBal(0n); setEthBal(0n); setDeeds([]); return; }
 
@@ -203,13 +218,23 @@ export default function Mint() {
           </div>
           <div className={styles.fact}>
             <dt>Toll per call</dt>
-            <dd>$0.001</dd>
+            <dd>
+              $0.001
+              {tollVoid > 0n && <small> ≈ {fmt(tollVoid, 18, 3)} VOID</small>}
+            </dd>
           </div>
           <div className={styles.fact}>
             <dt>Your balance</dt>
             <dd>{fmt(voidBal, 18, 0)}<small> VOID</small></dd>
           </div>
         </dl>
+
+        <p className={styles.tollNote}>
+          The toll is what a chain charges for one call to an application running on
+          it. The owner sets it in dollars and it is paid in VOID, converted at the
+          moment of the call — so the price stays the same in real terms whatever
+          the token is doing. It goes to whoever owns that chain.
+        </p>
 
         <div className={styles.steps}>
           <section className={styles.step} data-done={connected}>
@@ -300,11 +325,9 @@ export default function Mint() {
             no deep VOID/ETH pool nor a Chainlink feed on this network.
           </p>
           <p>
-            Everything else is the real thing. <code>VoidChainDeed</code>,{' '}
+            Everything else is the real thing: <code>VoidChainDeed</code>,{' '}
             <code>VoidChainAppRuntime</code>, <code>VoidChainTreasury</code> and{' '}
-            <code>VoidPaymaster</code> are the contracts that go to mainnet, and the
-            dollar toll, the revenue going to the owner and the isolation between
-            chains work here exactly as they will there.
+            <code>VoidPaymaster</code> are the contracts that go to mainnet.
           </p>
         </div>
       </main>

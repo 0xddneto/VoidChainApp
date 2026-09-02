@@ -78,10 +78,15 @@ const TOLL_USD = parseEther('0.001');
 const VOID_USD = parseEther('0.001');
 const VOID_PER_ETH = parseEther('2411000');
 
-/** How many deeds go into the pool so somebody can buy one. */
+/**
+ * How many deeds go into the pool, starting at #1.
+ *
+ * The pool sells from the beginning of the collection: a buyer arriving first
+ * gets deed #1, not #101. An earlier version filled the pool from #101 and kept
+ * the first hundred back, which meant the collection appeared to start at 101 to
+ * anyone buying.
+ */
 const SEED_INTO_POOL = 100;
-/** Deeds held back from the pool, so the first ones are not all for sale. */
-const TREASURY_KEEP = 100;
 
 const BATCH = 20;
 
@@ -256,9 +261,9 @@ console.log(`  ✓ pool funded, ${TOKENS_PER_NFT / 10n ** 18n} VOID per deed`);
 console.log(`\n  [6/7] filling the pool's stock with ${SEED_INTO_POOL} deeds`);
 
 const ammAbi = artifact('VoidNftAmm').abi;
-// The first ones stay with the treasury; the following go to the pool.
+// From #1 upwards, so the first deed bought is the first deed of the collection.
 const forPool: number[] = [];
-for (let i = TREASURY_KEEP + 1; i <= TREASURY_KEEP + SEED_INTO_POOL; i++) forPool.push(i);
+for (let i = 1; i <= SEED_INTO_POOL; i++) forPool.push(i);
 
 await bulk(forPool, (id, nonce) =>
   wallet.writeContract({
@@ -272,7 +277,7 @@ console.log("\n  [7/7] a demo application on the pool's first 10");
 
 const demoApps: Record<string, Address> = {};
 for (let i = 0; i < 10; i++) {
-  const id = BigInt(TREASURY_KEEP + 1 + i);
+  const id = BigInt(i + 1);
   const app = await deploy('Counter', [runtime, id]);
   await send(runtime, rtAbi, 'registerApp', [id, app]);
   demoApps[id.toString()] = app;
@@ -309,7 +314,6 @@ const output = {
     tollUsd: TOLL_USD.toString(),
     voidUsd: VOID_USD.toString(),
     voidPerEth: VOID_PER_ETH.toString(),
-    treasuryKeeps: TREASURY_KEEP,
     inPool: SEED_INTO_POOL,
   },
   demoApps,
