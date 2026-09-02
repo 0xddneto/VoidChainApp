@@ -190,18 +190,24 @@ const runtime = await deploy('VoidChainAppRuntime', [deed, token, treasury]);
 const paymaster = await deploy('VoidPaymaster', [
   token, runtime, account.address, account.address, oracle,
 ]);
+// Every chain ships with its DAO: one contract, 1,111 electorates, each voting
+// the ceiling its own chain's toll may not exceed. Wired before any chain is
+// activated, because the wiring is write-once and a chain switched on first
+// would be switched on without one.
+const dao = await deploy('VoidChainDao', [runtime]);
 
 const rtAbi = artifact('VoidChainAppRuntime').abi;
 const pmAbi = artifact('VoidPaymaster').abi;
 
 await send(runtime, rtAbi, 'setOracle', [oracle]);
 await send(runtime, rtAbi, 'setForwarderOnce', [paymaster]);
+await send(runtime, rtAbi, 'setDaoOnce', [dao]);
 await send(treasury, artifact('VoidChainTreasury').abi, 'setAuthorizedSettler', [runtime, true]);
 await send(paymaster, pmAbi, 'setMargin', [1_000n]);
 await send(paymaster, pmAbi, 'setLimits', [
   parseEther('0.001'), 60_000n, await ceiling(), parseEther('0.01'),
 ]);
-console.log('  ✓ wired: oracle, forwarder frozen, settler, 10% margin');
+console.log('  ✓ wired: oracle, forwarder and DAO frozen, settler, 10% margin');
 
 // The bubble's reserve. $100 at $2,411/ETH is about 0.0415 ETH — but on testnet
 // we go with less, because what matters is that it works, not that it scales.
@@ -304,7 +310,13 @@ const output = {
     // The indexer sweeps from here instead of Robinhood's block zero.
     deployBlock: Number(firstBlock),
   },
-  production: { VoidChainDeed: deed, VoidChainTreasury: treasury, VoidChainAppRuntime: runtime, VoidPaymaster: paymaster },
+  production: {
+    VoidChainDeed: deed,
+    VoidChainTreasury: treasury,
+    VoidChainAppRuntime: runtime,
+    VoidPaymaster: paymaster,
+    VoidChainDao: dao,
+  },
   testnet: { VoidTestToken: token, VoidTestOracle: oracle, VoidNftAmm: amm },
   parameters: {
     nfts: NFTS,

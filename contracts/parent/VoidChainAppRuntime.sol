@@ -295,12 +295,31 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     ///         on purpose: the cost sits on the right side of the scale.
     address public forwarder;
 
-    /// @dev    Kept only for the one-time write of the forwarder. After that it
-    ///         grants no power at all.
+    /// @notice The DAO that sets each chain's toll ceiling.
+    ///
+    /// @dev    Written once, like the forwarder, and for the same reason: a
+    ///         contract that can cap what every chain charges is not something
+    ///         to leave behind a setter. Replacing it means a new runtime.
+    address public dao;
+
+    /// @notice The most a chain may charge per call, in dollars, as its own DAO
+    ///         decided. Zero when no ceiling has been set.
+    ///
+    /// @dev    Paired with a flag rather than read as "zero means unlimited",
+    ///         because a DAO voting a ceiling of zero — forcing its chain to be
+    ///         free — is a decision it is allowed to make, and it must not be
+    ///         indistinguishable from never having voted at all.
+    mapping(uint256 tokenId => uint256) public tollCeilingUsd;
+    mapping(uint256 tokenId => bool) public hasTollCeiling;
+
+    /// @dev    Kept only for the one-time write of the forwarder and the DAO.
+    ///         After that it grants no power at all.
     address private immutable deployer;
 
     event ChainAppActivated(uint256 indexed tokenId, address activator);
     event ForwarderSet(address forwarder);
+    event DaoSet(address dao);
+    event TollCeilingSet(uint256 indexed tokenId, uint256 ceilingUsd);
     event ProtocolSwept(address treasury, uint256 amount);
     event AppRegistered(uint256 indexed tokenId, address app, address publisher);
     event DeploymentPolicyChanged(uint256 indexed tokenId, bool permissionless);
@@ -344,6 +363,9 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     error Reentered();
     error NotTheForwarder(address who);
     error ForwarderAlreadySet(address current);
+    error DaoAlreadySet(address current);
+    error NotTheDao(address who);
+    error FeeAboveCeiling(uint256 feeUsd, uint256 ceilingUsd);
     error NotTheDeployer(address who);
     error NoExecutionInProgress();
     error BudgetExceeded(address token, uint256 wanted, uint256 budget);
@@ -373,6 +395,31 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         emit ForwarderSet(forwarder_);
     }
 
+    /// @notice Writes the DAO contract. Once only, forever.
+    /// @dev    See the comment on `dao`. Same shape as the forwarder: the power
+    ///         to cap every chain's price is not a key the protocol should keep.
+    function setDaoOnce(address dao_) external {
+        if (msg.sender != deployer) revert NotTheDeployer(msg.sender);
+        if (dao != address(0)) revert DaoAlreadySet(dao);
+        if (dao_ == address(0)) revert ZeroAddress();
+        dao = dao_;
+        emit DaoSet(dao_);
+    }
+
+    /// @notice The chain's DAO sets what its owner may not charge above.
+    ///
+    /// @dev    It bounds future prices and never touches the current one. A
+    ///         ceiling voted below what a chain already charges leaves that toll
+    ///         standing and stops it rising further — retroactively cutting a
+    ///         price somebody signed a request against would be the same
+    ///         surprise, in the other direction.
+    function setTollCeiling(uint256 tokenId, uint256 ceilingUsd) external {
+        if (msg.sender != dao) revert NotTheDao(msg.sender);
+        tollCeilingUsd[tokenId] = ceilingUsd;
+        hasTollCeiling[tokenId] = true;
+        emit TollCeilingSet(tokenId, ceilingUsd);
+    }
+
     modifier onlyDeedHolder(uint256 tokenId) {
         if (deed.ownerOf(tokenId) != msg.sender) revert NotDeedHolder(tokenId, msg.sender);
         _;
@@ -386,6 +433,11 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     /// @param feePerCallUsd The toll IN DOLLARS, with 18 decimals (1e15 = $0.001).
     function activate(uint256 tokenId, uint256 feePerCallUsd) external onlyDeedHolder(tokenId) {
         if (apps[tokenId].active) revert AlreadyActive(tokenId);
+        // A ceiling can be voted before a chain is switched on, and activating
+        // above it would leave the chain permanently over its own limit.
+        if (hasTollCeiling[tokenId] && feePerCallUsd > tollCeilingUsd[tokenId]) {
+            revert FeeAboveCeiling(feePerCallUsd, tollCeilingUsd[tokenId]);
+        }
 
         apps[tokenId].active = true;
         apps[tokenId].feePerCallUsd = feePerCallUsd;
@@ -403,6 +455,14 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     ///         there is no such interval to protect.
     function setFee(uint256 tokenId, uint256 feePerCallUsd) external onlyDeedHolder(tokenId) {
         if (!apps[tokenId].active) revert NotActive(tokenId);
+
+        // The owner prices their chain freely, up to what the people holding the
+        // token that pays its tolls decided. Without this the `maxToll` a payer
+        // signs would be the only protection, and that guards one call — not a
+        // business built on top of the chain.
+        if (hasTollCeiling[tokenId] && feePerCallUsd > tollCeilingUsd[tokenId]) {
+            revert FeeAboveCeiling(feePerCallUsd, tollCeilingUsd[tokenId]);
+        }
 
         emit FeeUpdated(tokenId, apps[tokenId].feePerCallUsd, feePerCallUsd);
         apps[tokenId].feePerCallUsd = feePerCallUsd;
