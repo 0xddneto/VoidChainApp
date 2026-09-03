@@ -34,7 +34,6 @@ const RECOVERY_BUFFER = parseEther('0.00002');
 const VOID_PER_USER = parseEther('5000');
 const ASSET_PER_USER = parseEther('5000');
 const SWAP_AMOUNT = parseEther('25');
-const MAX_UINT = 2n ** 256n - 1n;
 const CALL_GAS_LIMIT = 800_000n;
 
 const rpc = createPublicClient({ transport: http(process.env.PARENT_RPC ?? deployment.network.rpc) });
@@ -56,8 +55,8 @@ const runtimeAbi = parseAbi([
   'function executeWithBudget(uint256,address,bytes,uint256,(address[] tokens,uint256[] limits,address[] collections,uint256[] nftIds)) returns (bytes)',
 ]);
 const pairAbi = parseAbi([
-  'function reserve0() view returns (uint256)', 'function reserve1() view returns (uint256)', 'function totalShares() view returns (uint256)',
-  'function shares(address) view returns (uint256)', 'function k() view returns (uint256)',
+  'function reserve0() view returns (uint256)', 'function reserve1() view returns (uint256)', 'function totalSupply() view returns (uint256)',
+  'function balanceOf(address) view returns (uint256)', 'function k() view returns (uint256)',
   'function quote(bool,uint256) view returns (uint256)', 'function addLiquidity(uint256,uint256,uint256) returns (uint256)',
   'function swap(bool,uint256,uint256) returns (uint256)',
 ]);
@@ -113,11 +112,13 @@ for (const user of users) {
   }
 }
 
-console.log('[2/5] Each wallet signs its own one-time token permissions');
-for (const user of users) {
-  const tokens = [...new Set([voidToken, ...dex.pools.flatMap((pool) => [pool.token0, pool.token1])])];
-  for (const token of tokens) await userWrite(user.key, token, erc20, 'approve', [runtime, MAX_UINT]);
+async function approveExact(user: Hex, token: Address, amount: bigint) {
+  // Every approval is consumed by the immediately following runtime call.
+  // No test wallet leaves an unlimited or reusable application allowance.
+  await userWrite(user, token, erc20, 'approve', [runtime, amount]);
 }
+
+console.log('[2/5] Every DEX call will receive its own exact token allowance');
 
 console.log('[3/5] Each wallet adds liquidity through the runtime');
 for (let i = 0; i < users.length; i++) {
@@ -125,10 +126,14 @@ for (let i = 0; i < users.length; i++) {
   const [reserve0, reserve1, total] = await Promise.all([
     rpc.readContract({ address: pool.address, abi: pairAbi, functionName: 'reserve0' }) as Promise<bigint>,
     rpc.readContract({ address: pool.address, abi: pairAbi, functionName: 'reserve1' }) as Promise<bigint>,
-    rpc.readContract({ address: pool.address, abi: pairAbi, functionName: 'totalShares' }) as Promise<bigint>,
+    rpc.readContract({ address: pool.address, abi: pairAbi, functionName: 'totalSupply' }) as Promise<bigint>,
   ]);
   const amount0 = parseEther('250');
   const amount1 = amount0 * reserve1 / reserve0;
+  const voidNeeded = (pool.token0.toLowerCase() === voidToken.toLowerCase() ? amount0 : pool.token1.toLowerCase() === voidToken.toLowerCase() ? amount1 : 0n) + fee;
+  await approveExact(users[i].key, voidToken, voidNeeded);
+  if (pool.token0.toLowerCase() !== voidToken.toLowerCase()) await approveExact(users[i].key, pool.token0, amount0);
+  if (pool.token1.toLowerCase() !== voidToken.toLowerCase()) await approveExact(users[i].key, pool.token1, amount1);
   const data = encodeFunctionData({ abi: pairAbi, functionName: 'addLiquidity', args: [amount0, amount1, minShares(amount0, amount1, reserve0, reserve1, total)] });
   await userWrite(users[i].key, runtime, runtimeAbi, 'executeWithBudget', [CHAIN, pool.address, data, fee, auth([pool.token0, pool.token1], [amount0, amount1])]);
 }
@@ -143,6 +148,8 @@ for (let i = 0; i < users.length; i++) {
     if (expected === 0n) throw new Error(`Pool ${pool.label} has no quote.`);
     const data = encodeFunctionData({ abi: pairAbi, functionName: 'swap', args: [zeroForOne, SWAP_AMOUNT, expected * 9_950n / 10_000n] });
     const input = zeroForOne ? pool.token0 : pool.token1;
+    await approveExact(users[i].key, voidToken, (input.toLowerCase() === voidToken.toLowerCase() ? SWAP_AMOUNT : 0n) + fee);
+    if (input.toLowerCase() !== voidToken.toLowerCase()) await approveExact(users[i].key, input, SWAP_AMOUNT);
     await userWrite(users[i].key, runtime, runtimeAbi, 'executeWithBudget', [CHAIN, pool.address, data, fee, auth([input], [SWAP_AMOUNT])]);
     completed++;
   }

@@ -403,7 +403,10 @@
 .detailFacts > div { min-height: 74px; background: var(--surface-2); padding: 12px; }
 .detailFacts dt { color: var(--ink-3); font: 9px var(--mono); letter-spacing: 0.1em; margin: 0 0 7px; text-transform: uppercase; }
 .detailFacts dd { margin: 0; color: var(--ink); font: 12px var(--mono); }
-.editableFact { min-width: 0; }
+.chainNameLine { align-items: center; display: flex; gap: 10px; margin: 0 0 12px; }
+.chainNameLine > span { color: var(--ink-3); font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.chainNameControl { min-width: 0; }
+.chainNameValue { color: var(--ink); font: 14px var(--mono); }
 .factValueWithAction { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; justify-content: space-between; }
 .factButton, .factCancel { border: 1px solid color-mix(in srgb, var(--accent) 64%, var(--line)); border-radius: 4px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--ink); cursor: pointer; flex: 0 0 auto; font: 9px var(--mono); min-height: 27px; padding: 0 7px; white-space: nowrap; }
 .factButton:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 23%, var(--surface)); }
@@ -412,7 +415,7 @@
 .factEdit { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .factEdit input { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; color: var(--ink); font: 11px var(--mono); min-height: 28px; min-width: 0; padding: 0 7px; width: 100%; }
 .factNotice { color: var(--ink-3); display: block; font: 9px var(--mono); line-height: 1.4; margin-top: 7px; }
-.nameEditButton { align-items: center; font-size: 16px; justify-content: center; line-height: 1; min-width: 27px; padding: 0; }
+.nameEditButton { align-items: center; background: transparent; border: 0; color: var(--accent); font-size: 16px; justify-content: center; line-height: 1; min-width: 18px; padding: 0; }
 
 /* The first activation writes the initial economic rule on chain. It must be
    visually separate from a routine pause/resume control. */

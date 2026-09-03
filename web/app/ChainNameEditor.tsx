@@ -120,19 +120,18 @@ export function ChainNameEditor({
   }
 
   return (
-    <div className={styles.editableFact}>
-      <dt>Name</dt>
+    <div className={styles.chainNameControl}>
       {!editing ? (
-        <dd className={styles.factValueWithAction}>
-          <span>{name || 'no name set'}</span>
+        <div className={styles.factValueWithAction}>
+          <span className={styles.chainNameValue}>{name || `VOID Chain #${tokenId}`}</span>
           {holder && <button type="button" className={`${styles.factButton} ${styles.nameEditButton}`} onClick={() => { setDraft(name); setEditing(true); setNotice(null); }} aria-label="Mudar nome da chain" title="Mudar nome">✎</button>}
-        </dd>
+        </div>
       ) : (
-        <dd className={styles.factEdit}>
+        <div className={styles.factEdit}>
           <input value={draft} maxLength={32} onChange={(event) => setDraft(event.target.value)} aria-label="Chain name" />
           <button type="button" className={styles.factButton} disabled={busy} onClick={save}>{busy ? 'Salvando…' : 'Salvar'}</button>
           <button type="button" className={styles.factCancel} disabled={busy} onClick={() => { setEditing(false); setDraft(name); setNotice(null); }}>Cancelar</button>
-        </dd>
+        </div>
       )}
       {notice && <small className={styles.factNotice} role="status">{notice}</small>}
     </div>

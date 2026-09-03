@@ -71,7 +71,7 @@ export default async function ProfileRoute({
           <dl className={own.numbers}>
             <div><dt>Spaces owned</dt><dd>{nf.format(chains.length)}</dd></div>
             <div><dt>Paid transactions</dt><dd>{nf.format(calls)}</dd></div>
-            <div><dt>Revenue</dt><dd>{voidAmount(revenue)} <small>VOID</small></dd></div>
+            <div><dt>Holder earnings</dt><dd>{voidAmount(revenue)} <small>VOID</small></dd></div>
           </dl>
 
           <ProfileEditor address={profile.address} profile={profile} />
@@ -93,7 +93,7 @@ export default async function ProfileRoute({
                     <th>Runtime ID</th>
                     <th className={styles.numCell}>Transactions</th>
                     <th className={styles.numCell}>Apps</th>
-                    <th className={styles.numCell}>Revenue</th>
+                    <th className={styles.numCell}>Holder earnings</th>
                   </tr>
                 </thead>
                 <tbody>

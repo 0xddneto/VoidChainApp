@@ -2,14 +2,14 @@
 pragma solidity 0.8.28;
 
 import {ChainAppBase, IVoidChainAppRuntime} from "./ChainAppBase.sol";
-import {ChainAppSwap, IERC20 as ISwapToken} from "./ChainAppSwap.sol";
+import {VoidUniswapV2Pair} from "./VoidUniswapV2Pair.sol";
 
 interface IAppRegistry is IVoidChainAppRuntime {
     function registerApp(uint256 tokenId, address app) external;
 }
 
 /// @title VoidChainDexFactory
-/// @notice Creates and registers constant-product pools for one VOID Chain.
+/// @notice Creates and registers Uniswap V2 style pools for one VOID Chain.
 /// @dev The factory is itself a chain app. A pool can therefore only be created
 ///      through the chain runtime and pays that chain's transaction fee. Each
 ///      pair it creates has the same immutable runtime and tokenId, so neither
@@ -49,7 +49,7 @@ contract VoidChainDexFactory is ChainAppBase {
             revert PoolAlreadyExists(token0, token1);
         }
 
-        pool = address(new ChainAppSwap(runtime, chainId, ISwapToken(token0), ISwapToken(token1)));
+        pool = address(new VoidUniswapV2Pair(runtime, chainId, token0, token1));
         poolFor[token0][token1] = pool;
         poolFor[token1][token0] = pool;
         allPools.push(pool);

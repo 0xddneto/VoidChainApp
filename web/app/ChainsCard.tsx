@@ -140,7 +140,7 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
               <th className={styles.numCell}>Transactions</th>
               <th className={styles.numCell}>Apps</th>
               <th className={styles.numCell}>Addresses</th>
-              <th className={styles.numCell}>Revenue</th>
+              <th className={styles.numCell}>Holder earnings</th>
             </tr>
           </thead>
           <tbody>
@@ -235,8 +235,11 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
       </div>
 
       <div className={styles.detailBody}>
-        <dl className={styles.detailFacts}>
+        <div className={styles.chainNameLine}>
+          <span>Name</span>
           <ChainNameEditor tokenId={chain.id} fallbackName={displayName} onNameChanged={nameChanged} />
+        </div>
+        <dl className={styles.detailFacts}>
           <div><dt>Runtime ID</dt><dd><Copyable value={String(chain.chainId)} /></dd></div>
           <div><dt>VoidChain contract</dt><dd><Copyable value={DEPLOY.production.VoidChainAppRuntime} short /></dd></div>
           <div><dt>Deed contract</dt><dd><Copyable value={DEPLOY.production.VoidChainDeed} short /></dd></div>
@@ -244,7 +247,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
           <div><dt>Transactions</dt><dd>{nf.format(chain.txCount)}</dd></div>
           <div><dt>Apps</dt><dd>{nf.format(chain.contractCount)}</dd></div>
           <div><dt>Addresses</dt><dd>{nf.format(chain.addressCount)}</dd></div>
-          <div><dt title="Gross tolls paid to this space; the protocol split is accounted for separately.">Revenue</dt><dd>{voidAmount(chain.revenue)} VOID</dd></div>
+          <div><dt title="The holder's 98% share of all chain fees. The protocol receives the other 2%.">Holder earnings</dt><dd>{voidAmount(chain.revenue)} VOID</dd></div>
           <ChainActivationEditor tokenId={chain.id} onActiveChanged={(next) => setStatus(next ? 'live' : 'paused')} />
         </dl>
 

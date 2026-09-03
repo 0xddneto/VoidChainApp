@@ -1,22 +1,23 @@
 {
   "chainTokenId": 1,
   "runtime": "0x66833df7b5404e6c75f3e5126f7105f2fdcee4fd",
-  "factory": "0xb16f1da11a362c1ea95c4e02d79e73ad9f35dc78",
+  "factory": "0xbc74fc4dd29d078008fc070235ef939082e4071c",
   "baseToken": "0x2a64fa56c1de6f7c737b4a964b5b693ed3841ff4",
   "pools": [
     {
-      "address": "0x2F8246F6d29C2f60D8957DCDa11d6713b55847Ee",
+      "address": "0x69E4218bA54Eb350B6Ae288167487671d2B8FAe6",
       "label": "VOID / tUSD",
-      "asset": "0x73741d3cd70374daa293f4840ab7ea740ea6e6db",
-      "token0": "0x2A64Fa56C1DE6F7C737B4a964B5b693ed3841fF4",
-      "token1": "0x73741d3cD70374Daa293F4840Ab7Ea740ea6e6DB"
+      "asset": "0x22088c51da4781857dc0f333e1a85acad753e31e",
+      "token0": "0x22088c51dA4781857dC0f333E1a85ACad753E31E",
+      "token1": "0x2A64Fa56C1DE6F7C737B4a964B5b693ed3841fF4"
     },
     {
-      "address": "0x44B83B506B85D44c6014cec3d5A125c0a70A3510",
+      "address": "0xCD51695aFC0975871EFe459c0F4cA22Ad51D27A8",
       "label": "VOID / tLINK",
-      "asset": "0xdfc2a8e40da7d47c838a582e528ca3c07a34172b",
-      "token0": "0x2A64Fa56C1DE6F7C737B4a964B5b693ed3841fF4",
-      "token1": "0xdfC2a8e40DA7d47C838A582E528Ca3C07a34172B"
+      "asset": "0x17bb92e7da1ecfce9aac4af9790b355d8efb759c",
+      "token0": "0x17BB92e7Da1eCFcE9AAc4Af9790b355D8efB759C",
+      "token1": "0x2A64Fa56C1DE6F7C737B4a964B5b693ed3841fF4"
     }
-  ]
+  ],
+  "faucet": "0x4f7b779254d84486d294136c90e76c69fd85a655"
 }

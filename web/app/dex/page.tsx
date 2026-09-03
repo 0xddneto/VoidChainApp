@@ -29,12 +29,13 @@ const tokenAbi = parseAbi([
 const pairAbi = parseAbi([
   'function token0() view returns (address)', 'function token1() view returns (address)',
   'function reserve0() view returns (uint256)', 'function reserve1() view returns (uint256)',
-  'function totalShares() view returns (uint256)', 'function shares(address) view returns (uint256)',
+  'function totalSupply() view returns (uint256)', 'function balanceOf(address) view returns (uint256)',
   'function quote(bool,uint256) view returns (uint256)',
   'function swap(bool,uint256,uint256) returns (uint256)',
   'function addLiquidity(uint256,uint256,uint256) returns (uint256)',
-  'function removeLiquidity(uint256) returns (uint256,uint256)',
+  'function removeLiquidity(uint256,uint256,uint256) returns (uint256,uint256)',
 ]);
+const dexFaucetAbi = parseAbi(['function claim()']);
 
 const provider = () => typeof window === 'undefined' ? undefined : (window as Window & { ethereum?: Provider }).ethereum;
 const zero = 0n;
@@ -82,7 +83,7 @@ export default function ChainOneDex() {
       rpc.readContract({ address: runtime, abi: runtimeAbi, functionName: 'feeOf', args: [BigInt(dex.chainTokenId)] }) as Promise<bigint>,
       rpc.readContract({ address: poolAddress, abi: pairAbi, functionName: 'reserve0' }) as Promise<bigint>,
       rpc.readContract({ address: poolAddress, abi: pairAbi, functionName: 'reserve1' }) as Promise<bigint>,
-      rpc.readContract({ address: poolAddress, abi: pairAbi, functionName: 'totalShares' }) as Promise<bigint>,
+      rpc.readContract({ address: poolAddress, abi: pairAbi, functionName: 'totalSupply' }) as Promise<bigint>,
       rpc.readContract({ address: token0, abi: tokenAbi, functionName: 'symbol' }) as Promise<string>,
       rpc.readContract({ address: token1, abi: tokenAbi, functionName: 'symbol' }) as Promise<string>,
     ]);
@@ -91,7 +92,7 @@ export default function ChainOneDex() {
       const tracked = [...new Set([voidToken, token0, token1])];
       const values = await Promise.all(tracked.map((token) => rpc.readContract({ address: token, abi: tokenAbi, functionName: 'balanceOf', args: [account] }) as Promise<bigint>));
       setBalances(Object.fromEntries(tracked.map((token, i) => [token.toLowerCase(), values[i]])));
-      setOwnedShares(await rpc.readContract({ address: poolAddress, abi: pairAbi, functionName: 'shares', args: [account] }) as bigint);
+      setOwnedShares(await rpc.readContract({ address: poolAddress, abi: pairAbi, functionName: 'balanceOf', args: [account] }) as bigint);
     } else {
       setBalances({}); setOwnedShares(0n);
     }
@@ -132,15 +133,21 @@ export default function ChainOneDex() {
     if (available >= value) return;
     await write('approve', token, tokenAbi, 'approve', [runtime, value]);
   }
-  async function getTestAssets() {
+  async function getTestVoid() {
     if (!account) return void connect();
-    setNotice('Approve each wallet request to receive test assets.');
     try {
       await write('faucet', voidToken, tokenAbi, 'faucet', []);
-      await write('mint-usd', dex.pools[0].asset as Address, tokenAbi, 'mint', [parseUnits('100000', 18)]);
-      await write('mint-link', dex.pools[1].asset as Address, tokenAbi, 'mint', [parseUnits('100000', 18)]);
-      setNotice('Test assets received.'); await load();
-    } catch (error: any) { setNotice(error?.shortMessage ?? error?.message ?? 'Could not receive test assets.'); }
+      setNotice('Test VOID received. This external faucet is not a DEX transaction.'); await load();
+    } catch (error: any) { setNotice(error?.shortMessage ?? error?.message ?? 'Could not receive test VOID.'); }
+  }
+  async function claimDexAssets() {
+    if (!account) return void connect();
+    try {
+      await approveExact(voidToken, fee);
+      const data = encodeFunctionData({ abi: dexFaucetAbi, functionName: 'claim' });
+      await write('claim-assets', runtime, runtimeAbi, 'executeWithBudget', [BigInt(dex.chainTokenId), dex.faucet as Address, data, fee, { tokens: [], limits: [], collections: [], nftIds: [] }]);
+      setNotice(`tUSD and tLINK claimed through VOID Chain #${dex.chainTokenId}. ${show(fee)} VOID was charged.`); await load();
+    } catch (error: any) { setNotice(error?.shortMessage ?? error?.message ?? 'Could not claim DEX test assets.'); }
   }
   async function swap() {
     const inputAmount = amount(swapValue); if (!inputAmount || !estimate) return setNotice('Enter an amount that produces an output.');
@@ -172,7 +179,10 @@ export default function ChainOneDex() {
     const shares = amount(shareValue); if (!shares) return setNotice('Enter the LP-share amount to remove.');
     try {
       await approveExact(voidToken, fee);
-      const data = encodeFunctionData({ abi: pairAbi, functionName: 'removeLiquidity', args: [shares] });
+      if (!state || shares > ownedShares) return setNotice('Enter LP shares you own.');
+      const min0 = (shares * state.reserve0 / state.shares) * 9_950n / 10_000n;
+      const min1 = (shares * state.reserve1 / state.shares) * 9_950n / 10_000n;
+      const data = encodeFunctionData({ abi: pairAbi, functionName: 'removeLiquidity', args: [shares, min0, min1] });
       await write('remove', runtime, runtimeAbi, 'execute', [BigInt(dex.chainTokenId), poolAddress, data, fee]);
       setNotice('Liquidity removed.'); await load();
     } catch (error: any) { setNotice(error?.shortMessage ?? error?.message ?? 'Could not remove liquidity.'); }
@@ -204,7 +214,7 @@ export default function ChainOneDex() {
       </div>
       <aside className={styles.side}>
         <section className={styles.card}><div className={styles.cardHead}><h2>Pool state</h2><span>live</span></div><dl><div><dt>{state?.token0Symbol} reserve</dt><dd>{show(state?.reserve0 ?? zero)}</dd></div><div><dt>{state?.token1Symbol} reserve</dt><dd>{show(state?.reserve1 ?? zero)}</dd></div><div><dt>Total LP shares</dt><dd>{show(state?.shares ?? zero)}</dd></div><div><dt>Your LP shares</dt><dd>{show(ownedShares)}</dd></div></dl></section>
-        <section className={styles.notice}><b>Test assets only</b><p>tUSD and tLINK are created for this test. They are not Robinhood-issued assets. Get official testnet ETH and LINK from the faucets below.</p><div><a href="https://faucet.testnet.chain.robinhood.com" target="_blank" rel="noreferrer">Robinhood faucet ↗</a><a href="https://faucets.chain.link/robinhood-testnet" target="_blank" rel="noreferrer">Chainlink faucet ↗</a></div><button onClick={getTestAssets} disabled={busy !== null}>{busy?.startsWith('mint') || busy === 'faucet' ? 'Requesting…' : 'Get local test assets'}</button></section>
+        <section className={styles.notice}><b>Test assets only</b><p>tUSD and tLINK are local test assets, not Robinhood-issued assets. First get test VOID from the external faucet. Then claim tUSD and tLINK through this DEX: that is one paid chain transaction and charges VOID.</p><div><a href="https://faucet.testnet.chain.robinhood.com" target="_blank" rel="noreferrer">Robinhood faucet ↗</a><a href="https://faucets.chain.link/robinhood-testnet" target="_blank" rel="noreferrer">Chainlink faucet ↗</a></div><button onClick={getTestVoid} disabled={busy !== null}>{busy === 'faucet' ? 'Requesting…' : 'Get test VOID — external faucet'}</button><button onClick={claimDexAssets} disabled={busy !== null}>{busy === 'claim-assets' ? 'Claiming…' : `Claim tUSD + tLINK — ${show(fee)} VOID`}</button></section>
       </aside>
     </section>
     {notice && <p className={styles.status} role="status">{notice}</p>}

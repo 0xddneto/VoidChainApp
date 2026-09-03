@@ -12,6 +12,7 @@
  * width, so the wrap is seamless without measuring anything at runtime.
  */
 
+import { useEffect, useState } from 'react';
 import type { Event } from '@/lib/chains';
 import styles from './page.module.css';
 
@@ -32,7 +33,20 @@ function line(e: Event): string {
 }
 
 export function Ticker({ events }: { events: Event[] }) {
-  if (events.length === 0) {
+  const [liveEvents, setLiveEvents] = useState(events);
+
+  // The explorer shell stays open while people use the DEX. Refresh the strip
+  // itself so activity does not wait for a page reload to become visible.
+  useEffect(() => {
+    const refresh = () => fetch('/api/activity')
+      .then((response) => response.ok ? response.json() : Promise.reject(response))
+      .then((next: Event[]) => setLiveEvents(next))
+      .catch(() => undefined);
+    const id = window.setInterval(refresh, 10_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  if (liveEvents.length === 0) {
     return (
       <div className={styles.ticker}>
         <span className={styles.tickerIdle}>waiting for the first transaction</span>
@@ -40,7 +54,7 @@ export function Ticker({ events }: { events: Event[] }) {
     );
   }
 
-  const items = events.map(line);
+  const items = liveEvents.map(line);
 
   return (
     <div className={styles.ticker} role="status" aria-label="Recent activity">

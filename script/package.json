@@ -6,6 +6,7 @@
     "build:contracts": "tsx compile-contracts.ts",
     "deploy:testnet": "tsx deploy-testnet.ts",
     "deploy:chain1-dex": "tsx deploy-chain1-dex.ts",
+    "deploy:chain1-dex-faucet": "tsx deploy-chain1-dex-faucet.ts",
     "load:chain1-dex": "tsx load-chain1-dex.ts",
     "prove:purchase": "tsx prove-purchase.ts",
     "paymaster:keeper": "tsx paymaster-keeper.ts",

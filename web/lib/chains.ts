@@ -213,7 +213,7 @@ export interface ChainRow {
   txCount: number;
   contractCount: number;
   addressCount: number;
-  /** Gross tolls charged on this chain, in VOID wei, as a decimal string. */
+  /** The holder's 98% share of charged fees, in VOID wei. */
   revenue: string;
 }
 
@@ -230,7 +230,7 @@ export async function allChains(): Promise<ChainRow[]> {
             COALESCE(s.total_txs, 0)       AS txs,
             COALESCE(s.total_contracts, 0) AS contracts,
             COALESCE(s.total_addresses, 0) AS addresses,
-            COALESCE((SELECT sum(toll) FROM transactions t WHERE t.chain_id = c.id), 0) AS revenue
+            COALESCE((SELECT (sum(toll) * 98) / 100 FROM transactions t WHERE t.chain_id = c.id), 0) AS revenue
        FROM chains c
        LEFT JOIN chain_summary s ON s.chain_id = c.id
       ORDER BY c.id`,
@@ -431,7 +431,7 @@ export async function profilePage(address: string): Promise<ProfilePage> {
               COALESCE(s.total_txs, 0)       AS txs,
               COALESCE(s.total_contracts, 0) AS contracts,
               COALESCE(s.total_addresses, 0) AS addresses,
-              COALESCE((SELECT sum(toll) FROM transactions t WHERE t.chain_id = c.id), 0) AS revenue
+              COALESCE((SELECT (sum(toll) * 98) / 100 FROM transactions t WHERE t.chain_id = c.id), 0) AS revenue
          FROM chains c
          LEFT JOIN chain_summary s ON s.chain_id = c.id
         WHERE c.owner_address = $1
