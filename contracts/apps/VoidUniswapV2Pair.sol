@@ -49,6 +49,7 @@ contract VoidUniswapV2Pair is ChainAppBase {
     error InsufficientOutput();
     error Slippage();
     error TransferFailed();
+    error AlreadyInitialised();
 
     modifier lock() {
         if (unlocked != 1) revert Locked();
@@ -63,6 +64,16 @@ contract VoidUniswapV2Pair is ChainAppBase {
         if (token0_ == address(0) || token1_ == address(0) || token0_ == token1_) revert ZeroAddress();
         token0 = token0_;
         token1 = token1_;
+    }
+
+    /// @notice Initializes the gateway's reentrancy slot during publication.
+    /// @dev Constructors initialize implementation storage, while V4 apps run
+    /// through delegatecall and keep state in a fresh gateway. The immutable
+    /// token/runtime values are already in the implementation code; this is
+    /// the one mutable slot that must be initialized in the gateway itself.
+    function initialize() external {
+        if (unlocked != 0) revert AlreadyInitialised();
+        unlocked = 1;
     }
 
     function getReserves() external view returns (uint112, uint112, uint32) {
