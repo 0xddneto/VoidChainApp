@@ -1,38 +1,34 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
 interface IVoidChainAppRuntime {
     function setTollCeiling(uint256 tokenId, uint256 ceilingUsd) external;
 }
 
-/// @title VoidChainDao
-/// @notice One chain's DAO. Its own address, storage and electorate.
-///
-/// @dev Votes are locked in this contract until a proposal closes. The
-/// collection token does not promise ERC20Votes checkpoints, so an off-chain
-/// Merkle "snapshot" could never be proven correct here. A dispute window
-/// without an enforceable challenge would only look like security. Locking
-/// makes every counted vote observable and prevents moving the same balance to
-/// another address to vote again.
-///
-/// The DAO governs only the maximum toll. It cannot change an app, seize a
-/// user's asset, or alter another chain's rules.
-contract VoidChainDao is ReentrancyGuard {
-    using SafeERC20 for IERC20;
+interface IVoidChainDeed {
+    function ownerOf(uint256 tokenId) external view returns (address);
+}
 
+/// @notice ERC-20 voting snapshots without custody or token locking.
+interface IVoidVotes {
+    function getPastVotes(address account, uint256 blockNumber) external view returns (uint256);
+    function getPastTotalSupply(uint256 blockNumber) external view returns (uint256);
+}
+
+/// @title VoidChainDao
+/// @notice One DAO per deed. VOID always stays in each voter's wallet.
+/// @dev Voting weight comes from the previous block. A live balance would allow
+///      the same VOID to move to another wallet and vote again; this snapshot
+///      prevents that without staking, locking, approvals or withdrawals.
+contract VoidChainDao {
     uint256 public constant VOTING_PERIOD = 5 days;
     uint256 public constant QUORUM_BPS = 1_000; // 10%
     uint256 public constant BPS = 10_000;
-    uint256 public constant PROPOSAL_THRESHOLD_BPS = 100; // 1%
 
-    /// @notice The chain this DAO governs. Set once when its clone is born.
     uint256 public tokenId;
     IVoidChainAppRuntime public runtime;
-    IERC20 public voidToken;
+    IVoidVotes public voidToken;
+    IVoidChainDeed public deed;
 
     enum State {
         Pending,
@@ -43,9 +39,9 @@ contract VoidChainDao is ReentrancyGuard {
     }
 
     struct Proposal {
-        uint256 ceilingUsd;
-        /// @notice Supply when the proposal opened, used only for quorum.
-        uint256 supplyAtStart;
+        uint256 feeLimitUsd;
+        uint256 snapshotBlock;
+        uint256 snapshotSupply;
         uint256 deadline;
         uint256 forVotes;
         uint256 againstVotes;
@@ -54,114 +50,90 @@ contract VoidChainDao is ReentrancyGuard {
 
     mapping(uint256 proposalId => Proposal) public proposals;
     mapping(uint256 proposalId => mapping(address voter => bool)) public hasVoted;
-    /// @notice Tokens a voter may recover after that proposal closes.
-    mapping(uint256 proposalId => mapping(address voter => uint256)) public lockedVotes;
     uint256 public proposalCount;
 
-    event Proposed(
+    event ProposalCreated(
         uint256 indexed proposalId,
         address indexed proposer,
-        uint256 ceilingUsd,
-        uint256 supplyAtStart,
-        uint256 proposerWeight,
+        uint256 feeLimitUsd,
+        uint256 snapshotBlock,
+        uint256 snapshotSupply,
         uint256 deadline
     );
     event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 weight);
-    event VoteWithdrawn(uint256 indexed proposalId, address indexed voter, uint256 weight);
-    event Executed(uint256 indexed proposalId, uint256 ceilingUsd);
+    event Executed(uint256 indexed proposalId, uint256 feeLimitUsd);
 
     error AlreadyInitialised();
     error NotInitialised();
     error ZeroAddress();
-    error EmptySupply();
-    error BelowProposalThreshold(uint256 weight, uint256 required);
+    error NotDeedHolder(uint256 tokenId, address caller);
+    error EmptySnapshot();
     error NoSuchProposal(uint256 proposalId);
     error VotingClosed(uint256 proposalId);
-    error VotingStillOpen(uint256 proposalId, uint256 deadline);
     error AlreadyVoted(uint256 proposalId, address voter);
-    error ZeroWeight(address voter);
-    error NothingToWithdraw(uint256 proposalId, address voter);
+    error NoVotingPower(uint256 proposalId, address voter);
     error NotSucceeded(uint256 proposalId, State state);
     error AlreadyExecuted(uint256 proposalId);
 
-    /// @notice Binds a fresh clone to one chain and the token that pays its tolls.
-    /// @dev The implementation itself is initialized with a non-collection id,
-    ///      so nobody can claim the master copy.
-    function initialise(uint256 tokenId_, IVoidChainAppRuntime runtime_, IERC20 voidToken_) external {
+    /// @notice Binds a clone to exactly one deed, runtime and VOID vote token.
+    function initialise(
+        uint256 tokenId_,
+        IVoidChainAppRuntime runtime_,
+        IVoidVotes voidToken_,
+        IVoidChainDeed deed_
+    ) external {
         if (tokenId != 0) revert AlreadyInitialised();
         if (tokenId_ == 0) revert NotInitialised();
-        if (address(runtime_) == address(0) || address(voidToken_) == address(0)) revert ZeroAddress();
+        if (address(runtime_) == address(0) || address(voidToken_) == address(0) || address(deed_) == address(0)) {
+            revert ZeroAddress();
+        }
         tokenId = tokenId_;
         runtime = runtime_;
         voidToken = voidToken_;
+        deed = deed_;
     }
 
-    // ---------------------------------------------------------------------
-    // Asking and voting
-    // ---------------------------------------------------------------------
-
-    /// @notice Opens a proposal and casts/locks the proposer's supporting vote.
-    /// @param ceilingUsd The proposed maximum toll, in USD with 18 decimals.
-    /// @param weight VOID locked in support of the proposal until it closes.
-    function propose(uint256 ceilingUsd, uint256 weight) external nonReentrant returns (uint256 proposalId) {
+    /// @notice The current deed holder creates a proposal for this chain's fee limit.
+    /// @dev The DAO can only constrain this one economic setting. It cannot take
+    ///      assets, remove apps or affect any other chain.
+    function propose(uint256 feeLimitUsd) external returns (uint256 proposalId) {
         if (tokenId == 0) revert NotInitialised();
-        if (weight == 0) revert ZeroWeight(msg.sender);
+        if (deed.ownerOf(tokenId) != msg.sender) revert NotDeedHolder(tokenId, msg.sender);
 
-        uint256 supply = voidToken.totalSupply();
-        if (supply == 0) revert EmptySupply();
-        // Round up: a one-token supply still needs one token to propose, rather
-        // than turning a percentage threshold into zero.
-        uint256 required = _portionCeil(supply, PROPOSAL_THRESHOLD_BPS);
-        if (weight < required) revert BelowProposalThreshold(weight, required);
-
-        voidToken.safeTransferFrom(msg.sender, address(this), weight);
+        uint256 snapshotBlock = block.number - 1;
+        uint256 snapshotSupply = voidToken.getPastTotalSupply(snapshotBlock);
+        if (snapshotSupply == 0) revert EmptySnapshot();
 
         proposalId = ++proposalCount;
         uint256 deadline = block.timestamp + VOTING_PERIOD;
         proposals[proposalId] = Proposal({
-            ceilingUsd: ceilingUsd,
-            supplyAtStart: supply,
+            feeLimitUsd: feeLimitUsd,
+            snapshotBlock: snapshotBlock,
+            snapshotSupply: snapshotSupply,
             deadline: deadline,
-            forVotes: weight,
+            forVotes: 0,
             againstVotes: 0,
             executed: false
         });
-        hasVoted[proposalId][msg.sender] = true;
-        lockedVotes[proposalId][msg.sender] = weight;
 
-        emit Proposed(proposalId, msg.sender, ceilingUsd, supply, weight, deadline);
-        emit VoteCast(proposalId, msg.sender, true, weight);
+        emit ProposalCreated(proposalId, msg.sender, feeLimitUsd, snapshotBlock, snapshotSupply, deadline);
     }
 
-    /// @notice Locks VOID and casts one vote on an open proposal.
-    function castVote(uint256 proposalId, bool support, uint256 weight) external nonReentrant {
+    /// @notice Votes with the VOID the caller held in their wallet at the snapshot.
+    function castVote(uint256 proposalId, bool support) external {
         Proposal storage p = proposals[proposalId];
         if (p.deadline == 0) revert NoSuchProposal(proposalId);
         if (block.timestamp > p.deadline) revert VotingClosed(proposalId);
         if (hasVoted[proposalId][msg.sender]) revert AlreadyVoted(proposalId, msg.sender);
-        if (weight == 0) revert ZeroWeight(msg.sender);
 
-        voidToken.safeTransferFrom(msg.sender, address(this), weight);
+        uint256 weight = voidToken.getPastVotes(msg.sender, p.snapshotBlock);
+        if (weight == 0) revert NoVotingPower(proposalId, msg.sender);
+
         hasVoted[proposalId][msg.sender] = true;
-        lockedVotes[proposalId][msg.sender] = weight;
         if (support) p.forVotes += weight;
         else p.againstVotes += weight;
 
         emit VoteCast(proposalId, msg.sender, support, weight);
-    }
-
-    /// @notice Returns a voter's locked VOID after voting is over.
-    function withdrawVote(uint256 proposalId) external nonReentrant {
-        Proposal storage p = proposals[proposalId];
-        if (p.deadline == 0) revert NoSuchProposal(proposalId);
-        if (block.timestamp <= p.deadline) revert VotingStillOpen(proposalId, p.deadline);
-
-        uint256 weight = lockedVotes[proposalId][msg.sender];
-        if (weight == 0) revert NothingToWithdraw(proposalId, msg.sender);
-        lockedVotes[proposalId][msg.sender] = 0;
-        voidToken.safeTransfer(msg.sender, weight);
-
-        emit VoteWithdrawn(proposalId, msg.sender, weight);
     }
 
     function state(uint256 proposalId) public view returns (State) {
@@ -171,25 +143,21 @@ contract VoidChainDao is ReentrancyGuard {
         if (block.timestamp <= p.deadline) return State.Active;
 
         uint256 turnout = p.forVotes + p.againstVotes;
-        if (turnout < _portionCeil(p.supplyAtStart, QUORUM_BPS)) return State.Defeated;
+        if (turnout < _portionCeil(p.snapshotSupply, QUORUM_BPS)) return State.Defeated;
         return p.forVotes > p.againstVotes ? State.Succeeded : State.Defeated;
     }
 
-    // ---------------------------------------------------------------------
-    // Executing
-    // ---------------------------------------------------------------------
-
-    /// @notice Applies a carried ceiling. Anyone may pay to execute it.
+    /// @notice Anyone may apply a proposal that passed after the five-day vote.
     function execute(uint256 proposalId) external {
         Proposal storage p = proposals[proposalId];
         if (p.executed) revert AlreadyExecuted(proposalId);
 
-        State s = state(proposalId);
-        if (s != State.Succeeded) revert NotSucceeded(proposalId, s);
+        State current = state(proposalId);
+        if (current != State.Succeeded) revert NotSucceeded(proposalId, current);
 
         p.executed = true;
-        runtime.setTollCeiling(tokenId, p.ceilingUsd);
-        emit Executed(proposalId, p.ceilingUsd);
+        runtime.setTollCeiling(tokenId, p.feeLimitUsd);
+        emit Executed(proposalId, p.feeLimitUsd);
     }
 
     function _portionCeil(uint256 amount, uint256 bps) private pure returns (uint256) {

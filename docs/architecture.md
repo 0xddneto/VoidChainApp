@@ -17,7 +17,7 @@ Robinhood Chain testnet (46630)
         v
 VoidChainAppRuntime + tokenId
         |                    |
-        |                    +--> toll and revenue accounting for that deed
+        |                    +--> transaction-fee and revenue accounting for that deed
         v
 application registered for that same tokenId
 ```
@@ -41,11 +41,13 @@ oracle or common indexer can affect more than one deed. An owner cannot rewrite
 parent-chain history, seize a publisher's app balance through the runtime, or
 turn a published app into a private contract merely by transferring the deed.
 
-The per-deed DAO is deliberately narrow: it only votes on the maximum toll the
-holder may set. It does not control withdrawals, arbitrary app calls, the deed,
-the paymaster or the parent-chain contracts. Proposal and vote weight are
-locked ERC-20 VOID, recovered only after the proposal deadline. This removes
-the unverified off-chain Merkle-root voting model.
+The per-deed DAO is deliberately narrow: it only votes on the transaction-fee
+limit the holder may set. The current deed holder creates a proposal. Each
+wallet votes with the VOID it held at the previous-block snapshot; the vote is
+open for five days and VOID never leaves the wallet. The snapshot prevents the
+same VOID from moving between wallets and voting twice. The DAO does not control
+withdrawals, arbitrary app transactions, the deed, the paymaster or the
+parent-chain contracts.
 
 ## What a real independent chain would require
 

@@ -16,7 +16,7 @@ explicit so a clean clone has the same layout as the working tree.
 | `db/` | Postgres schema and ordered migrations, including the indexer’s projected call records. |
 | `indexer/` | The Robinhood testnet event-indexing service. |
 | `web/` | The VoidScan explorer, wallet flow, and profile interface. |
-| `docs/` | Architecture boundaries, release gates, and this repository map. |
+| `docs/` | Architecture boundaries, governance rules, release gates, and this repository map. |
 | `.github/workflows/` | Build, contract-test, indexer-typecheck, and web-build gates. |
 
 There is no hidden local production infrastructure outside these folders. The
@@ -25,4 +25,5 @@ run records, database volume, dependency/build output, and editor scratch data.
 
 For the runtime-versus-independent-chain boundary, read
 [architecture.md](architecture.md). For the required release controls, read
-[release-checklist.md](release-checklist.md).
+[release-checklist.md](release-checklist.md). For the DAO rules, read
+[governance.md](governance.md).

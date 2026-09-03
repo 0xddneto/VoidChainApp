@@ -4,7 +4,7 @@
 
 > **Current truth:** this is not 1,111 independent blockchains today. The
 > application executes in one `VoidChainAppRuntime` on Robinhood Chain testnet
-> (EIP-155 chain ID `46630`). A deed isolates an application registry, toll,
+> (EIP-155 chain ID `46630`). A deed isolates an application registry, transaction fee,
 > revenue accounting and owner authority by `tokenId`. It does not yet provide
 > its own blocks, consensus, sequencer, RPC endpoint, bridge or native network
 > gas token.
@@ -18,36 +18,38 @@ to a shared contract.
 Each of the 1,111 `VoidChainDeed` NFTs binds its current holder to one isolated
 execution space in the runtime.
 
-- The holder can activate or pause its space and configure its toll within the
+- The holder can activate or pause its space and configure its transaction fee within the
   governance-approved ceiling.
-- Calls only reach applications registered for the supplied `tokenId`; the
-  runtime accounts for tolls and revenue per deed.
+- Transactions only reach applications registered for the supplied `tokenId`; the
+  runtime accounts for fees and revenue per deed.
 - Anyone may publish an application to an open space. The holder can close new
   publication, but cannot seize a publisher's contract or its withdrawal right.
 - Ownership is read from `ownerOf()` at execution time, so a deed transfer moves
   the allowed configuration authority without a migration step.
-- Each deed has a deterministic DAO clone. Votes use actual VOID locked until a
-  proposal closes; there is no off-chain Merkle voting root to trust. The DAO
-  can only set that deed's toll ceiling.
+- Each deed has a deterministic DAO clone. The NFT holder creates a proposal;
+  every wallet votes with the VOID it held at the previous-block snapshot. VOID
+  stays in the wallet, the vote lasts five days, and the DAO can only set that
+  deed's transaction-fee limit.
 
-VOID is the metered currency inside the runtime. Robinhood testnet ETH remains
+VOID pays runtime transaction fees. Robinhood testnet ETH remains
 the native asset used by a wallet transaction. `VoidPaymaster` can sponsor a
 call and charge the signed VOID budget, but it does not make the parent chain's
 native gas disappear.
 
 Read the precise boundary and the requirements for a future rollup in
 [docs/architecture.md](docs/architecture.md). Operational gates live in
-[docs/release-checklist.md](docs/release-checklist.md), and the tracked folder
-layout is documented in [docs/repository-map.md](docs/repository-map.md).
+[docs/release-checklist.md](docs/release-checklist.md), the DAO rules live in
+[docs/governance.md](docs/governance.md), and the tracked folder layout is
+documented in [docs/repository-map.md](docs/repository-map.md).
 
 ## Components
 
 | Path | Responsibility |
 | --- | --- |
 | `contracts/parent/VoidChainDeed.sol` | The fixed 1,111-deed ERC-721 collection and holder authority. |
-| `contracts/parent/VoidChainAppRuntime.sol` | Token-scoped app registry, execution boundary, toll collection and revenue accounting. |
-| `contracts/parent/VoidChainDao*.sol` | Deterministic per-deed DAO factory and toll-ceiling governance. |
-| `contracts/parent/VoidPaymaster.sol` | Signed, budgeted sponsorship of runtime calls. |
+| `contracts/parent/VoidChainAppRuntime.sol` | Token-scoped app registry, execution boundary, fee collection and revenue accounting. |
+| `contracts/parent/VoidChainDao*.sol` | Deterministic per-deed DAO factory and fee-limit governance. |
+| `contracts/parent/VoidPaymaster.sol` | Signed, budgeted sponsorship of runtime transactions. |
 | `contracts/apps/` | Example permissionless apps (swap, market and launchpad). |
 | `indexer/` | Robinhood event indexer and Postgres projection. |
 | `infra/` | Versioned local Postgres infrastructure and operator instructions. |

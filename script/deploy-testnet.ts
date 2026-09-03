@@ -205,7 +205,7 @@ const paymaster = await deploy('VoidPaymaster', [
 // Every chain ships with its own DAO. The factory is frozen into the runtime
 // before it creates deterministic clones, because the runtime accepts registry
 // writes only from that one factory.
-const daoFactory = await deploy('VoidChainDaoFactory', [runtime, token]);
+const daoFactory = await deploy('VoidChainDaoFactory', [runtime, token, deed]);
 
 const rtAbi = artifact('VoidChainAppRuntime').abi;
 const pmAbi = artifact('VoidPaymaster').abi;

@@ -417,7 +417,7 @@
 .daoFacts > div { background: color-mix(in srgb, var(--surface) 88%, transparent); min-height: 62px; padding: 10px; }
 .daoFacts dt { color: var(--ink-3); font: 8px var(--mono); letter-spacing: 0.1em; margin-bottom: 6px; text-transform: uppercase; }
 .daoFacts dd { color: var(--ink); font: 10px var(--mono); margin: 0; overflow-wrap: anywhere; }
-.daoCompose { align-items: end; border-top: 1px solid color-mix(in srgb, var(--created) 20%, var(--line)); display: grid; gap: 9px; grid-template-columns: minmax(185px, 1.5fr) minmax(115px, .75fr) minmax(125px, .8fr) auto; padding: 15px 17px; }
+.daoCompose { align-items: end; border-top: 1px solid color-mix(in srgb, var(--created) 20%, var(--line)); display: grid; gap: 9px; grid-template-columns: minmax(185px, 1.5fr) minmax(115px, .75fr) auto; padding: 15px 17px; }
 .daoCompose h4, .daoProposalHead h4 { color: var(--ink); font-size: 12px; margin: 0 0 4px; }
 .daoCompose p { color: var(--ink-3); font: 10px/1.45 var(--mono); margin: 0; }
 .daoCompose label { color: var(--ink-3); display: grid; font: 9px var(--mono); gap: 5px; letter-spacing: .03em; }

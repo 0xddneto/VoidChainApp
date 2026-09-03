@@ -2,8 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {VoidChainDao, IVoidChainAppRuntime} from "./VoidChainDao.sol";
+import {VoidChainDao, IVoidChainAppRuntime, IVoidChainDeed, IVoidVotes} from "./VoidChainDao.sol";
 
 interface IRuntimeDaoRegistry {
     function registerDao(uint256 tokenId, address dao) external;
@@ -39,8 +38,11 @@ contract VoidChainDaoFactory {
     /// @notice The runtime the DAOs command, and the registry they appear in.
     IRuntimeDaoRegistry public immutable runtime;
 
-    /// @notice The token voters lock while their vote is counted.
-    IERC20 public immutable voidToken;
+    /// @notice The token that records each wallet's historical voting balance.
+    IVoidVotes public immutable voidToken;
+
+    /// @notice The deed whose current holder may open a proposal for its DAO.
+    IVoidChainDeed public immutable deed;
 
     uint256 public constant TOTAL_CHAINS = 1111;
 
@@ -52,16 +54,19 @@ contract VoidChainDaoFactory {
     error NoSuchChain(uint256 tokenId);
     error AlreadyCreated(uint256 tokenId, address dao);
 
-    constructor(IVoidChainAppRuntime runtime_, IERC20 voidToken_) {
-        if (address(runtime_) == address(0) || address(voidToken_) == address(0)) revert ZeroAddress();
+    constructor(IVoidChainAppRuntime runtime_, IVoidVotes voidToken_, IVoidChainDeed deed_) {
+        if (address(runtime_) == address(0) || address(voidToken_) == address(0) || address(deed_) == address(0)) {
+            revert ZeroAddress();
+        }
         runtime = IRuntimeDaoRegistry(address(runtime_));
         voidToken = voidToken_;
+        deed = deed_;
 
         VoidChainDao master = new VoidChainDao();
         // The master copy is bound to a chain that cannot exist, so nobody can
         // claim it and point it at a real one. Clones are unaffected: they carry
         // their own storage and start unbound.
-        master.initialise(type(uint256).max, runtime_, voidToken_);
+        master.initialise(type(uint256).max, runtime_, voidToken_, deed_);
         implementation = address(master);
     }
 
@@ -77,7 +82,7 @@ contract VoidChainDaoFactory {
         if (existing != address(0)) revert AlreadyCreated(tokenId, existing);
 
         dao = Clones.cloneDeterministic(implementation, bytes32(tokenId));
-        VoidChainDao(dao).initialise(tokenId, IVoidChainAppRuntime(address(runtime)), voidToken);
+        VoidChainDao(dao).initialise(tokenId, IVoidChainAppRuntime(address(runtime)), voidToken, deed);
 
         daoOf[tokenId] = dao;
         runtime.registerDao(tokenId, dao);
@@ -99,7 +104,7 @@ contract VoidChainDaoFactory {
             if (daoOf[id] != address(0)) continue;
 
             address dao = Clones.cloneDeterministic(implementation, bytes32(id));
-            VoidChainDao(dao).initialise(id, IVoidChainAppRuntime(address(runtime)), voidToken);
+            VoidChainDao(dao).initialise(id, IVoidChainAppRuntime(address(runtime)), voidToken, deed);
 
             daoOf[id] = dao;
             runtime.registerDao(id, dao);
