@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChainDetail, ChainRow, ChainStatus } from '@/lib/chains';
 import { DEPLOY } from '@/lib/testnet';
+import chainOneDex from '@/lib/dex-chain1.json';
 import { Copyable } from './Copyable';
 import { ChainActivationEditor } from './ChainActivationEditor';
 import { ChainL3Migration } from './ChainL3Migration';
@@ -207,6 +208,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
   const [displayName, setDisplayName] = useState(chain.name ?? '');
   const [status, setStatus] = useState<ChainStatus>(chain.status);
   const nameChanged = useCallback((next: string) => setDisplayName(next), []);
+  const dexApps = new Set([chainOneDex.factory, ...chainOneDex.pools.map((pool) => pool.address)].map((address) => address.toLowerCase()));
 
   useEffect(() => setDisplayName(chain.name ?? ''), [chain]);
   useEffect(() => setStatus(chain.status), [chain]);
@@ -263,6 +265,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
                   {detail.apps.map((a) => (
                     <li key={a.address}>
                       <Copyable value={a.address} short />
+                      {chain.id === chainOneDex.chainTokenId && dexApps.has(a.address.toLowerCase()) && <a className={styles.chainLink} href="/dex" onClick={(event) => event.stopPropagation()}>Open DEX ↗</a>}
                       <span className={styles.note}>by <Copyable value={a.publisher} short /></span>
                     </li>
                   ))}
