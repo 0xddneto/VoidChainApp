@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { createPublicClient, http, parseAbiItem, type Address, type Log, type PublicClient } from 'viem';
+import { createPublicClient, http, parseAbi, parseAbiItem, type Address, type Log, type PublicClient } from 'viem';
 
 import deployment from './deployment.json';
 import { pool } from './db';
@@ -14,6 +14,10 @@ const RUNTIME = deployment.production.VoidChainAppRuntime as Address;
 const DEED = deployment.production.VoidChainDeed as Address;
 const FIRST_BLOCK = BigInt(deployment.network.deployBlock ?? 0);
 const CHAIN_ID_BASE = BigInt(deployment.chainIdBase);
+const DEED_ABI = parseAbi([
+  'function ownerOf(uint256) view returns(address)',
+  'function identityOf(uint256) view returns((string name,string description,string imageURI,string externalURL,string[] socials))',
+]);
 
 const EVENTS = {
   activated: parseAbiItem('event ChainAppActivated(uint256 indexed tokenId, address activator)'),
@@ -136,6 +140,31 @@ async function refreshSummary(client: pg.PoolClient, chainId: number): Promise<v
   );
 }
 
+/**
+ * A V2 runtime starts after some deeds have already been minted and renamed.
+ * Those historical ERC-721 events deliberately sit before FIRST_BLOCK, so
+ * seed missing identity straight from the canonical Deed rather than carrying
+ * legacy runtime data into the V2 explorer.
+ */
+async function hydrateDeedMetadata(client: PublicClient): Promise<void> {
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT id FROM chains
+     WHERE status = 'live' AND (owner_address IS NULL OR name IS NULL)`,
+  );
+  for (const row of rows) {
+    const [owner, identity] = await Promise.all([
+      client.readContract({ address: DEED, abi: DEED_ABI, functionName: 'ownerOf', args: [BigInt(row.id)] }) as Promise<Address>,
+      client.readContract({ address: DEED, abi: DEED_ABI, functionName: 'identityOf', args: [BigInt(row.id)] }) as Promise<{ name: string }>,
+    ]);
+    await pool.query(
+      `UPDATE chains SET owner_address = $2,
+       name = CASE WHEN $3 <> '' THEN $3 ELSE name END,
+       updated_at = now() WHERE id = $1`,
+      [row.id, bytes(owner), identity.name],
+    );
+  }
+}
+
 async function writePass(args: {
   statuses: Array<{ chain: number; status: 'live' | 'paused'; initial: boolean; timestamp: number; blockNumber: bigint; logIndex: number }>;
   calls: Array<{ chain: number; hash: string; blockNumber: bigint; txIndex: number; logIndex: number; caller: string; target: string; toll: bigint; block: BlockInfo }>;
@@ -222,6 +251,7 @@ export async function indexOnePass(): Promise<IndexerResult> {
     const rpc = process.env.PARENT_RPC ?? deployment.network.rpc;
     const client = createPublicClient({ transport: http(rpc) }) as PublicClient;
     const head = await client.getBlockNumber();
+    await hydrateDeedMetadata(client);
     if (from > head) return { status: 'caught-up', from: from.toString(), to: head.toString(), events: 0 };
     const to = head - from >= MAX_BLOCKS_PER_PASS ? from + MAX_BLOCKS_PER_PASS - 1n : head;
     const range = { fromBlock: from, toBlock: to } as const;
