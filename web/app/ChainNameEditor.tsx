@@ -125,7 +125,7 @@ export function ChainNameEditor({
       {!editing ? (
         <dd className={styles.factValueWithAction}>
           <span>{name || 'no name set'}</span>
-          {holder && <button type="button" className={styles.factButton} onClick={() => { setDraft(name); setEditing(true); setNotice(null); }}>Mudar nome</button>}
+          {holder && <button type="button" className={`${styles.factButton} ${styles.nameEditButton}`} onClick={() => { setDraft(name); setEditing(true); setNotice(null); }} aria-label="Mudar nome da chain" title="Mudar nome">✎</button>}
         </dd>
       ) : (
         <dd className={styles.factEdit}>
