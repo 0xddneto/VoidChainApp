@@ -1,38 +1,33 @@
-'use client';
+import { createPublicClient, http, parseAbi, type Address } from 'viem';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createPublicClient, createWalletClient, custom, encodeFunctionData, formatUnits, http, parseAbi, parseUnits, type Address } from 'viem';
+import VoidDex, { type DexPoolState } from './DexClient';
 
-const RPC = 'https://robinhood-testnet.drpc.org';
-const CHAIN_ID = 46_630;
-const RUNTIME = '0x424ec038baf1a9786a8eba1212954513ed31aa5d' as Address;
-const VOID = '0x2a64fa56c1de6f7c737b4a964b5b693ed3841ff4' as Address;
-const FAUCET = '0x247d8b1d5d5fd8025ada3c37f2bebeb0ddf30fb9' as Address;
-const PAIRS = [
-  { label:'VOID / tUSD', address:'0xdEb696F2956bE3259aee83d7eb8479309841413e' as Address, token0:VOID, token1:'0xa900ae0121c61481e7358406145086468a25085f' as Address },
-  { label:'VOID / tLINK', address:'0xd8c47A16f6469E77d4327122DfbbFe0E71cdb262' as Address, token0:'0x06650fe67efefd9206d62a3898eee8bd7b7862fe' as Address, token1:VOID },
-];
-const RH = { chainId:'0xb626', chainName:'Robinhood Chain Testnet', nativeCurrency:{name:'Ether',symbol:'ETH',decimals:18}, rpcUrls:[RPC], blockExplorerUrls:['https://testnet-explorer.chain.robinhood.com'] };
-const rpc = createPublicClient({ transport:http(RPC) }); const zero=0n;
-const erc20=parseAbi(['function symbol() view returns(string)','function balanceOf(address) view returns(uint256)','function allowance(address,address) view returns(uint256)','function approve(address,uint256) returns(bool)']);
-const runtimeAbi=parseAbi(['function feeOf(uint256) view returns(uint256)','function executeWithBudget(uint256,address,bytes,uint256,(address[] tokens,uint256[] limits,address[] collections,uint256[] nftIds)) returns(bytes)']);
-const pairAbi=parseAbi(['function reserve0() view returns(uint256)','function reserve1() view returns(uint256)','function totalSupply() view returns(uint256)','function balanceOf(address) view returns(uint256)','function quote(bool,uint256) view returns(uint256)','function swap(bool,uint256,uint256) returns(uint256)','function addLiquidity(uint256,uint256,uint256) returns(uint256)','function removeLiquidity(uint256,uint256,uint256) returns(uint256,uint256)']);
-const faucetAbi=parseAbi(['function claim()']);
-type Provider={request:(args:{method:string;params?:unknown[]})=>Promise<unknown>;on?:(e:string,l:(a:unknown)=>void)=>void;removeListener?:(e:string,l:(a:unknown)=>void)=>void}; const provider=()=>typeof window==='undefined'?undefined:(window as Window & {ethereum?:Provider}).ethereum;
-const addr=(v:unknown)=>Array.isArray(v)&&typeof v[0]==='string'&&/^0x[\da-f]{40}$/i.test(v[0])?v[0] as Address:null; const units=(v:string)=>{try{return v&&Number(v)>0?parseUnits(v,18):zero}catch{return zero}}; const show=(v:bigint)=>Number(formatUnits(v,18)).toLocaleString('en-US',{maximumFractionDigits:4});
+const rpc = createPublicClient({ transport: http('https://robinhood-testnet.drpc.org') });
+const runtime = '0x424ec038baf1a9786a8eba1212954513ed31aa5d' as Address;
+const pools = [
+  '0xdEb696F2956bE3259aee83d7eb8479309841413e',
+  '0xd8c47A16f6469E77d4327122DfbbFe0E71cdb262',
+] as const satisfies readonly Address[];
+const runtimeAbi = parseAbi(['function feeOf(uint256) view returns(uint256)']);
+const pairAbi = parseAbi([
+  'function reserve0() view returns(uint256)',
+  'function reserve1() view returns(uint256)',
+  'function totalSupply() view returns(uint256)',
+]);
 
-export default function VoidDex(){
- const [account,setAccount]=useState<Address|null>(null),[pairI,setPairI]=useState(0),[fee,setFee]=useState(zero),[r0,setR0]=useState(zero),[r1,setR1]=useState(zero),[lp,setLp]=useState(zero),[mine,setMine]=useState(zero),[dir,setDir]=useState(true),[amount,setAmount]=useState('10'),[a0,setA0]=useState('100'),[a1,setA1]=useState('100'),[burn,setBurn]=useState(''),[busy,setBusy]=useState(''),[note,setNote]=useState('');
- const pair=PAIRS[pairI]; const input=dir?pair.token0:pair.token1; const out=dir?pair.token1:pair.token0; const [s0,s1]=useMemo(()=>[pair.token0===VOID?'VOID':pairI===0?'tUSD':'tLINK',pair.token1===VOID?'VOID':pairI===0?'tUSD':'tLINK'],[pair,pairI]); const quote=useMemo(()=>{const x=units(amount),ri=dir?r0:r1,ro=dir?r1:r0; if(!x||!ri||!ro)return zero;const xf=x*997n;return xf*ro/(ri*1000n+xf)},[amount,dir,r0,r1]);
- const load=useCallback(async()=>{const query=new URLSearchParams({pair:String(pairI)});if(account)query.set('account',account);const response=await fetch(`/state?${query}`,{cache:'no-store'});if(!response.ok)throw Error('Could not read the V2 pool state.');const state=await response.json() as {fee:string;reserve0:string;reserve1:string;totalSupply:string;balance:string};setFee(BigInt(state.fee));setR0(BigInt(state.reserve0));setR1(BigInt(state.reserve1));setLp(BigInt(state.totalSupply));setMine(BigInt(state.balance));},[account,pairI]);
- useEffect(()=>{void load().catch(e=>setNote(e.message))},[load]); useEffect(()=>{const p=provider();if(!p)return;const u=(x:unknown)=>setAccount(addr(x));void p.request({method:'eth_accounts'}).then(u).catch(()=>undefined);p.on?.('accountsChanged',u);return()=>p.removeListener?.('accountsChanged',u)},[]);
- async function connect(){const p=provider();if(!p)return setNote('Open an EVM wallet first.');setAccount(addr(await p.request({method:'eth_requestAccounts'})));} async function network(p:Provider){if(await p.request({method:'eth_chainId'})==='0xb626')return;try{await p.request({method:'wallet_switchEthereumChain',params:[{chainId:'0xb626'}]})}catch{await p.request({method:'wallet_addEthereumChain',params:[RH]})}}
- async function write(label:string,to:Address,abi:typeof erc20|typeof runtimeAbi|typeof faucetAbi|typeof pairAbi,fn:string,args:unknown[]){const p=provider();if(!p||!account)throw Error('Connect wallet.');await network(p);setBusy(label);try{const w=createWalletClient({account,transport:custom(p)});const h=await w.writeContract({account,chain:null,address:to,abi,functionName:fn,args} as never);if((await rpc.waitForTransactionReceipt({hash:h})).status!=='success')throw Error('Transaction reverted.');return h}finally{setBusy('')}}
- async function approve(token:Address,value:bigint){const old=await rpc.readContract({address:token,abi:erc20,functionName:'allowance',args:[account!,RUNTIME]});if(old<value)await write('approve',token,erc20,'approve',[RUNTIME,value]);}
- const execute=async(target:Address,data:`0x${string}`,tokens:Address[],limits:bigint[])=>write('execute',RUNTIME,runtimeAbi,'executeWithBudget',[1n,target,data,fee,{tokens,limits,collections:[],nftIds:[]}]);
- async function claim(){try{await approve(VOID,fee);await execute(FAUCET,encodeFunctionData({abi:faucetAbi,functionName:'claim'}),[],[]);setNote(`Claim confirmed: ${show(fee)} VOID charged to Chain #1.`);await load()}catch(e:any){setNote(e.shortMessage??e.message)}}
- async function swap(){const x=units(amount);if(!x||!quote)return setNote('Enter a valid swap amount.');try{await approve(VOID,(input===VOID?x:zero)+fee);if(input!==VOID)await approve(input,x);await execute(pair.address,encodeFunctionData({abi:pairAbi,functionName:'swap',args:[dir,x,quote*9950n/10000n]}),[input],[x]);setNote(`Swap confirmed: ${show(fee)} VOID charged to Chain #1.`);await load()}catch(e:any){setNote(e.shortMessage??e.message)}}
- async function add(){const x=units(a0),y=units(a1);if(!x||!y)return setNote('Enter both pool amounts.');try{await approve(VOID,(pair.token0===VOID?x:y)+fee);if(pair.token0!==VOID)await approve(pair.token0,x);if(pair.token1!==VOID)await approve(pair.token1,y);const minted=lp===zero?x<y?x:y:(x*lp/r0)<(y*lp/r1)?x*lp/r0:y*lp/r1;await execute(pair.address,encodeFunctionData({abi:pairAbi,functionName:'addLiquidity',args:[x,y,minted*9950n/10000n]}),[pair.token0,pair.token1],[x,y]);setNote(`Liquidity confirmed: ${show(fee)} VOID charged to Chain #1.`);await load()}catch(e:any){setNote(e.shortMessage??e.message)}}
- async function remove(){const x=units(burn);if(!x||x>mine)return setNote('Enter LP shares you own.');try{await approve(VOID,fee);await execute(pair.address,encodeFunctionData({abi:pairAbi,functionName:'removeLiquidity',args:[x,(x*r0/lp)*9950n/10000n,(x*r1/lp)*9950n/10000n]}),[],[]);setNote(`Liquidity removed: ${show(fee)} VOID charged to Chain #1.`);await load()}catch(e:any){setNote(e.shortMessage??e.message)}}
- return <main className="shell"><header className="top"><a className="brand" href="/">VOID<b>DEX</b></a><button className="wallet" onClick={connect}>{account?`${account.slice(0,6)}…${account.slice(-4)}`:'Connect wallet'}</button></header><section className="hero"><div><div className="tag">UNISWAP V2 · VOID CHAIN #1 · TESTNET</div><h1>Swap on<br/>your <b>chain.</b></h1><p>Every action below is executed by the Chain #1 V2 runtime. Wallet gas remains ETH on Robinhood Testnet; the separate chain fee is charged in VOID and splits 98% to the Deed holder and 2% to the protocol.</p></div><aside className="fee"><span className="label">Chain fee per action</span><strong>{show(fee)} VOID</strong><small>Shown before you sign. Runtime records the fee, routes 98% to the Chain #1 holder, and routes 2% to the protocol.</small></aside></section><section className="grid"><div className="main"><nav className="tabs">{PAIRS.map((p,i)=><button className={i===pairI?'on':''} onClick={()=>{setPairI(i);setDir(true)}} key={p.address}>{p.label}</button>)}</nav><section className="card"><div className="head"><h2>Swap</h2><span>0.50% max slippage</span></div><label className="input"><span className="label">You pay · {dir?s0:s1}</span><input value={amount} onChange={e=>setAmount(e.target.value)} inputMode="decimal"/></label><button className="mutedBtn" onClick={()=>setDir(!dir)}>Reverse direction</button><div className="input"><span className="label">You receive · {dir?s1:s0}</span><strong>{show(quote)}</strong><small>Minimum {show(quote*9950n/10000n)}</small></div><button className="action" disabled={!!busy} onClick={swap}>{busy==='execute'?'Confirming…':`Swap · ${show(fee)} VOID chain fee`}</button></section><section className="card"><div className="head"><h2>Pool</h2><span>LPs retain 0.30% swap fee</span></div><div className="two"><input value={a0} onChange={e=>setA0(e.target.value)} inputMode="decimal" aria-label={s0}/><input value={a1} onChange={e=>setA1(e.target.value)} inputMode="decimal" aria-label={s1}/></div><button className="action" disabled={!!busy} onClick={add}>Add liquidity · {show(fee)} VOID</button><div className="remove"><input value={burn} onChange={e=>setBurn(e.target.value)} placeholder="LP shares to remove" inputMode="decimal"/><button className="mutedBtn" disabled={!!busy} onClick={remove}>Remove</button></div></section></div><aside className="side"><section className="card"><div className="head"><h2>Pool state</h2><span>live</span></div><div className="metric"><span>{s0} reserve</span><b>{show(r0)}</b></div><div className="metric"><span>{s1} reserve</span><b>{show(r1)}</b></div><div className="metric"><span>Total LP</span><b>{show(lp)}</b></div><div className="metric"><span>Your LP</span><b>{show(mine)}</b></div></section><section className="card notice"><b>Test assets</b><p>tUSD and tLINK are local test tokens. Claiming them is a paid Chain #1 action, so it appears in VoidScan and pays the VOID fee.</p><button className="mutedBtn" disabled={!!busy} onClick={claim}>Claim tUSD + tLINK · {show(fee)} VOID</button></section></aside></section>{note&&<p className="status">{note}</p>}<footer className="foot"><span>Factory 0xe25b…d8b9</span><span>Runtime {RUNTIME}</span><a href="https://voidscan-nu.vercel.app">Open VoidScan →</a></footer></main>;
+async function readPool(pair: Address): Promise<DexPoolState> {
+  const [fee, reserve0, reserve1, totalSupply] = await Promise.all([
+    rpc.readContract({ address: runtime, abi: runtimeAbi, functionName: 'feeOf', args: [1n] }),
+    rpc.readContract({ address: pair, abi: pairAbi, functionName: 'reserve0' }),
+    rpc.readContract({ address: pair, abi: pairAbi, functionName: 'reserve1' }),
+    rpc.readContract({ address: pair, abi: pairAbi, functionName: 'totalSupply' }),
+  ]);
+  return { fee: fee.toString(), reserve0: reserve0.toString(), reserve1: reserve1.toString(), totalSupply: totalSupply.toString(), balance: '0' };
+}
+
+export const dynamic = 'force-dynamic';
+
+export default async function Page() {
+  const initialStates = await Promise.all(pools.map(readPool));
+  return <VoidDex initialStates={initialStates} />;
 }

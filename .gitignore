@@ -45,3 +45,5 @@ Thumbs.db
 
 # TypeScript incremental build state
 *.tsbuildinfo
+
+.vercel
