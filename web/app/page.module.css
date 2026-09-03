@@ -512,6 +512,97 @@
 .footer { display: flex; flex-wrap: wrap; gap: 7px 20px; border-top: 1px solid var(--line); color: var(--ink-3); font: 10px var(--mono); margin: 36px 0 48px; padding: 19px 2px; }
 .footer b { color: var(--ink-2); font-weight: 500; }
 
+/* ---- quiet operational skin ------------------------------------------ */
+/* Structure is intentionally unchanged. These rules only flatten the visual
+   language into restrained, old-software-like controls. */
+.header {
+  background: color-mix(in srgb, var(--ground) 94%, transparent);
+  backdrop-filter: blur(10px);
+}
+.bar { height: 62px; }
+.logo { letter-spacing: 0.02em; }
+.logo::before {
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 3px var(--ground);
+}
+.search input,
+.cardSearch input {
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
+}
+.search input:focus {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent), 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.btn,
+.walletButton {
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+.btn:hover,
+.walletButton:hover:not(:disabled) { transform: none; }
+.btnPrimary { box-shadow: inset 0 1px 0 color-mix(in srgb, white 18%, transparent); }
+.walletMark { border-radius: 1px; box-shadow: none; }
+.walletAvatar { border-radius: 3px; }
+.walletMessage { border-radius: 3px; }
+
+.signalCard {
+  border-color: var(--line-strong);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+}
+.signalCard::after { display: none; }
+.signalTop { padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.signalNumber { margin-top: 43px; }
+.signalCard > p { color: var(--ink-2); }
+.pulse { border-radius: 1px; box-shadow: none; }
+
+.summary,
+.panel { border-radius: 3px; box-shadow: none; }
+.panel { background: color-mix(in srgb, var(--surface) 95%, transparent); }
+.panelHead { min-height: 56px; }
+.panelHead h2 { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0; }
+.stat { min-height: 104px; }
+.stat::after { width: 16px; height: 1px; }
+.statLabel { letter-spacing: 0.1em; }
+
+.constellation { border-radius: 3px; background: var(--surface-2); }
+.cell { border-radius: 1px; }
+.cellLive { box-shadow: none; }
+.cell:hover { box-shadow: 0 0 9px color-mix(in srgb, var(--live) 55%, transparent); }
+.swatch, .swatchReserved { border-radius: 1px; }
+.ticker { border-radius: 3px; mask-image: none; }
+.ticker::before { font-size: 10px; }
+.pager button { border-radius: 2px; }
+
+.table th { background: color-mix(in srgb, var(--surface-2) 48%, transparent); }
+.table td { padding-top: 12px; padding-bottom: 12px; }
+.rowLink:hover { background: color-mix(in srgb, var(--accent) 4%, var(--surface)); }
+.pill,
+.proposalState,
+.l3State { border-radius: 2px; }
+.pill { border: 1px solid currentColor; padding: 3px 6px; }
+.pill::before { border-radius: 1px; }
+.pillLive, .pillCreated, .pillReserved { background: transparent; }
+
+.detailFacts,
+.chainNameEditor,
+.activationEditor,
+.l3Panel,
+.daoPanel { border-radius: 3px; }
+.chainNameEditor,
+.activationEditor { background: var(--surface-2); }
+.l3Panel,
+.daoPanel { background: var(--surface-2); }
+.factButton, .factCancel,
+.editorButton, .editorCancel,
+.l3Primary, .daoPrimary, .proposalActions button,
+.factEdit input, .editorForm input, .activationFee input,
+.daoCompose input, .daoCompose select, .proposalActions input { border-radius: 2px; }
+
 /* Legacy empty/feed rules remain available to chains that need a compact state. */
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .empty { padding: 34px 18px; text-align: center; }

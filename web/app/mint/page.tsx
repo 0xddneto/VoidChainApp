@@ -50,6 +50,7 @@ export default function Mint() {
   const [ethBal, setEthBal] = useState(0n);
   const [available, setAvailable] = useState(0n);
   const [price, setPrice] = useState(0n);
+  const [marketStatus, setMarketStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const [deeds, setDeeds] = useState<Deed[]>([]);
   const [alreadyMinted, setAlreadyMinted] = useState(false);
 
@@ -58,12 +59,42 @@ export default function Mint() {
 
   // ---- reading the chain -------------------------------------------------
   const refresh = useCallback(async (who: Address | null) => {
-    const [avail, p] = await Promise.all([
-      rpc.readContract({ address: T.VoidNftAmm as Address, abi: ABI.amm, functionName: 'available' }),
-      rpc.readContract({ address: T.VoidNftAmm as Address, abi: ABI.amm, functionName: 'priceToBuy', args: [false] }),
-    ]);
-    setAvailable(avail as bigint);
-    setPrice(p as bigint);
+    // The collection market is the public purchase entry point. Reading its
+    // quote keeps the stock and price shown here identical to the mint route,
+    // rather than treating an RPC hiccup as an empty pool.
+    setMarketStatus('loading');
+    try {
+      const market = marketDeployment();
+      let quote: readonly [bigint, bigint] | null = null;
+      let lastError: unknown;
+
+      for (const retryDelay of [0, 250, 750]) {
+        if (retryDelay) await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        try {
+          quote = market
+            ? await rpc.readContract({
+              address: market.market, abi: ABI.collectionMarket, functionName: 'quoteRandom',
+            }) as readonly [bigint, bigint]
+            : [
+              await rpc.readContract({ address: T.VoidNftAmm as Address, abi: ABI.amm, functionName: 'priceToBuy', args: [false] }) as bigint,
+              await rpc.readContract({ address: T.VoidNftAmm as Address, abi: ABI.amm, functionName: 'available' }) as bigint,
+            ];
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (!quote) throw lastError;
+      const [quotedPrice, quotedAvailable] = quote;
+      setPrice(quotedPrice);
+      setAvailable(quotedAvailable);
+      setMarketStatus('ready');
+    } catch {
+      // Keep the previously confirmed quote on screen. A failed read must not
+      // falsely tell visitors that every deed has sold out.
+      setMarketStatus('unavailable');
+    }
 
     if (!who) { setVoidBal(0n); setEthBal(0n); setDeeds([]); setAlreadyMinted(false); return; }
 
@@ -290,11 +321,11 @@ export default function Mint() {
         <dl className={styles.facts}>
           <div className={styles.fact}>
             <dt>For sale in the pool</dt>
-            <dd>{available.toString()}<small> / {DEPLOY.parameters.nfts}</small></dd>
+            <dd>{marketStatus === 'ready' ? available.toString() : '—'}<small> / {DEPLOY.parameters.nfts}</small></dd>
           </div>
           <div className={styles.fact}>
             <dt>Deed price</dt>
-            <dd>{fmt(price, 18, 0)}<small> VOID</small></dd>
+            <dd>{marketStatus === 'ready' ? fmt(price, 18, 0) : '—'}<small> VOID</small></dd>
           </div>
           <div className={styles.fact}>
             <dt>Your balance</dt>
@@ -350,11 +381,11 @@ export default function Mint() {
                 Unused VOID returns to your wallet.
               </p>
               <div className={styles.row}>
-                <button className={styles.btn} onClick={buy} disabled={!sponsoredMarketReady || !canMint || !hasVoid || busy !== null || available === 0n}>
+                <button className={styles.btn} onClick={buy} disabled={!sponsoredMarketReady || marketStatus !== 'ready' || !canMint || !hasVoid || busy !== null || available === 0n}>
                   {busy === 'approval' ? 'Approving VOID…' : busy === 'signing' ? 'Sign mint…' : busy === 'buy' ? 'Minting…' : 'Mint'}
                 </button>
                 <span className={styles.mono}>
-                  {!canMint ? 'mint limit reached for this wallet' : available === 0n ? 'sold out' : `${fmt(price, 18, 0)} VOID + refunded unused gas`}
+                  {marketStatus === 'loading' ? 'loading market…' : marketStatus === 'unavailable' ? 'market temporarily unavailable — try again shortly' : !canMint ? 'mint limit reached for this wallet' : available === 0n ? 'sold out' : `${fmt(price, 18, 0)} VOID + refunded unused gas`}
                 </span>
               </div>
             </div>

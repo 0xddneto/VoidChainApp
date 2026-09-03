@@ -2,7 +2,7 @@
 
 .header {
   border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--ground) 94%, transparent);
   margin-bottom: 32px;
 }
 .bar { display: flex; align-items: center; gap: 16px; height: 60px; max-width: 980px; margin: 0 auto; padding: 0 24px; }
@@ -43,7 +43,8 @@
 .step {
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: var(--radius);
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
   padding: 20px 22px;
   display: grid;
   grid-template-columns: 34px 1fr;
@@ -55,7 +56,7 @@
 
 .num {
   width: 30px; height: 30px;
-  border-radius: 50%;
+  border-radius: 2px;
   display: grid; place-items: center;
   font-family: var(--mono);
   font-size: 13px;
@@ -78,7 +79,10 @@
   font-weight: 600;
   font-size: 14px;
   padding: 9px 18px;
-  border-radius: var(--radius);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 18%, transparent);
+  font-family: var(--mono);
+  letter-spacing: 0.01em;
   cursor: pointer;
 }
 .btn:hover:not(:disabled) { filter: brightness(1.08); }
@@ -138,7 +142,8 @@
 .deed {
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: var(--radius);
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
   padding: 15px 16px;
 }
 .deedId { font-family: var(--mono); font-size: 15px; font-weight: 700; margin: 0 0 2px; }
