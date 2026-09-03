@@ -330,7 +330,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
 
     /// @dev    Kept only for the one-time write of the forwarder and the DAO
     ///         factory. After that it grants no power at all.
-    address private immutable deployer;
+    address internal immutable deployer;
 
     event ChainAppActivated(uint256 indexed tokenId, address activator);
     event ChainAppDeactivated(uint256 indexed tokenId, address holder);
@@ -566,7 +566,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     ///         worth nothing even to the owner.
     ///
     ///         The holder earns from activity, not from controlling the door.
-    function registerApp(uint256 tokenId, address app) external {
+    function registerApp(uint256 tokenId, address app) public virtual {
         ChainApp storage chain = apps[tokenId];
         if (!chain.active) revert NotActive(tokenId);
         if (app == address(0)) revert ZeroAddress();
@@ -663,6 +663,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     ///         exactly as a DEX swap declares the slippage it tolerates.
     function execute(uint256 tokenId, address target, bytes calldata data, uint256 maxFee)
         external
+        virtual
         nonReentrant
         returns (bytes memory result)
     {
@@ -710,7 +711,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         bytes calldata data,
         uint256 maxFee,
         SpendAuth calldata auth
-    ) external nonReentrant returns (bytes memory result) {
+    ) external virtual nonReentrant returns (bytes memory result) {
         _openAuth(auth);
         return _execute(tokenId, msg.sender, msg.sender, target, data, maxFee);
     }

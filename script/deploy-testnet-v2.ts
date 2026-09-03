@@ -44,6 +44,12 @@ const rpcUrl = process.env.PARENT_RPC ?? previous.network.rpc;
 const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
 const expectedChainId = 46_630;
 const chainOne = 1n;
+// V3 uses the same audited migration sequence, but swaps the runtime artifact
+// for the direct-execution-disabled implementation. Keeping one migration
+// procedure prevents the security boundary and reserve-transfer steps drifting.
+const runtimeArtifact = process.env.RUNTIME_ARTIFACT ?? 'VoidChainAppRuntime';
+const runtimeVersion = process.env.RUNTIME_VERSION ?? 'V2';
+const runtimeSlug = runtimeVersion.toLowerCase();
 
 if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey ?? '')) {
   throw new Error('DEPLOYER_PRIVATE_KEY must be a 32-byte key in script/.env.');
@@ -109,13 +115,14 @@ const token = getAddress(previous.testnet.VoidTestToken) as Address;
 const oracle = getAddress(previous.testnet.VoidTestOracle) as Address;
 const protocolTreasury = getAddress(previous.governance.protocolTreasury) as Address;
 
-const runtimeAbi = artifact('VoidChainAppRuntime').abi;
+const runtimeAbi = artifact(runtimeArtifact).abi;
 const paymasterAbi = artifact('VoidPaymaster').abi;
 const treasuryAbi = artifact('VoidChainTreasury').abi;
 const deedAbi = artifact('VoidChainDeed').abi;
 const daoFactoryAbi = artifact('VoidChainDaoFactory').abi;
+const usesV3Factory = runtimeArtifact === 'VoidChainAppRuntimeV3';
 
-console.log('\nVOID CHAINS — TESTNET V2 IMMUTABLE RUNTIME MIGRATION\n');
+console.log(`\nVOID CHAINS — TESTNET ${runtimeVersion} IMMUTABLE RUNTIME MIGRATION\n`);
 if (await rpc.getChainId() !== expectedChainId) {
   throw new Error(`Refusing to deploy outside Robinhood testnet ${expectedChainId}.`);
 }
@@ -152,15 +159,17 @@ console.log(`  reserve source:    ${reservePaymaster}`);
 console.log(`  Chain #1 holder:   ${deedOwner}`);
 console.log(`  legacy reserve:    ${formatEther(oldReserve)} ETH`);
 
-console.log('\n[1/4] Deploying V2 runtime, paymaster and DAO factory');
-const runtime = await deploy('VoidChainAppRuntime', [deed, token, treasury]);
+console.log(`\n[1/4] Deploying ${runtimeVersion} runtime, paymaster and DAO factory`);
+const runtime = await deploy(runtimeArtifact, [deed, token, treasury]);
 const paymaster = await deploy('VoidPaymaster', [token, runtime, account.address, protocolTreasury, oracle]);
 const daoFactory = await deploy('VoidChainDaoFactory', [runtime, token, deed]);
+const appFactory = usesV3Factory ? await deploy('VoidChainAppFactoryV3', [runtime]) : undefined;
 
-console.log('\n[2/4] Freezing the V2 trust boundary');
+console.log(`\n[2/4] Freezing the ${runtimeVersion} trust boundary`);
 await send(runtime, runtimeAbi, 'setOracle', [oracle]);
 await send(runtime, runtimeAbi, 'setForwarderOnce', [paymaster]);
 await send(runtime, runtimeAbi, 'setDaoFactoryOnce', [daoFactory]);
+if (appFactory) await send(runtime, runtimeAbi, 'setAppFactoryOnce', [appFactory]);
 await send(treasury, treasuryAbi, 'setAuthorizedSettler', [runtime, true]);
 await send(paymaster, paymasterAbi, 'setMargin', [marginBps]);
 await send(paymaster, paymasterAbi, 'setLimits', limits);
@@ -170,35 +179,36 @@ console.log('\n[3/4] Moving the sponsored-gas reserve');
 if (oldReserve > 0n) {
   await send(reservePaymaster, paymasterAbi, 'withdrawEth', [paymaster, oldReserve]);
   const v2Reserve = await rpc.getBalance({ address: paymaster });
-  if (v2Reserve !== oldReserve) throw new Error('V2 paymaster reserve does not match the transferred legacy reserve.');
-  console.log(`  ✓ ${formatEther(v2Reserve)} ETH moved to V2`);
+  if (v2Reserve !== oldReserve) throw new Error(`${runtimeVersion} paymaster reserve does not match the transferred legacy reserve.`);
+  console.log(`  ✓ ${formatEther(v2Reserve)} ETH moved to ${runtimeVersion}`);
 } else {
   console.log('  ✓ no ETH reserve to move');
 }
 
-console.log('\n[4/4] Creating Chain #1 V2 DAO');
+console.log(`\n[4/4] Creating Chain #1 ${runtimeVersion} DAO`);
 await send(daoFactory, daoFactoryAbi, 'create', [chainOne]);
 const dao = await rpc.readContract({ address: daoFactory, abi: daoFactoryAbi, functionName: 'daoOf', args: [chainOne] }) as Address;
 const registeredDao = await rpc.readContract({ address: runtime, abi: runtimeAbi, functionName: 'daoOf', args: [chainOne] }) as Address;
-if (dao.toLowerCase() !== registeredDao.toLowerCase()) throw new Error('V2 DAO was not registered by the V2 runtime.');
+if (dao.toLowerCase() !== registeredDao.toLowerCase()) throw new Error(`${runtimeVersion} DAO was not registered by the ${runtimeVersion} runtime.`);
 
 const record = {
   network: previous.network,
   migration: {
-    version: 'v2-pending-holder-activation',
+    version: `${runtimeSlug}-pending-holder-activation`,
     createdAt: new Date().toISOString(),
     legacyRuntime: oldRuntime,
     legacyPaymaster: oldPaymaster,
     reserveSourcePaymaster: reservePaymaster,
     chainOneHolder: deedOwner,
     reserveMovedWei: oldReserve.toString(),
-    note: 'Deeds, VOID token and treasury are reused. Chain #1 must be activated by its Deed holder before public promotion.',
+    note: `Deeds, VOID token and treasury are reused. Chain #1 must be activated by its Deed holder before ${runtimeVersion} public promotion.`,
   },
   production: {
     ...previous.production,
     VoidChainAppRuntime: runtime,
     VoidPaymaster: paymaster,
     VoidChainDaoFactory: daoFactory,
+    ...(appFactory ? { VoidChainAppFactoryV3: appFactory } : {}),
   },
   governance: previous.governance,
   testnet: previous.testnet,
@@ -207,14 +217,14 @@ const record = {
   chainIdBase: previous.chainIdBase,
   chainOne: { deedOwner, dao },
 };
-const destination = resolve(here, 'deployments/testnet-v2-pending.json');
+const destination = resolve(here, `deployments/testnet-${runtimeSlug}-pending.json`);
 mkdirSync(dirname(destination), { recursive: true });
 writeFileSync(destination, `${JSON.stringify(record, null, 2)}\n`);
 
-console.log('\n✓ V2 foundation is deployed and verified.');
-console.log(`  V2 runtime:   ${runtime}`);
-console.log(`  V2 paymaster: ${paymaster}`);
-console.log(`  V2 DAO #1:    ${dao}`);
+console.log(`\n✓ ${runtimeVersion} foundation is deployed and verified.`);
+console.log(`  ${runtimeVersion} runtime:   ${runtime}`);
+console.log(`  ${runtimeVersion} paymaster: ${paymaster}`);
+console.log(`  ${runtimeVersion} DAO #1:    ${dao}`);
 console.log(`  record:       ${destination}`);
-console.log('\nNEXT SECURITY GATE: the current holder signs V2 activate(1, existingFee).');
+console.log(`\nNEXT SECURITY GATE: the current holder signs ${runtimeVersion} activate(1, existingFee).`);
 console.log('Only after that signature may the public VoidScan pointer leave the legacy runtime.\n');
