@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChainDetail, ChainRow, ChainStatus } from '@/lib/chains';
 import { Copyable } from './Copyable';
+import { DaoPanel } from './DaoPanel';
 import styles from './page.module.css';
 
 const PER_PAGE = 50;
@@ -229,6 +230,8 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
           <div><dt>Addresses</dt><dd>{nf.format(chain.addressCount)}</dd></div>
           <div><dt title="Gross tolls paid to this space; the protocol split is accounted for separately.">Revenue</dt><dd>{voidAmount(chain.revenue)} VOID</dd></div>
         </dl>
+
+        <DaoPanel tokenId={chain.id} />
 
         {failed && <p className={styles.noHits}>Could not load this chain: {failed}</p>}
         {!failed && !detail && <p className={styles.noHits}>Loading…</p>}

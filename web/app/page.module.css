@@ -126,9 +126,9 @@
   justify-content: center;
   gap: 7px;
   min-height: 38px;
-  border: 1px solid color-mix(in srgb, var(--live) 52%, var(--line-strong));
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--live) 9%, var(--surface));
+  background: color-mix(in srgb, var(--surface) 75%, transparent);
   color: var(--ink);
   cursor: pointer;
   font-family: var(--sans);
@@ -140,12 +140,13 @@
   white-space: nowrap;
 }
 .walletButton:hover:not(:disabled) {
-  border-color: var(--live);
-  background: color-mix(in srgb, var(--live) 16%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  color: var(--accent);
   transform: translateY(-1px);
 }
 .walletButton:disabled { cursor: wait; opacity: 0.72; }
-.walletMark { width: 7px; height: 7px; border: 1px solid var(--live); border-radius: 50%; box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 13%, transparent); }
+.walletMark { width: 7px; height: 7px; border: 1px solid var(--accent); border-radius: 50%; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent); }
 .walletMessage { position: absolute; right: 0; top: calc(100% + 7px); width: max-content; max-width: 250px; border: 1px solid color-mix(in srgb, #d65437 45%, var(--line)); border-radius: 6px; background: var(--surface); color: var(--ink-2); font: 10px/1.35 var(--mono); padding: 6px 8px; z-index: 3; }
 
 /* ---- introduction ------------------------------------------------------ */
@@ -407,6 +408,43 @@
 .detailList li { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); color: var(--ink-2); font-size: 11px; padding: 9px 0; }
 .detailList li:last-child { border-bottom: 0; }
 
+/* ---- DAO governance module -------------------------------------------- */
+.daoPanel { border: 1px solid color-mix(in srgb, var(--created) 34%, var(--line)); border-radius: 11px; background: linear-gradient(135deg, color-mix(in srgb, var(--created) 9%, var(--surface-2)), var(--surface-2)); margin: 0 0 23px; overflow: hidden; }
+.daoLoading { color: var(--ink-3); font: 11px var(--mono); margin: 0; padding: 18px; }
+.daoHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; border-bottom: 1px solid color-mix(in srgb, var(--created) 24%, var(--line)); padding: 16px 17px 13px; }
+.daoKicker { color: var(--created); font: 9px var(--mono); letter-spacing: 0.13em; margin: 0 0 5px; text-transform: uppercase; }
+.daoHead h3 { color: var(--ink); font-size: 14px; letter-spacing: -0.025em; margin: 0; }
+.daoExplorer { border-bottom: 1px solid color-mix(in srgb, var(--created) 55%, transparent); color: var(--created); font: 10px var(--mono); padding-bottom: 2px; text-decoration: none; white-space: nowrap; }
+.daoExplorer:hover { color: var(--ink); }
+.daoScope { color: var(--ink-2); font-size: 11px; line-height: 1.55; margin: 0; max-width: 88ch; padding: 12px 17px 0; }
+.daoFacts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: color-mix(in srgb, var(--created) 18%, var(--line)); margin: 15px 17px; }
+.daoFacts > div { background: color-mix(in srgb, var(--surface) 88%, transparent); min-height: 62px; padding: 10px; }
+.daoFacts dt { color: var(--ink-3); font: 8px var(--mono); letter-spacing: 0.1em; margin-bottom: 6px; text-transform: uppercase; }
+.daoFacts dd { color: var(--ink); font: 10px var(--mono); margin: 0; overflow-wrap: anywhere; }
+.daoCompose { align-items: end; border-top: 1px solid color-mix(in srgb, var(--created) 20%, var(--line)); display: grid; gap: 9px; grid-template-columns: minmax(185px, 1.5fr) minmax(115px, .75fr) minmax(125px, .8fr) auto; padding: 15px 17px; }
+.daoCompose h4, .daoProposalHead h4 { color: var(--ink); font-size: 12px; margin: 0 0 4px; }
+.daoCompose p { color: var(--ink-3); font: 10px/1.45 var(--mono); margin: 0; }
+.daoCompose label { color: var(--ink-3); display: grid; font: 9px var(--mono); gap: 5px; letter-spacing: .03em; }
+.daoCompose input, .proposalActions input { border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface); color: var(--ink); font: 11px var(--mono); height: 32px; min-width: 0; padding: 0 9px; }
+.daoCompose input:focus, .proposalActions input:focus { border-color: var(--created); outline: 2px solid color-mix(in srgb, var(--created) 15%, transparent); }
+.daoPrimary, .proposalActions button { border: 1px solid color-mix(in srgb, var(--created) 70%, var(--line)); border-radius: 5px; background: color-mix(in srgb, var(--created) 18%, var(--surface)); color: var(--ink); cursor: pointer; font: 10px var(--mono); min-height: 32px; padding: 0 10px; white-space: nowrap; }
+.daoPrimary:hover:not(:disabled), .proposalActions button:hover:not(:disabled) { border-color: var(--created); color: var(--created); }
+.daoPrimary:disabled, .proposalActions button:disabled { cursor: wait; opacity: .55; }
+.daoNotice { border-top: 1px solid color-mix(in srgb, var(--created) 20%, var(--line)); color: var(--ink-2); font: 10px/1.45 var(--mono); margin: 0; padding: 10px 17px; }
+.daoProposals { border-top: 1px solid color-mix(in srgb, var(--created) 20%, var(--line)); }
+.daoProposalHead { align-items: center; display: flex; justify-content: space-between; padding: 13px 17px; }
+.daoProposalHead span { color: var(--ink-3); font: 9px var(--mono); }
+.daoEmpty { color: var(--ink-3); font: 11px var(--mono); margin: 0; padding: 5px 17px 16px; }
+.proposal { border-top: 1px solid color-mix(in srgb, var(--created) 16%, var(--line)); padding: 12px 17px; }
+.proposalTop, .proposalMeta, .proposalActions { align-items: center; display: flex; gap: 8px 15px; justify-content: space-between; }
+.proposalTop { color: var(--ink); font: 11px var(--mono); }
+.proposalState { border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink-3); font: 8px var(--mono); letter-spacing: .08em; padding: 3px 6px; text-transform: uppercase; }
+.proposalActive { border-color: color-mix(in srgb, var(--live) 55%, var(--line)); color: var(--live); }
+.proposalMeta { color: var(--ink-3); flex-wrap: wrap; font: 9px var(--mono); justify-content: flex-start; margin-top: 8px; }
+.proposalVote { color: var(--created); font: 10px var(--mono); margin: 8px 0 0; }
+.proposalActions { justify-content: flex-start; margin-top: 10px; }
+.proposalActions input { width: 155px; }
+
 /* ---- utilities --------------------------------------------------------- */
 .copyable { display: inline-flex; align-items: baseline; gap: 5px; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; font-family: var(--mono); padding: 0; white-space: nowrap; }
 .copyable:hover { color: var(--accent); }
@@ -441,6 +479,9 @@
   .cardSearch input { width: 100%; }
   .panelHead { flex-wrap: wrap; }
   .directoryGuide { grid-template-columns: 1fr; }
+  .daoFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .daoCompose { grid-template-columns: 1fr 1fr; }
+  .daoCompose > :first-child { grid-column: 1 / -1; }
 }
 
 @media (max-width: 650px) {
@@ -462,4 +503,11 @@
   .pager { margin-left: auto; }
   .table th, .table td { padding-left: 12px; padding-right: 12px; }
   .footer { margin-bottom: 26px; }
+  .daoHead { flex-wrap: wrap; }
+  .daoFacts { margin-left: 12px; margin-right: 12px; }
+  .daoCompose { grid-template-columns: 1fr; padding-left: 12px; padding-right: 12px; }
+  .daoCompose > :first-child { grid-column: auto; }
+  .daoScope, .daoHead, .daoNotice, .daoProposalHead, .daoEmpty, .proposal { padding-left: 12px; padding-right: 12px; }
+  .proposalActions { align-items: stretch; flex-wrap: wrap; }
+  .proposalActions input { flex: 1 1 100%; width: 100%; }
 }

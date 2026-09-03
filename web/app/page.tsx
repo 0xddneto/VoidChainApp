@@ -59,9 +59,6 @@ export default async function Home() {
           <ExplorerSearch />
 
           <div className={styles.actions}>
-            <a className={`${styles.btn} ${styles.btnPrimary}`} href="/mint">
-              Claim test deed
-            </a>
             <WalletProfileButton />
           </div>
         </div>
