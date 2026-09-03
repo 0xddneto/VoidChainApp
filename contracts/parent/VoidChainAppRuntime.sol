@@ -162,6 +162,11 @@ contract VoidChainAppRuntime is ReentrancyGuard {
 
     mapping(uint256 tokenId => ChainApp) public apps;
 
+    /// @notice True after the holder has fixed this chain's first fee.
+    /// @dev Kept outside `ChainApp` to preserve the public getter's ABI for
+    ///      apps already built against the runtime.
+    mapping(uint256 tokenId => bool) public configured;
+
     /// @notice Which contracts belong to which chain.
     /// @dev    A contract is only reachable through ITS OWN chain's `execute`.
     ///         That is what makes the isolation a property of the code rather
@@ -328,6 +333,8 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     address private immutable deployer;
 
     event ChainAppActivated(uint256 indexed tokenId, address activator);
+    event ChainAppDeactivated(uint256 indexed tokenId, address holder);
+    event ChainAppReactivated(uint256 indexed tokenId, address holder);
     event ForwarderSet(address forwarder);
     event DaoFactorySet(address factory);
     event DaoRegistered(uint256 indexed tokenId, address dao);
@@ -362,6 +369,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     error NotDeedHolder(uint256 tokenId, address caller);
     error NotActive(uint256 tokenId);
     error AlreadyActive(uint256 tokenId);
+    error NotInitialized(uint256 tokenId);
     error NotThisChainsApp(uint256 tokenId, address target);
     error ZeroAddress();
     error NothingToFlush();
@@ -454,10 +462,9 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         emit TollCeilingSet(tokenId, ceilingUsd);
     }
 
-    /// @dev The holder has exactly one economic action: setting the original
-    ///      fee while activating an inactive chain. After that, the chain's DAO
-    ///      is its only configuration authority.
-    modifier onlyGenesisHolder(uint256 tokenId) {
+    /// @dev The deed follows a sale, so the current holder owns availability.
+    ///      Fee and application policy remain the DAO's authority after setup.
+    modifier onlyDeedHolder(uint256 tokenId) {
         if (deed.ownerOf(tokenId) != msg.sender) revert NotDeedHolder(tokenId, msg.sender);
         _;
     }
@@ -478,8 +485,8 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     ///      registered, so there is never an active chain whose fee or app
     ///      policy can later be controlled outside its DAO.
     /// @param feePerCallUsd The transaction fee in dollars, with 18 decimals (1e15 = $0.001).
-    function activate(uint256 tokenId, uint256 feePerCallUsd) external onlyGenesisHolder(tokenId) {
-        if (apps[tokenId].active) revert AlreadyActive(tokenId);
+    function activate(uint256 tokenId, uint256 feePerCallUsd) external onlyDeedHolder(tokenId) {
+        if (configured[tokenId]) revert AlreadyActive(tokenId);
         if (daoOf[tokenId] == address(0)) revert DaoNotRegistered(tokenId);
         // A ceiling can be voted before a chain is switched on, and activating
         // above it would leave the chain permanently over its own limit.
@@ -488,11 +495,25 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         }
 
         apps[tokenId].active = true;
+        configured[tokenId] = true;
         apps[tokenId].feePerCallUsd = feePerCallUsd;
         apps[tokenId].permissionlessDeploy = true; // open, like any chain
 
         emit ChainAppActivated(tokenId, msg.sender);
         emit FeeUpdated(tokenId, 0, feePerCallUsd);
+    }
+
+    /// @notice Pauses or resumes a configured chain without changing its fee.
+    /// @dev Existing applications and balances stay intact. A holder can manage
+    ///      availability but cannot bypass the DAO's price or app-policy rules.
+    function setActive(uint256 tokenId, bool active) external onlyDeedHolder(tokenId) {
+        ChainApp storage app = apps[tokenId];
+        if (!configured[tokenId]) revert NotInitialized(tokenId);
+        if (app.active == active) revert AlreadyActive(tokenId);
+
+        app.active = active;
+        if (active) emit ChainAppReactivated(tokenId, msg.sender);
+        else emit ChainAppDeactivated(tokenId, msg.sender);
     }
 
     /// @notice Changes the chain's transaction fee after a passed DAO proposal.

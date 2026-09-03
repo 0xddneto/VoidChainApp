@@ -54,10 +54,6 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906 {
     ///         networks ("Arbitrum One", "Base", ...) and of sibling chains.
     mapping(bytes32 lowercasedName => uint256 tokenId) public nameClaimedBy;
 
-    /// @notice Renames are rate-limited so a chain's identity cannot be churned
-    ///         to confuse wallets that cached the previous name.
-    mapping(uint256 tokenId => uint256 timestamp) public renameAvailableAt;
-    uint256 public constant RENAME_COOLDOWN = 7 days;
 
     event VoidChainRenamed(uint256 indexed tokenId, string previousName, string newName);
     event IdentityUpdated(uint256 indexed tokenId);
@@ -67,7 +63,6 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906 {
     error NameEmpty();
     error NameTooLong();
     error NameHasInvalidChars();
-    error RenameOnCooldown(uint256 availableAt);
     error TooManySocials();
     error ZeroAddress();
 
@@ -149,9 +144,6 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906 {
     function rename(uint256 tokenId, string calldata newName) external {
         _requireDeedHolder(tokenId);
 
-        uint256 availableAt = renameAvailableAt[tokenId];
-        if (block.timestamp < availableAt) revert RenameOnCooldown(availableAt);
-
         bytes memory raw = bytes(newName);
         if (raw.length == 0) revert NameEmpty();
         if (raw.length > 32) revert NameTooLong();
@@ -167,8 +159,6 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906 {
         if (bytes(previous).length != 0) delete nameClaimedBy[_nameKey(previous)];
         nameClaimedBy[key] = tokenId;
         id.name = newName;
-        renameAvailableAt[tokenId] = block.timestamp + RENAME_COOLDOWN;
-
         emit VoidChainRenamed(tokenId, previous, newName);
         emit MetadataUpdate(tokenId);
     }

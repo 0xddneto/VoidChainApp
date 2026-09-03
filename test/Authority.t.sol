@@ -352,17 +352,15 @@ contract AuthorityTest is Test {
         // did not revert: valid name
     }
 
-    function test_RenameRespectsCooldown() public {
+    function test_HolderCanRenameWheneverTheyNeedTo() public {
         vm.prank(alice);
         deed.rename(TOKEN, "Primeiro");
 
-        vm.expectRevert();
         vm.prank(alice);
         deed.rename(TOKEN, "Segundo");
 
-        vm.warp(block.timestamp + 7 days + 1);
-        vm.prank(alice);
-        deed.rename(TOKEN, "Segundo");
+        VoidChainDeed.Identity memory identity = deed.identityOf(TOKEN);
+        assertEq(identity.name, "Segundo");
     }
 
     /// @notice Releasing the name on rename keeps a chain from being stuck with a
@@ -371,7 +369,6 @@ contract AuthorityTest is Test {
         vm.prank(alice);
         deed.rename(TOKEN, "Antigo");
 
-        vm.warp(block.timestamp + 7 days + 1);
         vm.prank(alice);
         deed.rename(TOKEN, "Novo");
 

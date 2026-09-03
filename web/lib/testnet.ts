@@ -58,7 +58,9 @@ export const ABI = {
   ],
   runtime: [
     { type: 'function', name: 'statsOf', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'bool' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }] },
+    { type: 'function', name: 'configured', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'bool' }] },
     { type: 'function', name: 'activate', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
+    { type: 'function', name: 'setActive', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'bool' }], outputs: [] },
     { type: 'function', name: 'feeOf', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }] },
     { type: 'function', name: 'setTollCeiling', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
     { type: 'function', name: 'setFee', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },

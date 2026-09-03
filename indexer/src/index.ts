@@ -18,10 +18,12 @@ import {
   CHAIN_ID_BASE, DEED, MAX_BLOCKS_PER_PASS,
   PARENT_RPC, POLL_INTERVAL_MS, RUNTIME,
 } from './config.js';
-import { alignDeployment, cursor, pool, seedChains, writePass, type BlockInfo, type CallRow } from './db.js';
+import { alignDeployment, cursor, pool, seedChains, writePass, type BlockInfo, type CallRow, type StatusRow } from './db.js';
 
 const EVENTS = {
   activated: parseAbiItem('event ChainAppActivated(uint256 indexed tokenId, address activator)'),
+  deactivated: parseAbiItem('event ChainAppDeactivated(uint256 indexed tokenId, address holder)'),
+  reactivated: parseAbiItem('event ChainAppReactivated(uint256 indexed tokenId, address holder)'),
   executed: parseAbiItem(
     'event Executed(uint256 indexed tokenId, address indexed caller, address target, uint256 fee)',
   ),
@@ -78,12 +80,14 @@ async function scan(): Promise<number> {
   // series: public Robinhood RPCs otherwise reject the simultaneous large
   // responses even though each individual event query is valid.
   const activated = await client.getLogs({ address: RUNTIME, event: EVENTS.activated, ...range });
+  const deactivated = await client.getLogs({ address: RUNTIME, event: EVENTS.deactivated, ...range });
+  const reactivated = await client.getLogs({ address: RUNTIME, event: EVENTS.reactivated, ...range });
   const executed = await client.getLogs({ address: RUNTIME, event: EVENTS.executed, ...range });
   const registered = await client.getLogs({ address: RUNTIME, event: EVENTS.registered, ...range });
   const transfers = await client.getLogs({ address: DEED, event: EVENTS.transfer, ...range });
   const renamed = await client.getLogs({ address: DEED, event: EVENTS.renamed, ...range });
 
-  const all = [...activated, ...executed, ...registered, ...transfers, ...renamed];
+  const all = [...activated, ...deactivated, ...reactivated, ...executed, ...registered, ...transfers, ...renamed];
   if (all.length === 0) {
     await writePass([], [], [], [], [], to);
     return 0;
@@ -102,12 +106,14 @@ async function scan(): Promise<number> {
     toll: l.args.fee!,
     block: info.get(l.blockNumber!)!,
   }));
+  const statuses: StatusRow[] = [
+    ...activated.map((l) => ({ chain: Number(l.args.tokenId!), status: 'live' as const, initial: true, timestamp: info.get(l.blockNumber!)!.timestamp, blockNumber: l.blockNumber!, logIndex: l.logIndex! })),
+    ...deactivated.map((l) => ({ chain: Number(l.args.tokenId!), status: 'paused' as const, initial: false, timestamp: info.get(l.blockNumber!)!.timestamp, blockNumber: l.blockNumber!, logIndex: l.logIndex! })),
+    ...reactivated.map((l) => ({ chain: Number(l.args.tokenId!), status: 'live' as const, initial: false, timestamp: info.get(l.blockNumber!)!.timestamp, blockNumber: l.blockNumber!, logIndex: l.logIndex! })),
+  ].sort((a, b) => a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1);
 
   await writePass(
-    activated.map((l) => ({
-      chain: Number(l.args.tokenId!),
-      timestamp: info.get(l.blockNumber!)!.timestamp,
-    })),
+    statuses,
     calls,
     registered.map((l) => ({
       chain: Number(l.args.tokenId!),

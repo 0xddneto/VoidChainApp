@@ -12,10 +12,7 @@ type Provider = {
 };
 
 const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
-
-function provider(): Provider | undefined {
-  return typeof window === 'undefined' ? undefined : (window as Window & { ethereum?: Provider }).ethereum;
-}
+const provider = () => typeof window === 'undefined' ? undefined : (window as Window & { ethereum?: Provider }).ethereum;
 
 function firstAddress(accounts: unknown): Address | null {
   const first = Array.isArray(accounts) ? accounts[0] : null;
@@ -28,13 +25,14 @@ function usdToWad(value: string): bigint | null {
   return BigInt(whole) * 10n ** 18n + BigInt((fraction + '0'.repeat(18)).slice(0, 18));
 }
 
-/** First activation fixes only the original fee; future changes go through the DAO. */
-export function ChainActivationEditor({ tokenId, onActivated }: { tokenId: number; onActivated: () => void }) {
+/** A permanent status control: initial activation asks a fee; later toggles retain it. */
+export function ChainActivationEditor({ tokenId, onActiveChanged }: { tokenId: number; onActiveChanged: (active: boolean) => void }) {
   const [account, setAccount] = useState<Address | null>(null);
   const [owner, setOwner] = useState<Address | null>(null);
   const [active, setActive] = useState<boolean | null>(null);
+  const [configured, setConfigured] = useState(false);
   const [fee, setFee] = useState('0.001');
-  const [open, setOpen] = useState(false);
+  const [settingFee, setSettingFee] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -45,83 +43,74 @@ export function ChainActivationEditor({ tokenId, onActivated }: { tokenId: numbe
       void wallet.request({ method: 'eth_accounts' }).then(accountsChanged).catch(() => undefined);
       wallet.on?.('accountsChanged', accountsChanged);
     }
-
-    let live = true;
+    let alive = true;
     void Promise.all([
       rpc.readContract({ address: DEPLOY.production.VoidChainDeed as Address, abi: ABI.deed, functionName: 'ownerOf', args: [BigInt(tokenId)] }),
       rpc.readContract({ address: DEPLOY.production.VoidChainAppRuntime as Address, abi: ABI.runtime, functionName: 'statsOf', args: [BigInt(tokenId)] }),
-    ]).then(([currentOwner, stats]) => {
-      if (!live) return;
+      rpc.readContract({ address: DEPLOY.production.VoidChainAppRuntime as Address, abi: ABI.runtime, functionName: 'configured', args: [BigInt(tokenId)] }),
+    ]).then(([currentOwner, stats, isConfigured]) => {
+      if (!alive) return;
       setOwner(currentOwner as Address);
       setActive(Boolean((stats as readonly unknown[])[0]));
+      setConfigured(Boolean(isConfigured));
     }).catch(() => setActive(null));
-
-    return () => {
-      live = false;
-      wallet?.removeListener?.('accountsChanged', accountsChanged);
-    };
+    return () => { alive = false; wallet?.removeListener?.('accountsChanged', accountsChanged); };
   }, [tokenId]);
 
   const holder = Boolean(account && owner && account.toLowerCase() === owner.toLowerCase());
-  if (!holder || active !== false) return null;
 
-  async function activate() {
+  async function changeState(nextActive: boolean) {
     const wallet = provider();
     if (!wallet || !account) return;
-    const feeWad = usdToWad(fee);
-    if (feeWad === null) {
-      setNotice('Enter a USD fee with up to 18 decimal places.');
-      return;
-    }
+    const firstActivation = nextActive && !configured;
+    const feeWad = firstActivation ? usdToWad(fee) : null;
+    if (firstActivation && feeWad === null) return setNotice('Enter a valid initial fee.');
 
     setBusy(true);
-    setNotice('Confirm activation in your wallet…');
+    setNotice('Confirm in wallet…');
     try {
       const network = await wallet.request({ method: 'eth_chainId' });
       if (network !== RH_TESTNET.chainIdHex) {
-        try {
-          await wallet.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: RH_TESTNET.chainIdHex }] });
-        } catch {
-          await wallet.request({ method: 'wallet_addEthereumChain', params: [RH_TESTNET] });
-        }
+        try { await wallet.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: RH_TESTNET.chainIdHex }] }); }
+        catch { await wallet.request({ method: 'wallet_addEthereumChain', params: [RH_TESTNET] }); }
       }
       const client = createWalletClient({ account, transport: custom(wallet) });
-      const hash = await client.sendTransaction({
-        account, chain: null, to: DEPLOY.production.VoidChainAppRuntime as Address,
-        data: encodeFunctionData({ abi: ABI.runtime, functionName: 'activate', args: [BigInt(tokenId), feeWad] }),
-      });
+      const data = firstActivation
+        ? encodeFunctionData({ abi: ABI.runtime, functionName: 'activate', args: [BigInt(tokenId), feeWad!] })
+        : encodeFunctionData({ abi: ABI.runtime, functionName: 'setActive', args: [BigInt(tokenId), nextActive] });
+      const hash = await client.sendTransaction({ account, chain: null, to: DEPLOY.production.VoidChainAppRuntime as Address, data });
       const receipt = await rpc.waitForTransactionReceipt({ hash });
-      if (receipt.status !== 'success') throw new Error('Activation transaction reverted.');
-      setActive(true);
-      setOpen(false);
-      setNotice('Chain activated. Future fee changes require its DAO.');
-      onActivated();
+      if (receipt.status !== 'success') throw new Error('Chain status transaction reverted.');
+      setActive(nextActive);
+      setConfigured(true);
+      setSettingFee(false);
+      setNotice(null);
+      onActiveChanged(nextActive);
     } catch (error: any) {
-      setNotice(error?.shortMessage ?? error?.message ?? 'Could not activate this chain.');
+      setNotice(error?.shortMessage ?? error?.message ?? 'Could not change chain status.');
     } finally {
       setBusy(false);
     }
   }
 
+  const status = active === true ? 'Ativa' : active === false ? 'Desativada' : 'Carregando…';
   return (
-    <section className={styles.activationEditor} aria-label="Chain activation">
-      <div>
-        <p className={styles.editorKicker}>OWNER SETUP</p>
-        <h3>Activate this chain</h3>
-        <p>Choose the first transaction fee. Once active, its fee and app policy can only change through this chain’s DAO.</p>
-      </div>
-      {!open ? (
-        <button type="button" className={styles.editorButton} onClick={() => { setOpen(true); setNotice(null); }}>Activate</button>
-      ) : (
-        <div className={styles.editorForm}>
-          <label className={styles.activationFee}>Initial transaction fee (USD)
-            <input value={fee} inputMode="decimal" onChange={(event) => setFee(event.target.value)} aria-label="Initial transaction fee in USD" />
-          </label>
-          <button type="button" className={styles.editorButton} disabled={busy} onClick={activate}>{busy ? 'Activating…' : 'Confirm activation'}</button>
-          <button type="button" className={styles.editorCancel} disabled={busy} onClick={() => { setOpen(false); setNotice(null); }}>Cancel</button>
+    <div className={styles.editableFact}>
+      <dt>Status da chain</dt>
+      <dd className={styles.factValueWithAction}>
+        <span>{status}</span>
+        {holder && active === true && <button type="button" className={styles.factButton} disabled={busy} onClick={() => void changeState(false)}>Desativar</button>}
+        {holder && active === false && configured && <button type="button" className={styles.factButton} disabled={busy} onClick={() => void changeState(true)}>Ativar</button>}
+        {holder && active === false && !configured && !settingFee && <button type="button" className={styles.factButton} onClick={() => { setSettingFee(true); setNotice(null); }}>Ativar</button>}
+      </dd>
+      {holder && active === false && !configured && settingFee && (
+        <div className={styles.factEdit}>
+          <input value={fee} inputMode="decimal" onChange={(event) => setFee(event.target.value)} aria-label="Initial transaction fee in USD" />
+          <button type="button" className={styles.factButton} disabled={busy} onClick={() => void changeState(true)}>{busy ? 'Ativando…' : 'Confirmar'}</button>
+          <button type="button" className={styles.factCancel} disabled={busy} onClick={() => setSettingFee(false)}>Cancelar</button>
         </div>
       )}
-      {notice && <p className={styles.editorNotice}>{notice}</p>}
-    </section>
+      {notice && <small className={styles.factNotice} role="status">{notice}</small>}
+    </div>
   );
 }

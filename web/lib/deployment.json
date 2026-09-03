@@ -2,25 +2,25 @@
   "network": {
     "chainId": 46630,
     "rpc": "https://robinhood-testnet.drpc.org",
-    "deployBlock": 112282107
+    "deployBlock": 112306346
   },
   "production": {
-    "VoidChainDeed": "0xb21996e5742a4d7634a6c01fa7d80c6eccb3bc50",
-    "VoidChainTreasury": "0xcb410fdc07396434955804164071f9e59cfe2cb7",
-    "VoidChainAppRuntime": "0x44cc36fc27e9b02cb68a52dfb4213acf0e1db895",
-    "VoidPaymaster": "0x2b29ef34776f115dfaed4e7ecacf360a80ce6003",
-    "VoidCollectionMintPaymaster": "0xbdd2902773d68ca8fa2b9ce3520ac086e83ea857",
-    "VoidChainDaoFactory": "0x685b9d05210247e68e2a25a79f40988b4446e0f0"
+    "VoidChainDeed": "0x7797e2b67c0cfe6c61e8b398951ea423aaad2dc1",
+    "VoidChainTreasury": "0x195a2e19fc2f6764641f198daa6f348bd433262e",
+    "VoidChainAppRuntime": "0x66833df7b5404e6c75f3e5126f7105f2fdcee4fd",
+    "VoidPaymaster": "0xe910c93915b8cf2c34f5beb2b0be94d74a661aba",
+    "VoidCollectionMintPaymaster": "0xad3c5af974d52363005b26f1bd1fe7df59dc7388",
+    "VoidChainDaoFactory": "0x51c2176c1772ce9a75ea224ca29081c450a105b5"
   },
   "governance": {
     "paymasterGovernor": "0x440D2340C907735632A5fa0070273AFeF3D26827",
     "protocolTreasury": "0x892F840aF9CFE78D4FF91D8e6D0F783264388A78"
   },
   "testnet": {
-    "VoidTestToken": "0x1a18f5fcc252d4012c4dd80b78a36aab3389aa45",
-    "VoidTestOracle": "0x39f0afb7a57ec0754a3e49c194fd2056049a9670",
-    "VoidNftAmm": "0x8fc1c944f8f507e4f4b6b688bef86bd060813769",
-    "VoidCollectionMarket": "0x244fa7f1cf4337baf15e418f0f67fc4d8490e803",
+    "VoidTestToken": "0x2a64fa56c1de6f7c737b4a964b5b693ed3841ff4",
+    "VoidTestOracle": "0xa7b2aefd97dd0796fcac8d66064e292a87246f08",
+    "VoidNftAmm": "0x70e8d274be023cd74196ac4222408b7963938e77",
+    "VoidCollectionMarket": "0x73d6cefd7070171fe60785c0231b7e9a2ae4e1f4",
     "marketPurchaseFlow": "collection-prepaid-v2"
   },
   "parameters": {

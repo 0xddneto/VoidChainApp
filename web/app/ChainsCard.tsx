@@ -205,11 +205,11 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
   const [detail, setDetail] = useState<ChainDetail | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState(chain.name ?? '');
-  const [active, setActive] = useState(chain.status === 'live');
+  const [status, setStatus] = useState<ChainStatus>(chain.status);
   const nameChanged = useCallback((next: string) => setDisplayName(next), []);
 
   useEffect(() => setDisplayName(chain.name ?? ''), [chain]);
-  useEffect(() => setActive(chain.status === 'live'), [chain]);
+  useEffect(() => setStatus(chain.status), [chain]);
 
   useEffect(() => {
     let live = true;
@@ -227,14 +227,14 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
       <div className={styles.panelHead}>
         <button type="button" className={styles.back} onClick={onBack}>← all spaces</button>
         <h2>{displayName || `VOID Chain #${chain.id}`}</h2>
-        <span className={`${styles.pill} ${active ? PILL_CLASS.live : PILL_CLASS.reserved}`}>
-          {active ? STATUS_LABEL.live : STATUS_LABEL.reserved}
+        <span className={`${styles.pill} ${PILL_CLASS[status]}`}>
+          {STATUS_LABEL[status]}
         </span>
       </div>
 
       <div className={styles.detailBody}>
         <dl className={styles.detailFacts}>
-          <div><dt>Name</dt><dd>{displayName || 'no name set'}</dd></div>
+          <ChainNameEditor tokenId={chain.id} fallbackName={displayName} onNameChanged={nameChanged} />
           <div><dt>Runtime ID</dt><dd><Copyable value={String(chain.chainId)} /></dd></div>
           <div><dt>VoidChain contract</dt><dd><Copyable value={DEPLOY.production.VoidChainAppRuntime} short /></dd></div>
           <div><dt>Deed contract</dt><dd><Copyable value={DEPLOY.production.VoidChainDeed} short /></dd></div>
@@ -243,10 +243,9 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
           <div><dt>Apps</dt><dd>{nf.format(chain.contractCount)}</dd></div>
           <div><dt>Addresses</dt><dd>{nf.format(chain.addressCount)}</dd></div>
           <div><dt title="Gross tolls paid to this space; the protocol split is accounted for separately.">Revenue</dt><dd>{voidAmount(chain.revenue)} VOID</dd></div>
+          <ChainActivationEditor tokenId={chain.id} onActiveChanged={(next) => setStatus(next ? 'live' : 'paused')} />
         </dl>
 
-        <ChainNameEditor tokenId={chain.id} fallbackName={displayName} onNameChanged={nameChanged} />
-        <ChainActivationEditor tokenId={chain.id} onActivated={() => setActive(true)} />
         <ChainL3Migration tokenId={chain.id} runtimeId={chain.chainId} />
         <DaoPanel tokenId={chain.id} />
 

@@ -321,6 +321,37 @@ contract ChainAppTest is Test {
         runtime.activate(3, FEE);
     }
 
+    function test_DeedHolderCanPauseAndResumeWithoutChangingFee() public {
+        vm.prank(alice);
+        runtime.setActive(CHAIN1, false);
+        (bool active, uint256 fee,,,) = runtime.statsOf(CHAIN1);
+        assertFalse(active, "the holder paused their chain");
+        assertEq(fee, FEE, "pausing cannot change the fee");
+
+        vm.prank(alice);
+        runtime.setActive(CHAIN1, true);
+        (active, fee,,,) = runtime.statsOf(CHAIN1);
+        assertTrue(active, "the holder resumed their chain");
+        assertEq(fee, FEE, "resuming cannot change the fee");
+    }
+
+    function test_PausedChainRejectsExecution() public {
+        vm.prank(alice);
+        runtime.setActive(CHAIN1, false);
+
+        vm.expectRevert(abi.encodeWithSelector(VoidChainAppRuntime.NotActive.selector, CHAIN1));
+        vm.prank(user);
+        runtime.execute(CHAIN1, address(appOfChain1), abi.encodeCall(Recorder.ping, ()), FEE);
+    }
+
+    function test_NonHolderCannotPauseOrResume() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainAppRuntime.NotDeedHolder.selector, CHAIN1, bob)
+        );
+        vm.prank(bob);
+        runtime.setActive(CHAIN1, false);
+    }
+
     // -----------------------------------------------------------------------
     // Who may build
     // -----------------------------------------------------------------------

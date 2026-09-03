@@ -134,7 +134,9 @@ contract PaymasterRefillTest is Test {
         _fundReplacement(missing * RATE / 1e18);
         (, uint256 amountVoid, uint256 minEthOut) = paymaster.refillPlan();
 
-        vm.expectRevert(VoidPaymaster.RefillMinOutTooLow.selector);
+        vm.expectRevert(abi.encodeWithSelector(
+            VoidPaymaster.RefillMinOutTooLow.selector, minEthOut - 1, minEthOut
+        ));
         paymaster.refill(amountVoid, minEthOut - 1);
     }
 
@@ -142,17 +144,23 @@ contract PaymasterRefillTest is Test {
         vm.deal(address(paymaster), 1 ether);
         _fundReplacement(1_000e18);
 
-        vm.expectRevert(VoidPaymaster.RefillNotNeeded.selector);
+        vm.expectRevert(abi.encodeWithSelector(
+            VoidPaymaster.RefillNotNeeded.selector, 1 ether, 0.95 ether, 1_000e18
+        ));
         paymaster.refill(1e18, 1);
     }
 
     function test_governanceCannotSetAnUnsafeRefillPolicy() public {
         vm.prank(GOVERNOR);
-        vm.expectRevert(VoidPaymaster.BadRefillPolicy.selector);
+        vm.expectRevert(abi.encodeWithSelector(
+            VoidPaymaster.BadRefillPolicy.selector, 1 ether, 1 ether, 500
+        ));
         paymaster.setRefillPolicy(1 ether, 1 ether, 500);
 
         vm.prank(GOVERNOR);
-        vm.expectRevert(VoidPaymaster.BadRefillPolicy.selector);
+        vm.expectRevert(abi.encodeWithSelector(
+            VoidPaymaster.BadRefillPolicy.selector, 0.5 ether, 1 ether, 501
+        ));
         paymaster.setRefillPolicy(0.5 ether, 1 ether, 501);
     }
 }

@@ -17,6 +17,8 @@ const CHAIN_ID_BASE = BigInt(deployment.chainIdBase);
 
 const EVENTS = {
   activated: parseAbiItem('event ChainAppActivated(uint256 indexed tokenId, address activator)'),
+  deactivated: parseAbiItem('event ChainAppDeactivated(uint256 indexed tokenId, address holder)'),
+  reactivated: parseAbiItem('event ChainAppReactivated(uint256 indexed tokenId, address holder)'),
   executed: parseAbiItem(
     'event Executed(uint256 indexed tokenId, address indexed caller, address target, uint256 fee)',
   ),
@@ -135,7 +137,7 @@ async function refreshSummary(client: pg.PoolClient, chainId: number): Promise<v
 }
 
 async function writePass(args: {
-  activations: Array<{ chain: number; timestamp: number }>;
+  statuses: Array<{ chain: number; status: 'live' | 'paused'; initial: boolean; timestamp: number; blockNumber: bigint; logIndex: number }>;
   calls: Array<{ chain: number; hash: string; blockNumber: bigint; txIndex: number; logIndex: number; caller: string; target: string; toll: bigint; block: BlockInfo }>;
   apps: Array<{ chain: number; app: string; publisher: string; hash: string; timestamp: number }>;
   owners: Array<{ chain: number; owner: string }>;
@@ -145,10 +147,12 @@ async function writePass(args: {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    for (const activation of args.activations) {
+    for (const change of args.statuses) {
       await client.query(
-        `UPDATE chains SET status = 'live', activated_at = to_timestamp($2), updated_at = now() WHERE id = $1`,
-        [activation.chain, activation.timestamp],
+        change.initial
+          ? `UPDATE chains SET status = 'live', activated_at = to_timestamp($2), updated_at = now() WHERE id = $1`
+          : `UPDATE chains SET status = $2, updated_at = now() WHERE id = $1`,
+        change.initial ? [change.chain, change.timestamp] : [change.chain, change.status],
       );
     }
     for (const owner of args.owners) {
@@ -193,7 +197,7 @@ async function writePass(args: {
     }
 
     await client.query('UPDATE indexer_state SET last_indexed_block = $1, updated_at = now() WHERE id = TRUE', [args.head.toString()]);
-    for (const chainId of new Set([...args.activations.map((row) => row.chain), ...args.calls.map((row) => row.chain), ...args.apps.map((row) => row.chain)])) {
+    for (const chainId of new Set([...args.statuses.map((row) => row.chain), ...args.calls.map((row) => row.chain), ...args.apps.map((row) => row.chain)])) {
       await refreshSummary(client, chainId);
     }
     await client.query('COMMIT');
@@ -222,14 +226,20 @@ export async function indexOnePass(): Promise<IndexerResult> {
     const to = head - from >= MAX_BLOCKS_PER_PASS ? from + MAX_BLOCKS_PER_PASS - 1n : head;
     const range = { fromBlock: from, toBlock: to } as const;
     const activated = await client.getLogs({ address: RUNTIME, event: EVENTS.activated, ...range });
+    const deactivated = await client.getLogs({ address: RUNTIME, event: EVENTS.deactivated, ...range });
+    const reactivated = await client.getLogs({ address: RUNTIME, event: EVENTS.reactivated, ...range });
     const executed = await client.getLogs({ address: RUNTIME, event: EVENTS.executed, ...range });
     const registered = await client.getLogs({ address: RUNTIME, event: EVENTS.registered, ...range });
     const transfers = await client.getLogs({ address: DEED, event: EVENTS.transfer, ...range });
     const renamed = await client.getLogs({ address: DEED, event: EVENTS.renamed, ...range });
-    const all = [...activated, ...executed, ...registered, ...transfers, ...renamed];
+    const all = [...activated, ...deactivated, ...reactivated, ...executed, ...registered, ...transfers, ...renamed];
     const info = all.length === 0 ? new Map<bigint, BlockInfo>() : await blocks(client, all);
     await writePass({
-      activations: activated.map((log) => ({ chain: Number(log.args.tokenId!), timestamp: info.get(log.blockNumber!)!.timestamp })),
+      statuses: [
+        ...activated.map((log) => ({ chain: Number(log.args.tokenId!), status: 'live' as const, initial: true, timestamp: info.get(log.blockNumber!)!.timestamp, blockNumber: log.blockNumber!, logIndex: log.logIndex! })),
+        ...deactivated.map((log) => ({ chain: Number(log.args.tokenId!), status: 'paused' as const, initial: false, timestamp: info.get(log.blockNumber!)!.timestamp, blockNumber: log.blockNumber!, logIndex: log.logIndex! })),
+        ...reactivated.map((log) => ({ chain: Number(log.args.tokenId!), status: 'live' as const, initial: false, timestamp: info.get(log.blockNumber!)!.timestamp, blockNumber: log.blockNumber!, logIndex: log.logIndex! })),
+      ].sort((a, b) => a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1),
       calls: executed.map((log) => ({
         chain: Number(log.args.tokenId!), hash: log.transactionHash!, blockNumber: log.blockNumber!, txIndex: log.transactionIndex!,
         logIndex: log.logIndex!, caller: log.args.caller!, target: log.args.target!, toll: log.args.fee!, block: info.get(log.blockNumber!)!,

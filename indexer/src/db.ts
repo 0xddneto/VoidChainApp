@@ -102,9 +102,13 @@ export interface CallRow {
   block: BlockInfo;
 }
 
-export interface ActivationRow {
+export interface StatusRow {
   chain: number;
+  status: 'live' | 'paused';
+  initial: boolean;
   timestamp: number;
+  blockNumber: bigint;
+  logIndex: number;
 }
 export interface AppRow {
   chain: number;
@@ -165,7 +169,7 @@ export async function cursor(): Promise<bigint> {
  * count them again.
  */
 export async function writePass(
-  activations: ActivationRow[],
+  statuses: StatusRow[],
   calls: CallRow[],
   apps: AppRow[],
   owners: OwnerRow[],
@@ -176,11 +180,12 @@ export async function writePass(
   try {
     await client.query('BEGIN');
 
-    for (const a of activations) {
+    for (const change of statuses) {
       await client.query(
-        `UPDATE chains SET status = 'live', activated_at = to_timestamp($2), updated_at = now()
-         WHERE id = $1`,
-        [a.chain, a.timestamp],
+        change.initial
+          ? `UPDATE chains SET status = 'live', activated_at = to_timestamp($2), updated_at = now() WHERE id = $1`
+          : `UPDATE chains SET status = $2, updated_at = now() WHERE id = $1`,
+        change.initial ? [change.chain, change.timestamp] : [change.chain, change.status],
       );
     }
 
@@ -228,7 +233,7 @@ export async function writePass(
     );
 
     for (const chain of new Set([
-      ...activations.map((a) => a.chain),
+      ...statuses.map((change) => change.chain),
       ...calls.map((c) => c.chain),
       ...apps.map((a) => a.chain),
     ])) {

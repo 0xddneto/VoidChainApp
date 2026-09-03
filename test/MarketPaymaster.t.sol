@@ -35,6 +35,10 @@ contract MarketPaymasterTest is Test {
     VoidNftAmm internal amm;
     VoidCollectionMarket internal collectionMarket;
 
+    /// @dev The relayer is this test contract when `vm.prank(relayer)` is used.
+    ///      Accept reimbursement just as a real relayer wallet would.
+    receive() external payable {}
+
     function setUp() public {
         user = vm.addr(userPk);
         token = new VoidTestToken();
@@ -170,13 +174,14 @@ contract MarketPaymasterTest is Test {
     function test_signedMarketAddressCannotBeChanged() public {
         uint256 price = amm.priceToBuy(false);
         VoidCollectionMintPaymaster.MarketPrepaidCall memory req = _request(price);
+        bytes memory signature = _sign(req);
         req.market = address(0xBEEF);
         _approveExact(price);
 
-        vm.prank(relayer);
         vm.expectRevert(abi.encodeWithSelector(
             VoidCollectionMintPaymaster.WrongMarket.selector, address(0xBEEF), address(collectionMarket)
         ));
-        paymaster.sponsorMarketPrepaid(req, _sign(req));
+        vm.prank(relayer);
+        paymaster.sponsorMarketPrepaid(req, signature);
     }
 }

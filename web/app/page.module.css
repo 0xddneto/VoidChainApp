@@ -403,6 +403,15 @@
 .detailFacts > div { min-height: 74px; background: var(--surface-2); padding: 12px; }
 .detailFacts dt { color: var(--ink-3); font: 9px var(--mono); letter-spacing: 0.1em; margin: 0 0 7px; text-transform: uppercase; }
 .detailFacts dd { margin: 0; color: var(--ink); font: 12px var(--mono); }
+.editableFact { min-width: 0; }
+.factValueWithAction { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; justify-content: space-between; }
+.factButton, .factCancel { border: 1px solid color-mix(in srgb, var(--accent) 64%, var(--line)); border-radius: 4px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--ink); cursor: pointer; flex: 0 0 auto; font: 9px var(--mono); min-height: 27px; padding: 0 7px; white-space: nowrap; }
+.factButton:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 23%, var(--surface)); }
+.factButton:disabled, .factCancel:disabled { cursor: wait; opacity: .55; }
+.factCancel { border-color: var(--line); background: var(--surface); }
+.factEdit { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.factEdit input { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; color: var(--ink); font: 11px var(--mono); min-height: 28px; min-width: 0; padding: 0 7px; width: 100%; }
+.factNotice { color: var(--ink-3); display: block; font: 9px var(--mono); line-height: 1.4; margin-top: 7px; }
 .detailCols { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 26px; }
 .detailCols h3 { margin: 0 0 8px; color: var(--ink); font-size: 12px; }
 .detailList { list-style: none; margin: 0; padding: 0; }
