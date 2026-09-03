@@ -1,5 +1,5 @@
 /**
- * Proves the V3 builder invariant on the live testnet:
+ * Proves the V4 builder invariant on the live testnet:
  * - a factory-published app rejects direct calls;
  * - a zero-ETH wallet signs and uses the same app through the Paymaster;
  * - the chain records the VOID fee and the app state changes once.
@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  createPublicClient, createWalletClient, decodeEventLog, encodeDeployData,
+  createPublicClient, createWalletClient, decodeEventLog, decodeFunctionResult, encodeDeployData,
   encodeFunctionData, http, parseAbi, parseEther, type Abi, type Address, type Hex,
 } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
@@ -52,6 +52,7 @@ const paymasterAbi = parseAbi([
 const factoryArtifact = artifact('VoidChainAppFactoryV3');
 const counterArtifact = artifact('Counter');
 const counterAbi = parseAbi(['function bump()', 'function count() view returns(uint256)']);
+const gatewayAbi = parseAbi(['function query(bytes) view returns(bytes)']);
 const permitTypes = { Permit: [
   { name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }, { name: 'value', type: 'uint256' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' },
 ] } as const;
@@ -68,7 +69,7 @@ const split = (signature: Hex) => ({ v: Number.parseInt(signature.slice(130, 132
 
 if (await rpc.getChainId() !== 46_630) throw new Error('Refusing to run outside Robinhood testnet.');
 if (await rpc.getBalance({ address: user.address }) !== 0n) throw new Error('Proof wallet unexpectedly has ETH.');
-console.log('\nVOID CHAIN #1 — V3 FACTORY / VOID-ONLY PROOF\n');
+console.log('\nVOID CHAIN #1 — V4 FACTORY / VOID-ONLY PROOF\n');
 
 const implementationHash = await wallet.sendTransaction({
   account: relayer, chain: null,
@@ -111,12 +112,13 @@ const sponsoredHash = await wallet.writeContract({
   args: [request, requestSignature, [{ token: voidToken, spender: paymaster, value: funding, deadline, ...p }]], maxFeePerGas: await gas(), maxPriorityFeePerGas: 0n,
 } as never);
 await wait(sponsoredHash);
-const [afterStats, count, afterEth] = await Promise.all([
+const [afterStats, countResponse, afterEth] = await Promise.all([
   rpc.readContract({ address: runtime, abi: runtimeAbi, functionName: 'statsOf', args: [CHAIN] }) as Promise<readonly [boolean, bigint, bigint, bigint, bigint]>,
-  rpc.readContract({ address: app, abi: counterAbi, functionName: 'count' }) as Promise<bigint>,
+  rpc.readContract({ address: app, abi: gatewayAbi, functionName: 'query', args: [encodeFunctionData({ abi: counterAbi, functionName: 'count' })] }) as Promise<Hex>,
   rpc.getBalance({ address: user.address }),
 ]);
-if (afterEth !== 0n || count !== 1n || afterStats[4] !== beforeStats[4] + 1n || afterStats[3] !== beforeStats[3] + fee) throw new Error('V3 sponsored app proof failed.');
+const count = decodeFunctionResult({ abi: counterAbi, functionName: 'count', data: countResponse });
+if (afterEth !== 0n || count !== 1n || afterStats[4] !== beforeStats[4] + 1n || afterStats[3] !== beforeStats[3] + fee) throw new Error('V4 sponsored app proof failed.');
 console.log('✓ direct gateway call rejected');
 console.log('✓ zero-ETH user signed and executed through Paymaster');
 console.log(`✓ ${fee / 10n ** 18n} VOID charged to Chain #1`);
