@@ -7,6 +7,8 @@ import {ERC2981} from "@openzeppelin/contracts/token/common/ERC2981.sol";
 import {IERC4906} from "@openzeppelin/contracts/interfaces/IERC4906.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /// @title VoidChainDeed
 /// @notice Title of ownership over one sovereign Arbitrum Orbit chain.
@@ -22,7 +24,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 ///           - chainId
 ///         Mutable by the deed holder (identity only, never consensus):
 ///           - display name, description, artwork, social profiles
-contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906 {
+contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, EIP712 {
     using Strings for uint256;
 
     /// @notice Total chains. Fixed forever; there is no mint function after genesis.
@@ -49,6 +51,16 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906 {
     }
 
     mapping(uint256 tokenId => Identity) private _identity;
+
+    /// @notice ERC-4494-style approval nonces, one per Deed.
+    /// @dev The original collection was deployed before this existed. This is
+    /// the V5 relaunch path: an owner can authorize the Runtime to move one
+    /// exact Deed by signature, so listing it never requires an ETH approval.
+    mapping(uint256 tokenId => uint256) public nonces;
+
+    bytes32 public constant PERMIT_TYPEHASH = keccak256(
+        "Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)"
+    );
 
     /// @notice Names already taken, lowercased, to block impersonation of other
     ///         networks ("Arbitrum One", "Base", ...) and of sibling chains.
@@ -82,9 +94,12 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906 {
     error NotMinter(address caller);
     error MintingIsSealed();
     error TokenIdOutOfRange(uint256 tokenId);
+    error PermitExpired(uint256 deadline);
+    error InvalidPermitSigner(address signer, address owner);
 
     constructor(uint256 chainIdBase, address minter_, address royaltyReceiver, uint96 royaltyBps)
         ERC721("VOIDS Chain Deed", "VOIDS")
+        EIP712("VOIDS Chain Deed", "1")
     {
         if (minter_ == address(0) || royaltyReceiver == address(0)) revert ZeroAddress();
         CHAIN_ID_BASE = chainIdBase;
@@ -130,6 +145,35 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906 {
         if (next == address(0)) revert ZeroAddress();
         emit MinterTransferred(minter, next);
         minter = next;
+    }
+
+    // ---------------------------------------------------------------------
+    // Signature approval
+    // ---------------------------------------------------------------------
+
+    /// @notice Approves `spender` for one Deed with an EIP-712 signature.
+    /// @dev Compatible with ERC-4494 callers. The approval has the normal
+    /// ERC-721 lifetime, but Void's Runtime uses it only within the signed
+    /// sponsored request that carries this NFT id. It removes the ETH approval
+    /// transaction from a marketplace listing without granting an unlimited
+    /// collection-wide operator.
+    function permit(
+        address spender,
+        uint256 tokenId,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+        if (block.timestamp > deadline) revert PermitExpired(deadline);
+        address owner = ownerOf(tokenId);
+        uint256 nonce = nonces[tokenId]++;
+        bytes32 structHash = keccak256(
+            abi.encode(PERMIT_TYPEHASH, spender, tokenId, nonce, deadline)
+        );
+        address signer = ECDSA.recover(_hashTypedDataV4(structHash), v, r, s);
+        if (signer != owner) revert InvalidPermitSigner(signer, owner);
+        _approve(spender, tokenId, owner);
     }
 
     // ---------------------------------------------------------------------

@@ -63,6 +63,15 @@ interface IWETH {
     function withdraw(uint256 amount) external;
 }
 
+/// @notice The permanently locked VOID/ETH pool used by the V6 genesis.
+/// @dev Kept deliberately smaller than a general DEX interface: the Paymaster
+/// can only sell VOID into ETH and ETH is always returned to this contract.
+interface IVoidEthExitPool {
+    function swapVoidForEth(uint256 voidIn, uint256 minEthOut)
+        external
+        returns (uint256 ethOut);
+}
+
 interface IVoidChainAppRuntime {
     function feeOf(uint256 tokenId) external view returns (uint256);
 
@@ -350,6 +359,12 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     address public weth;
     uint24 public poolFee;
 
+    /// @notice The immutable-liquidity V6 VOID/ETH exit used for reserve refills.
+    /// @dev Once pinned, refills prefer this route over a mutable external router.
+    /// The route can be written only once: governance cannot silently redirect
+    /// the replacement account after the genesis terms were published.
+    IVoidEthExitPool public voidEthPool;
+
     /// @notice The public keeper acts only below this ETH balance and aims for
     ///         `refillTarget`. Zero disables automatic refills until governance
     ///         has installed both a real route and an explicit reserve policy.
@@ -402,6 +417,7 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         uint256 marginVoid,
         uint256 ethReimbursed
     );
+    event VoidEthPoolSet(address indexed pool);
     /// @notice The inner call failed, but gas was charged all the same.
     /// @dev    The reason goes in the event instead of taking the transaction
     ///         down: whoever signed needs to be able to see what happened, and
@@ -445,6 +461,7 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     error BlockBudgetExceeded(uint256 wanted, uint256 budget);
     error RateStepTooLarge(uint256 given, uint256 min, uint256 max);
     error SwapRouteNotSet();
+    error VoidEthPoolAlreadySet(address pool);
     error BadRefillPolicy(uint256 threshold, uint256 target, uint256 slippageBps);
     error RefillNotNeeded(uint256 reserve, uint256 threshold, uint256 reimbursable);
     error RefillAbovePlan(uint256 given, uint256 maximum);
@@ -1175,7 +1192,8 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
 
     /// @notice True when the permissionless keeper may rebuild the ETH reserve.
     function needsRefill() public view returns (bool) {
-        return refillThreshold != 0 && address(swapRouter) != address(0)
+        return refillThreshold != 0
+            && (address(voidEthPool) != address(0) || address(swapRouter) != address(0))
             && address(this).balance < refillThreshold && reimbursableVoid != 0;
     }
 
@@ -1228,7 +1246,9 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         nonReentrant
         returns (uint256 ethOut)
     {
-        if (address(swapRouter) == address(0)) revert SwapRouteNotSet();
+        if (address(voidEthPool) == address(0) && address(swapRouter) == address(0)) {
+            revert SwapRouteNotSet();
+        }
         (bool shouldRefill, uint256 maxVoid, uint256 minAllowed) = refillPlan();
         if (!shouldRefill) {
             revert RefillNotNeeded(address(this).balance, refillThreshold, reimbursableVoid);
@@ -1238,22 +1258,30 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         reimbursableVoid -= amountVoid;
 
         // Reset first and after the swap. This supports strict ERC-20s and
-        // leaves no live router allowance if a route is later migrated.
-        if (!voidToken.approve(address(swapRouter), 0)) revert TransferFailed();
-        if (!voidToken.approve(address(swapRouter), amountVoid)) revert TransferFailed();
-        ethOut = swapRouter.exactInputSingle(
-            ISwapRouter.ExactInputSingleParams({
-                tokenIn: address(voidToken),
-                tokenOut: weth,
-                fee: poolFee,
-                recipient: address(this),
-                amountIn: amountVoid,
-                amountOutMinimum: minEthOut,
-                sqrtPriceLimitX96: 0
-            })
-        );
-        if (!voidToken.approve(address(swapRouter), 0)) revert TransferFailed();
-        IWETH(weth).withdraw(ethOut);
+        // leaves no live allowance. V6 uses the locked pool; older deployments
+        // preserve the external V3 route as their migration fallback.
+        address spender = address(voidEthPool) != address(0)
+            ? address(voidEthPool)
+            : address(swapRouter);
+        if (!voidToken.approve(spender, 0)) revert TransferFailed();
+        if (!voidToken.approve(spender, amountVoid)) revert TransferFailed();
+        if (address(voidEthPool) != address(0)) {
+            ethOut = voidEthPool.swapVoidForEth(amountVoid, minEthOut);
+        } else {
+            ethOut = swapRouter.exactInputSingle(
+                ISwapRouter.ExactInputSingleParams({
+                    tokenIn: address(voidToken),
+                    tokenOut: weth,
+                    fee: poolFee,
+                    recipient: address(this),
+                    amountIn: amountVoid,
+                    amountOutMinimum: minEthOut,
+                    sqrtPriceLimitX96: 0
+                })
+            );
+            IWETH(weth).withdraw(ethOut);
+        }
+        if (!voidToken.approve(spender, 0)) revert TransferFailed();
         emit Refilled(amountVoid, ethOut);
     }
 
@@ -1387,6 +1415,17 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         weth = weth_;
         poolFee = poolFee_;
         emit SwapRouteUpdated(address(router_), weth_, poolFee_);
+    }
+
+    /// @notice Pins the V6 genesis pool used to replenish the parent-ETH reserve.
+    /// @dev There is intentionally no replacement setter. A future protocol
+    /// migration must deploy a new Paymaster under a published governance action
+    /// rather than changing the economics under existing users.
+    function setVoidEthPoolOnce(IVoidEthExitPool pool_) external onlyGovernor {
+        if (address(pool_) == address(0)) revert ZeroAddress();
+        if (address(voidEthPool) != address(0)) revert VoidEthPoolAlreadySet(address(voidEthPool));
+        voidEthPool = pool_;
+        emit VoidEthPoolSet(address(pool_));
     }
 
     /// @notice Sets the trigger, target and maximum TWAP slippage for public

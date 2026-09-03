@@ -107,7 +107,7 @@ export async function POST(httpRequest: Request) {
 
   const [chainNonce, currentPrice] = await Promise.all([
     publicClient.readContract({ address: paymaster, abi: PAYMASTER_ABI, functionName: 'nonces', args: [user] }),
-    publicClient.readContract({ address: getAddress(DEPLOY.testnet.VoidNftAmm), abi: AMM_ABI, functionName: 'priceToBuy', args: [false] }),
+    publicClient.readContract({ address: getAddress(DEPLOY.testnet.VoidGenesisNftAmmV6), abi: AMM_ABI, functionName: 'priceToBuy', args: [false] }),
   ]);
   if (nonce !== chainNonce || appSpend !== currentPrice) {
     return reject('Quote changed or was already used; sign a new one.');

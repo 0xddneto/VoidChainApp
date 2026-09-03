@@ -1,0 +1,25 @@
+{
+  "network": {
+    "chainId": 46630,
+    "rpc": "https://robinhood-testnet.drpc.org",
+    "label": "Robinhood Chain testnet"
+  },
+  "status": "twap-warming",
+  "contracts": {
+    "deed": "0x6f1015edf539b9001421a0aaa428c818d2397fb7",
+    "token": "0x359958d13e830ddb7f9c2864c7da8cc282026a07",
+    "mint": "0x2b409eed516ca9b18d0aa4328ea9c0e3febfb60b",
+    "pool": "0xc69ed96ebc755e9a156e4a60e607261adb432b27",
+    "oracle": "0x3108f7a4fd5d81e021914fb47c04e6fe7dc3cb2f",
+    "paymaster": "0x2978620017152eefcc6befde5490b5776dd995a2",
+    "nftAmm": "0x5bd7d98038625a155ac9a4bd1ede208e32c0722c"
+  },
+  "parameters": {
+    "mintPriceWei": "1000000000000000",
+    "maxSupply": 1111,
+    "voidPerDeed": "500000000000000000000000",
+    "poolFeeBps": 30,
+    "twapIntervalSeconds": 300,
+    "mintSplitBps": { "lockedLp": 4000, "paymaster": 2000, "protocol": 4000 }
+  }
+}
