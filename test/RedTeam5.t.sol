@@ -282,6 +282,9 @@ contract RedTeam5 is Test {
             IRuntimeERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
+        runtime.registerDao(CHAIN, address(this));
+        runtime.registerDao(FREE_CHAIN, address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
         paymaster = new VoidPaymaster(
             IPaymasterERC20(address(voidToken)),
@@ -587,6 +590,8 @@ contract RedTeam5 is Test {
         address ownerB1 = address(0xB1);
         address ownerB2 = address(0xB2);
 
+        runtime.registerDao(CHAIN_A, address(this));
+        runtime.registerDao(CHAIN_B, address(this));
         deed.setOwner(CHAIN_A, ownerA);
         vm.prank(ownerA);
         runtime.activate(CHAIN_A, TOLL);

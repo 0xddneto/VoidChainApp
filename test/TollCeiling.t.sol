@@ -88,8 +88,8 @@ contract TollCeilingTest is Test {
     // The rule binds
     // -----------------------------------------------------------------------
 
-    /// @notice With a ceiling voted, the owner prices freely up to it and no further.
-    function test_OwnerPricesUpToTheCeilingAndNoFurther() public {
+    /// @notice With a ceiling voted, the DAO may set a fee up to it and no further.
+    function test_DaoSetsFeesUpToTheCeilingAndNoFurther() public {
         vm.prank(alice);
         runtime.activate(CHAIN, 0.001 ether);
 
@@ -98,11 +98,11 @@ contract TollCeilingTest is Test {
 
         // At the ceiling exactly: allowed. The vote sets a maximum, not a
         // forbidden value.
-        vm.prank(alice);
+        vm.prank(dao);
         runtime.setFee(CHAIN, CEILING);
-        assertEq(runtime.feeUsdOf(CHAIN), CEILING, "the owner should reach the ceiling");
+        assertEq(runtime.feeUsdOf(CHAIN), CEILING, "the DAO should reach the ceiling");
 
-        vm.prank(alice);
+        vm.prank(dao);
         vm.expectRevert(
             abi.encodeWithSelector(
                 VoidChainAppRuntime.FeeAboveCeiling.selector, CEILING + 1, CEILING
@@ -111,15 +111,14 @@ contract TollCeilingTest is Test {
         runtime.setFee(CHAIN, CEILING + 1);
     }
 
-    /// @notice A chain nobody voted on is unrestricted. A DAO that never spoke
-    ///         must not read as a DAO that voted zero.
+    /// @notice A DAO may set a fee when its chain has no maximum fee vote.
     function test_WithoutAVoteTheChainIsUnrestricted() public {
         vm.prank(alice);
         runtime.activate(CHAIN, 0.001 ether);
 
-        vm.prank(alice);
+        vm.prank(dao);
         runtime.setFee(CHAIN, 1_000 ether);
-        assertEq(runtime.feeUsdOf(CHAIN), 1_000 ether, "an unvoted chain should be free to price");
+        assertEq(runtime.feeUsdOf(CHAIN), 1_000 ether, "the DAO should be free to price");
         assertFalse(runtime.hasTollCeiling(CHAIN), "no ceiling should be recorded");
     }
 
@@ -132,13 +131,13 @@ contract TollCeilingTest is Test {
         runtime.setTollCeiling(CHAIN, 0);
         assertTrue(runtime.hasTollCeiling(CHAIN), "the vote should be recorded");
 
-        vm.prank(alice);
+        vm.prank(dao);
         vm.expectRevert(
             abi.encodeWithSelector(VoidChainAppRuntime.FeeAboveCeiling.selector, uint256(1), uint256(0))
         );
         runtime.setFee(CHAIN, 1);
 
-        vm.prank(alice);
+        vm.prank(dao);
         runtime.setFee(CHAIN, 0);
         assertEq(runtime.feeUsdOf(CHAIN), 0);
     }
@@ -175,7 +174,7 @@ contract TollCeilingTest is Test {
 
         assertEq(runtime.feeUsdOf(CHAIN), 1 ether, "the standing price should not be cut");
 
-        vm.prank(alice);
+        vm.prank(dao);
         vm.expectRevert();
         runtime.setFee(CHAIN, 2 ether);
     }
@@ -257,6 +256,7 @@ contract TollCeilingTest is Test {
     /// @notice A ceiling binds the chain it was voted for and no other.
     function test_ACeilingBindsOnlyItsOwnChain() public {
         deed.setOwner(CHAIN + 1, alice);
+        runtime.registerDao(CHAIN + 1, dao);
 
         vm.prank(dao);
         runtime.setTollCeiling(CHAIN, CEILING);

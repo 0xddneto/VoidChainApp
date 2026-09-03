@@ -44,11 +44,10 @@ type Governance = {
   proposalCount: number;
   quorumBps: bigint;
   votingPeriod: bigint;
-  daoControlsConfig: boolean;
   proposals: Proposal[];
 };
 
-type ProposalKind = 'signal' | 'fee-limit' | 'fee' | 'apps' | 'governance' | 'custom';
+type ProposalKind = 'signal' | 'fee-limit' | 'fee' | 'apps' | 'custom';
 type DaoAction = { target: Address; data: Hex };
 
 const asAddress = (value: unknown): Address | null =>
@@ -89,7 +88,6 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
   const [description, setDescription] = useState('');
   const [fee, setFee] = useState('0.001');
   const [appAccess, setAppAccess] = useState<'open' | 'closed'>('open');
-  const [daoControl, setDaoControl] = useState<'required' | 'holder'>('required');
   const [customTarget, setCustomTarget] = useState('');
   const [customData, setCustomData] = useState('0x');
 
@@ -99,13 +97,10 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
       address: factory, abi: ABI.daoFactory, functionName: 'daoOf', args: [BigInt(tokenId)],
     }) as Address;
     const daoAbi = GENERIC_DAO ? ABI.dao : ABI.daoLegacy;
-    const [count, quorumBps, votingPeriod, daoControlsConfig] = await Promise.all([
+    const [count, quorumBps, votingPeriod] = await Promise.all([
       rpc.readContract({ address: dao, abi: daoAbi, functionName: 'proposalCount' }) as Promise<bigint>,
       rpc.readContract({ address: dao, abi: daoAbi, functionName: 'QUORUM_BPS' }) as Promise<bigint>,
       rpc.readContract({ address: dao, abi: daoAbi, functionName: 'VOTING_PERIOD' }) as Promise<bigint>,
-      GENERIC_DAO
-        ? rpc.readContract({ address: DEPLOY.production.VoidChainAppRuntime as Address, abi: ABI.runtime, functionName: 'governanceControlsConfig', args: [BigInt(tokenId)] }) as Promise<boolean>
-        : Promise.resolve(false),
     ]);
 
     const latest = Math.min(Number(count), 25);
@@ -139,7 +134,7 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
       };
     }));
 
-    setData({ dao, proposalCount: Number(count), quorumBps, votingPeriod, daoControlsConfig, proposals });
+    setData({ dao, proposalCount: Number(count), quorumBps, votingPeriod, proposals });
   }, [tokenId]);
 
   useEffect(() => {
@@ -233,9 +228,6 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
     if (kind === 'fee') {
       return [{ target: runtime, data: encodeFunctionData({ abi: ABI.runtime, functionName: 'setFee', args: [BigInt(tokenId), value!] }) }];
     }
-    if (kind === 'governance') {
-      return [{ target: runtime, data: encodeFunctionData({ abi: ABI.runtime, functionName: 'setGovernanceControl', args: [BigInt(tokenId), daoControl === 'required'] }) }];
-    }
     return [{ target: runtime, data: encodeFunctionData({ abi: ABI.runtime, functionName: 'setPermissionlessDeploy', args: [BigInt(tokenId), appAccess === 'open'] }) }];
   }
 
@@ -265,13 +257,8 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
       </div>
 
       <p className={styles.daoScope}>
-        The NFT holder can propose any subject for this chain. VOID stays in your wallet: the balance at the proposal snapshot is your voting power for the full five-day vote.
+        The NFT holder can propose any subject for this chain. The first holder set its original transaction fee; every later fee or new-app policy change needs this DAO. VOID stays in your wallet: the balance at the proposal snapshot is your voting power for the full five-day vote.
       </p>
-      {data.daoControlsConfig && (
-        <p className={styles.daoNotice}>
-          DAO approval is required for the chain fee, activation and new-app policy. The NFT holder can propose, but cannot change those rules alone.
-        </p>
-      )}
 
       <dl className={styles.daoFacts}>
         <div><dt>DAO contract</dt><dd><Copyable value={data.dao} short /></dd></div>
@@ -297,7 +284,6 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
               <option value="fee-limit">Set maximum transaction fee</option>
               <option value="fee">Set transaction fee</option>
               <option value="apps">Open or close new app deployment</option>
-              <option value="governance">Require or remove DAO approval for chain rules</option>
               <option value="custom">Custom contract call</option>
             </select>
           </label>
@@ -312,16 +298,7 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
               New apps
               <select value={appAccess} onChange={(event) => setAppAccess(event.target.value as 'open' | 'closed')}>
                 <option value="open">Open to anyone</option>
-                <option value="closed">Only the owner</option>
-              </select>
-            </label>
-          )}
-          {kind === 'governance' && (
-            <label>
-              Chain rule approval
-              <select value={daoControl} onChange={(event) => setDaoControl(event.target.value as 'required' | 'holder')}>
-                <option value="required">Require DAO approval</option>
-                <option value="holder">Return control to NFT holder</option>
+                <option value="closed">DAO approval required</option>
               </select>
             </label>
           )}

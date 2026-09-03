@@ -53,8 +53,6 @@ export const ABI = {
     { type: 'function', name: 'setTollCeiling', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
     { type: 'function', name: 'setFee', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
     { type: 'function', name: 'setPermissionlessDeploy', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'bool' }], outputs: [] },
-    { type: 'function', name: 'setGovernanceControl', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'bool' }], outputs: [] },
-    { type: 'function', name: 'governanceControlsConfig', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'bool' }] },
     { type: 'function', name: 'execute', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'address' }, { type: 'bytes' }, { type: 'uint256' }], outputs: [{ type: 'bytes' }] },
   ],
   paymaster: [

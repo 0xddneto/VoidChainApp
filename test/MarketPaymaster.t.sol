@@ -64,6 +64,8 @@ contract MarketPaymasterTest is Test {
         runtime = new VoidChainAppRuntime(
             IRuntimeDeed(address(deed)), IRuntimeToken(address(token)), IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
+        runtime.registerDao(CHAIN, address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
         paymaster = new VoidPaymaster(
             IPaymasterToken(address(token)),

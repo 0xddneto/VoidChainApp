@@ -25,8 +25,9 @@ application registered for that same tokenId
 The Runtime rejects an app address not registered for the given `tokenId`. It
 also exposes the currently executing token and caller to the application, so
 each app can preserve the tenant boundary. The deed holder's authority is read
-from the ERC-721 at call time. A transfer therefore changes configuration
-authority without granting the holder custody of third-party app assets.
+from the ERC-721 at call time. A transfer changes the right to propose and
+manage NFT identity metadata, without granting custody of third-party app
+assets or unilateral chain-policy power.
 
 `runtime ID` in VoidScan is a deterministic per-deed identifier retained for
 the collection's internal namespace and possible future migration. It is not a
@@ -51,12 +52,12 @@ DAO can configure its own runtime but cannot alter another chain, seize a
 publisher's app balance, withdraw from the protocol treasury or control the
 shared paymaster.
 
-A chain can additionally opt into DAO-controlled configuration. In that mode,
-the current NFT holder cannot directly activate the chain, alter its
-transaction fee or close/open new-app publishing; only the DAO of that same
-deed can do so after a passed five-day vote. Identity metadata remains holder
-managed, since changing a label or social link does not rewrite execution
-rules or custody.
+DAO-controlled policy is mandatory for every active chain. The first holder
+sets the original transaction fee while activating its deed, after its DAO has
+been created. Every later transaction-fee or new-app publishing change can be
+made only by that same DAO after a passed five-day vote. There is no switch to
+return this power to a holder. Identity metadata remains holder-managed, since
+changing a label or social link does not rewrite execution rules or custody.
 
 The collection market is a registered runtime application, not an exception to
 the runtime boundary. A buyer signs the exact pool price, the exact chain fee

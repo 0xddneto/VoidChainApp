@@ -130,6 +130,9 @@ contract RedTeam2 is Test {
             IVoidChainDeed(address(deed)), IERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
+        runtime.registerDao(CHAIN1, address(this));
+        runtime.registerDao(CHAIN2, address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
         deed.setOwner(CHAIN1, alice);
         deed.setOwner(CHAIN2, bob);
@@ -377,7 +380,7 @@ contract RedTeam2 is Test {
 
         // Alice uses a real toll of 1 VOID and cycles it through her own chain.
         uint256 toll = 1 ether;
-        vm.prank(alice); runtime.setFee(CHAIN1, toll);
+        runtime.setFee(CHAIN1, toll);
         _fundToll(alice); // 1000 VOID working capital
 
         uint256 capitalStart = voidToken.balanceOf(alice);
@@ -409,21 +412,21 @@ contract RedTeam2 is Test {
     }
 
     // =====================================================================
-    // OWNER-DoS: the owner cannot delete third-party apps (good), but CAN price
+    // DAO policy: the DAO cannot delete third-party apps (good), but can price
     //      them into uselessness by setting the toll to MAX_FEE. A user of a
     //      third-party app who will only pay the advertised low toll is blocked.
     //      "Permissionless deploy" protects the code, not its economics.
     // =====================================================================
-    function test_OwnerCanPriceOutThirdPartyApps() public {
+    function test_DaoCanPriceOutThirdPartyApps() public {
         // Bob (a third-party dev) publishes an app on Alice's chain.
         NoopApp devApp = new NoopApp(IVoidChainAppRuntime(address(runtime)), CHAIN1);
         vm.prank(bob); runtime.registerApp(CHAIN1, address(devApp));
 
         _fundToll(victim);
-        // Alice front-runs by raising the toll. There is no longer a global
+        // The DAO raises the fee. There is no longer a global
         // ceiling to hit — she simply prices it out of reach. The finding is
         // UNCHANGED by removing MAX_FEE: the ceiling never was the protection.
-        vm.prank(alice); runtime.setFee(CHAIN1, 1_000 ether);
+        runtime.setFee(CHAIN1, 1_000 ether);
 
         // A user willing to pay only the old cheap toll is now shut out.
         vm.prank(victim);
@@ -444,7 +447,7 @@ contract RedTeam2 is Test {
     function test_M1_UnflushedRevenueFollowsWhoEarnedIt() public {
         NoopApp app = new NoopApp(IVoidChainAppRuntime(address(runtime)), CHAIN1);
         vm.prank(alice); runtime.registerApp(CHAIN1, address(app));
-        vm.prank(alice); runtime.setFee(CHAIN1, 1 ether);
+        runtime.setFee(CHAIN1, 1 ether);
 
         // A month of real third-party usage accrues to Alice's chain.
         _fundToll(victim); // stands in for paying users

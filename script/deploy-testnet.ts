@@ -234,7 +234,11 @@ console.log('  ✓ wired: oracle, forwarder and DAO factory frozen, settler, 10%
 
 // The bubble's reserve. $100 at $2,411/ETH is about 0.0415 ETH — but on testnet
 // we go with less, because what matters is that it works, not that it scales.
-const RESERVE = parseEther('0.01');
+// Operators may lower it for a clean test deployment when faucet ETH is scarce;
+// the amount is public in the final deployment record and never changes the
+// Paymaster's signature or spending limits.
+const RESERVE = parseEther(process.env.PAYMASTER_RESERVE ?? '0.01');
+if (RESERVE === 0n) throw new Error('PAYMASTER_RESERVE must be greater than zero.');
 await parent.waitForTransactionReceipt({
   hash: await wallet.sendTransaction({
     account, chain: null, to: paymaster, value: RESERVE,

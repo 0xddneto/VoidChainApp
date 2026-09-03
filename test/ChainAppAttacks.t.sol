@@ -108,6 +108,9 @@ contract ChainAppAttackTest is Test {
             IVoidChainDeed(address(deed)), IERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
+        runtime.registerDao(CHAIN1, address(this));
+        runtime.registerDao(CHAIN2, address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
 
         deed.setOwner(CHAIN1, alice);
@@ -224,11 +227,11 @@ contract ChainAppAttackTest is Test {
     }
 
     // =======================================================================
-    // ATTACK 3 -- the owner raises the toll in front of the user's transaction
+    // ATTACK 3 -- the DAO changes the fee before the user's transaction
     // =======================================================================
 
-    /// @notice The owner sees the user's transaction in the queue, raises the
-    ///         toll to the maximum, and charges a hundred VOID to someone who
+    /// @notice A passed DAO action can raise the fee before a transaction, but
+    ///         it cannot charge more VOID than the payer already accepted.
     ///
     /// @dev    I had argued the toll needs no delay because "the user sees the
     ///         price before signing". That is false: between signing and
@@ -236,7 +239,7 @@ contract ChainAppAttackTest is Test {
     ///         The correct defense is not a delay, it is the user stating the
     ///         most they accept paying -- the same way a DEX swap declares its
     ///         deslizamento tolerado.
-    function test_OwnerCannotFrontRunTheTollUpwards() public {
+    function test_DaoCannotChargeAboveTheSignedFee() public {
         Vault app = new Vault(
             IVoidChainAppRuntime(address(runtime)), CHAIN1, IERC20(address(voidToken))
         );
@@ -246,8 +249,7 @@ contract ChainAppAttackTest is Test {
         // The user accepts paying at most the advertised toll.
         uint256 accepted = runtime.feeOf(CHAIN1);
 
-        // The owner raises the toll to the ceiling before execution.
-        vm.prank(alice);
+        // The chain DAO raises the fee before execution.
         runtime.setFee(CHAIN1, 100 ether);
 
         uint256 before = voidToken.balanceOf(user);
@@ -269,7 +271,6 @@ contract ChainAppAttackTest is Test {
         vm.prank(user);
         voidToken.approve(address(app), type(uint256).max);
 
-        vm.prank(alice);
         runtime.setFee(CHAIN1, 1 ether);
 
         vm.prank(user);

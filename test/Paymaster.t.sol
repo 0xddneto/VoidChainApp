@@ -220,6 +220,8 @@ contract PaymasterTest is Test {
             IRuntimeERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
+        runtime.registerDao(CHAIN, address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
 
         paymaster = new VoidPaymaster(
@@ -736,6 +738,8 @@ contract PaymasterPermitTest is Test {
             IRuntimeERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
+        runtime.registerDao(CHAIN, address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
         paymaster = new VoidPaymaster(
             IPaymasterERC20(address(voidToken)),

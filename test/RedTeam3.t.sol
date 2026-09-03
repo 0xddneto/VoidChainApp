@@ -202,6 +202,9 @@ contract RedTeam3 is Test {
             IVoidChainDeed(address(deed)), IERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
+        runtime.registerDao(CHAIN1, address(this));
+        runtime.registerDao(CHAIN2, address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
         deed.setOwner(CHAIN1, alice);
         deed.setOwner(CHAIN2, bob);
@@ -319,8 +322,9 @@ contract RedTeam3 is Test {
 
         // Bob buys the deed.
         deed.setOwner(CHAIN1, bob);
-        // Bob sets fee to 0 hoping execute skips the auto-settle and lets him keep it.
-        vm.prank(bob); runtime.setFee(CHAIN1, 0);
+        // The chain DAO sets fee to 0; the new deed holder still cannot take
+        // the revenue Alice earned before the transfer.
+        runtime.setFee(CHAIN1, 0);
 
         // Bob executes with fee=0: the `if (fee > 0)` block is skipped entirely,
         // so pending & pendingOwner are untouched — still Alice's.

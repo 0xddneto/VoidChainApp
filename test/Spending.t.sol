@@ -174,6 +174,9 @@ contract SpendingTest is Test {
             IRuntimeERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
+        runtime.registerDao(CHAIN, address(this));
+        runtime.registerDao(OTHER_CHAIN, address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
         paymaster = new VoidPaymaster(
             IPaymasterERC20(address(voidToken)),

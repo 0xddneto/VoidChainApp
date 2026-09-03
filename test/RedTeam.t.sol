@@ -216,6 +216,10 @@ contract RedTeamTest is Test {
             IVoidChainDeed(address(deed)), IERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
+        runtime.registerDao(CHAIN1, address(this));
+        runtime.registerDao(CHAIN2, address(this));
+        runtime.registerDao(3, address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
 
         // Correcao do achado K: settle agora e' restrito. Autoriza o runtime.
@@ -294,7 +298,7 @@ contract RedTeamTest is Test {
         _seedRuntimeRevenue();
         EvilDrainApp evil = new EvilDrainApp(3, address(runtime), IERC20(address(voidToken)), thief);
         // Give chain 3 some pending so flush would have something to move.
-        vm.prank(thief); runtime.setFee(3, FEE);
+        runtime.setFee(3, FEE);
         vm.prank(thief); runtime.registerApp(3, address(evil));
         // pay a fee once so pending[3] > 0
         vm.prank(thief);
@@ -311,7 +315,7 @@ contract RedTeamTest is Test {
     // =====================================================================
     function test_C_NestedExecuteIsBlocked() public {
         EvilDrainApp evil = new EvilDrainApp(3, address(runtime), IERC20(address(voidToken)), thief);
-        vm.prank(thief); runtime.setFee(3, 0);
+        runtime.setFee(3, 0);
         vm.prank(thief); runtime.registerApp(3, address(evil));
 
         vm.prank(thief);
@@ -497,7 +501,6 @@ contract RedTeamTest is Test {
         Vault app = new Vault(IVoidChainAppRuntime(address(runtime)), CHAIN1, IERC20(address(voidToken)));
         vm.prank(alice); runtime.registerApp(CHAIN1, address(app));
 
-        vm.prank(alice);
         runtime.setFee(CHAIN1, 1_000 ether); // no ceiling, and that is fine
 
         voidToken.mint(thief, 10_000 ether);

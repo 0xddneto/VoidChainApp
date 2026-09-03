@@ -178,6 +178,7 @@ contract ScaleTest is Test {
             IRuntimeERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
         paymaster = new VoidPaymaster(
             IPaymasterERC20(address(voidToken)),
@@ -267,6 +268,7 @@ contract ScaleTest is Test {
         for (uint256 id = 1; id <= CHAINS; id++) {
             address owner = owners[id % owners.length];
             deed.setOwner(id, owner);
+            runtime.registerDao(id, address(this));
             vm.prank(owner);
             runtime.activate(id, tollOf(id));
 
@@ -354,6 +356,7 @@ contract ScaleTest is Test {
         for (uint256 id = 1; id <= CHAINS; id++) {
             address owner = owners[id % owners.length];
             deed.setOwner(id, owner);
+            runtime.registerDao(id, address(this));
             vm.prank(owner);
             runtime.activate(id, tollOf(id));
             Counter c = new Counter(IVoidChainAppRuntime(address(runtime)), id);

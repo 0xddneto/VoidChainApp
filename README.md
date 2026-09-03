@@ -18,14 +18,17 @@ to a shared contract.
 Each of the 1,111 `VoidChainDeed` NFTs binds its current holder to one isolated
 execution space in the runtime.
 
-- The holder configures its own space. Its DAO can pass proposals for that
-  same space without reaching other deeds or protocol roles.
+- The first holder sets the original transaction fee when activating its space.
+  After activation, its own DAO is the only authority for fee and new-app
+  policy; it cannot reach other deeds or protocol roles.
 - Transactions only reach applications registered for the supplied `tokenId`; the
   runtime accounts for fees and revenue per deed.
-- Anyone may publish an application to an open space. The holder can close new
-  publication, but cannot seize a publisher's contract or its withdrawal right.
-- Ownership is read from `ownerOf()` at execution time, so a deed transfer moves
-  the allowed configuration authority without a migration step.
+- Anyone may publish an application to an open space. If the DAO closes new
+  publication, only that DAO can admit another app; it cannot seize a
+  publisher's contract or its withdrawal right.
+- Ownership is read from `ownerOf()` at execution time. A transfer moves the
+  right to propose and edit NFT identity metadata, never control of chain
+  policy outside the DAO.
 - Each deed has a deterministic DAO clone. The NFT holder creates a proposal
   with a description and optional zero-ETH actions; every wallet votes with the
   VOID it held at the previous-block snapshot. VOID stays in the wallet and the
@@ -40,9 +43,9 @@ address; the deed holder's 98% remains individually claimable.
 The test collection market is itself a registered app: a buyer signs the exact
 VOID price and one-use permissions, while the Paymaster submits the parent-chain
 transaction. The market route is intentionally closed to arbitrary targets and
-permits. A chain can also vote to require its DAO before fee, activation or
-new-app-policy changes; the holder keeps proposal rights but cannot bypass that
-vote.
+permits. The DAO rule is permanent: the first holder sets the initial fee at
+activation, then every fee or new-app-policy change requires a DAO vote. The
+holder keeps proposal rights but cannot bypass that vote.
 
 Read the precise boundary and the requirements for a future rollup in
 [docs/architecture.md](docs/architecture.md). Operational gates live in

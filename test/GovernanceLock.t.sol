@@ -49,7 +49,7 @@ contract GovernanceTestApp {
     }
 }
 
-/// @notice Once a chain turns DAO control on, its holder cannot bypass a vote.
+/// @notice A chain enters DAO-only policy at genesis, with no holder escape hatch.
 contract GovernanceLockTest is Test {
     uint256 internal constant CHAIN = 7;
     uint256 internal constant STARTING_FEE = 0.001 ether;
@@ -100,13 +100,21 @@ contract GovernanceLockTest is Test {
         actions[0] = VoidChainDao.Action({target: address(runtime), data: data});
     }
 
-    function test_holderCannotBypassDaoControlledConfiguration() public {
-        _pass(
-            _action(abi.encodeCall(VoidChainAppRuntime.setGovernanceControl, (CHAIN, true))),
-            "Require a DAO vote for chain policy"
+    function test_activationRequiresARegisteredDao() public {
+        uint256 ungovernedChain = CHAIN + 1;
+        deed.setOwner(ungovernedChain, holder);
+        VoidChainAppRuntime fresh = new VoidChainAppRuntime(
+            IRuntimeDeed(address(deed)), IERC20(address(token)), IVoidChainTreasury(address(treasury))
         );
-        assertTrue(runtime.governanceControlsConfig(CHAIN));
 
+        vm.prank(holder);
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainAppRuntime.DaoNotRegistered.selector, ungovernedChain)
+        );
+        fresh.activate(ungovernedChain, STARTING_FEE);
+    }
+
+    function test_holderCannotChangePolicyAfterGenesis() public {
         vm.prank(holder);
         vm.expectRevert(
             abi.encodeWithSelector(VoidChainAppRuntime.NotThisChainsDao.selector, CHAIN, holder)
@@ -127,11 +135,7 @@ contract GovernanceLockTest is Test {
         assertEq(fee, VOTED_FEE);
     }
 
-    function test_closedChainAdmissionAlsoRequiresTheDaoAfterLock() public {
-        _pass(
-            _action(abi.encodeCall(VoidChainAppRuntime.setGovernanceControl, (CHAIN, true))),
-            "Require a DAO vote for chain policy"
-        );
+    function test_closedChainAdmissionRequiresTheDaoFromGenesis() public {
         _pass(
             _action(abi.encodeCall(VoidChainAppRuntime.setPermissionlessDeploy, (CHAIN, false))),
             "Close new application publishing"
@@ -145,26 +149,17 @@ contract GovernanceLockTest is Test {
         runtime.registerApp(CHAIN, address(app));
     }
 
-    function test_onlyTheDaoCanReturnControlToTheHolder() public {
-        _pass(
-            _action(abi.encodeCall(VoidChainAppRuntime.setGovernanceControl, (CHAIN, true))),
-            "Require a DAO vote for chain policy"
-        );
-
+    function test_daoCanChangePolicyButNeverReturnItToTheHolder() public {
         vm.prank(holder);
         vm.expectRevert(
             abi.encodeWithSelector(VoidChainAppRuntime.NotThisChainsDao.selector, CHAIN, holder)
         );
-        runtime.setGovernanceControl(CHAIN, false);
+        runtime.setFee(CHAIN, VOTED_FEE);
 
         _pass(
-            _action(abi.encodeCall(VoidChainAppRuntime.setGovernanceControl, (CHAIN, false))),
-            "Return policy control to the deed holder"
+            _action(abi.encodeCall(VoidChainAppRuntime.setFee, (CHAIN, VOTED_FEE))),
+            "Set the transaction fee"
         );
-        assertFalse(runtime.governanceControlsConfig(CHAIN));
-
-        vm.prank(holder);
-        runtime.setFee(CHAIN, VOTED_FEE);
         (, uint256 fee,,,,,) = runtime.apps(CHAIN);
         assertEq(fee, VOTED_FEE);
     }

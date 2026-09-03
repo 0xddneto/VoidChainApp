@@ -16,12 +16,12 @@ is explicitly changed here.
 - The target enforces authority. The runtime accepts configuration only from
   the DAO registered for that same deed; a DAO cannot alter another chain,
   remove a publisher's app, seize assets, or change protocol/paymaster roles.
-- A chain may vote to require DAO approval for its economic and execution
-  policy: activation, transaction fee and whether new apps are open to anyone.
-  Once enabled, the deed holder can still create proposals but cannot change
-  those settings directly. Turning that protection off is itself a DAO action.
-  The deed holder still controls display metadata such as the name, image and
-  social links; those fields do not change chain execution or economics.
+- The first holder sets the original transaction fee when activating the
+  chain. After activation, the DAO rule is permanent: only that chain's DAO
+  can change its transaction fee or whether new apps are open to anyone. There
+  is no action that returns this power to the holder. The holder still controls
+  display metadata such as the name, image and social links; those fields do
+  not change chain execution or economics.
 - Any wallet holding VOID at the proposal snapshot can vote for or against it.
 - VOID never enters the DAO: there is no staking, lock, approval, or withdrawal
   to participate in governance.

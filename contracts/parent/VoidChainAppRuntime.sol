@@ -317,19 +317,6 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     mapping(uint256 tokenId => uint256) public tollCeilingUsd;
     mapping(uint256 tokenId => bool) public hasTollCeiling;
 
-    /// @notice Whether this chain chose to make its economic configuration DAO-only.
-    ///
-    /// @dev    A DAO ceiling alone prevents an excessive fee, but it does not
-    ///         stop the deed holder from changing a fee or closing deployments
-    ///         without a vote. Once this switch is on, those policy changes can
-    ///         only arrive through the DAO registered for this exact chain. The
-    ///         DAO may also vote to switch it off; the holder never can.
-    ///
-    ///         This deliberately does not govern the deed's display name,
-    ///         image or social links. Those are identity metadata, not an
-    ///         economic or execution rule.
-    mapping(uint256 tokenId => bool) public governanceControlsConfig;
-
     /// @dev    Kept only for the one-time write of the forwarder and the DAO
     ///         factory. After that it grants no power at all.
     address private immutable deployer;
@@ -339,7 +326,6 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     event DaoFactorySet(address factory);
     event DaoRegistered(uint256 indexed tokenId, address dao);
     event TollCeilingSet(uint256 indexed tokenId, uint256 ceilingUsd);
-    event GovernanceControlChanged(uint256 indexed tokenId, bool daoRequired);
     event ProtocolSwept(address treasury, uint256 amount);
     event AppRegistered(uint256 indexed tokenId, address app, address publisher);
     event DeploymentPolicyChanged(uint256 indexed tokenId, bool permissionless);
@@ -387,6 +373,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     error NotTheDaoFactory(address who);
     error NotThisChainsDao(uint256 tokenId, address who);
     error DaoAlreadyRegistered(uint256 tokenId, address current);
+    error DaoNotRegistered(uint256 tokenId);
     error FeeAboveCeiling(uint256 feeUsd, uint256 ceilingUsd);
     error NotTheDeployer(address who);
     error NoExecutionInProgress();
@@ -461,42 +448,33 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         emit TollCeilingSet(tokenId, ceilingUsd);
     }
 
-    /// @notice Makes fee, activation and app-admission policy require a passed DAO vote.
-    /// @dev    There is intentionally no deed-holder escape hatch. Otherwise a
-    ///         holder could turn DAO control off immediately after the vote that
-    ///         enabled it. A future change in either direction is itself a DAO
-    ///         action, visible for five days before it can execute.
-    function setGovernanceControl(uint256 tokenId, bool daoRequired) external {
-        if (msg.sender != daoOf[tokenId]) revert NotThisChainsDao(tokenId, msg.sender);
-        governanceControlsConfig[tokenId] = daoRequired;
-        emit GovernanceControlChanged(tokenId, daoRequired);
-    }
-
-    /// @dev Applies DAO control once a chain has explicitly opted into it. Until
-    ///      then, the deed holder remains the chain controller and its own DAO
-    ///      may execute an approved action as well.
-    modifier onlyChainController(uint256 tokenId) {
-        if (governanceControlsConfig[tokenId]) {
-            if (daoOf[tokenId] != msg.sender) revert NotThisChainsDao(tokenId, msg.sender);
-        } else if (deed.ownerOf(tokenId) != msg.sender && daoOf[tokenId] != msg.sender) {
-            revert NotDeedHolder(tokenId, msg.sender);
-        }
+    /// @dev The holder has exactly one economic action: setting the original
+    ///      fee while activating an inactive chain. After that, the chain's DAO
+    ///      is its only configuration authority.
+    modifier onlyGenesisHolder(uint256 tokenId) {
+        if (deed.ownerOf(tokenId) != msg.sender) revert NotDeedHolder(tokenId, msg.sender);
         _;
     }
 
-    function _isChainController(uint256 tokenId, address caller) private view returns (bool) {
-        if (governanceControlsConfig[tokenId]) return daoOf[tokenId] == caller;
-        return deed.ownerOf(tokenId) == caller || daoOf[tokenId] == caller;
+    /// @dev A chain cannot borrow authority from another chain's DAO, its NFT
+    ///      holder, or a protocol administrator.
+    modifier onlyThisChainsDao(uint256 tokenId) {
+        if (daoOf[tokenId] != msg.sender) revert NotThisChainsDao(tokenId, msg.sender);
+        _;
     }
 
     // ---------------------------------------------------------------------
-    // The deed owner commands their chainapp
+    // Genesis configuration and DAO-governed chain policy
     // ---------------------------------------------------------------------
 
-    /// @notice Turns on a deed's chainapp. Costs no infrastructure at all.
-    /// @param feePerCallUsd The toll IN DOLLARS, with 18 decimals (1e15 = $0.001).
-    function activate(uint256 tokenId, uint256 feePerCallUsd) external onlyChainController(tokenId) {
+    /// @notice Activates a deed's chainapp and writes its original transaction fee.
+    /// @dev The current holder may do this exactly once. A DAO must already be
+    ///      registered, so there is never an active chain whose fee or app
+    ///      policy can later be controlled outside its DAO.
+    /// @param feePerCallUsd The transaction fee in dollars, with 18 decimals (1e15 = $0.001).
+    function activate(uint256 tokenId, uint256 feePerCallUsd) external onlyGenesisHolder(tokenId) {
         if (apps[tokenId].active) revert AlreadyActive(tokenId);
+        if (daoOf[tokenId] == address(0)) revert DaoNotRegistered(tokenId);
         // A ceiling can be voted before a chain is switched on, and activating
         // above it would leave the chain permanently over its own limit.
         if (hasTollCeiling[tokenId] && feePerCallUsd > tollCeilingUsd[tokenId]) {
@@ -511,19 +489,16 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         emit FeeUpdated(tokenId, 0, feePerCallUsd);
     }
 
-    /// @notice Changes the chain's toll.
-    /// @dev    No timelock, unlike what happens on real chains, and the reason is
-    ///         that here the user sees the price BEFORE signing: the value is
-    ///         read at call time and charged in the same transaction. On an L3
-    ///         the gas price changes underneath whoever is already using it; here
-    ///         there is no such interval to protect.
-    function setFee(uint256 tokenId, uint256 feePerCallUsd) external onlyChainController(tokenId) {
+    /// @notice Changes the chain's transaction fee after a passed DAO proposal.
+    /// @dev The original fee is set by the first holder at activation. Every
+    ///      later change is made by this exact chain's DAO, after its five-day
+    ///      vote; neither a holder nor a protocol administrator can bypass it.
+    function setFee(uint256 tokenId, uint256 feePerCallUsd) external onlyThisChainsDao(tokenId) {
         if (!apps[tokenId].active) revert NotActive(tokenId);
 
-        // The owner prices their chain freely, up to what the people holding the
-        // token that pays its tolls decided. Without this the `maxToll` a payer
-        // signs would be the only protection, and that guards one call — not a
-        // business built on top of the chain.
+        // A DAO-approved ceiling limits future fees. `maxFee` protects a single
+        // signed transaction; the ceiling protects applications that keep
+        // operating on this chain over time.
         if (hasTollCeiling[tokenId] && feePerCallUsd > tollCeilingUsd[tokenId]) {
             revert FeeAboveCeiling(feePerCallUsd, tollCeilingUsd[tokenId]);
         }
@@ -540,10 +515,9 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         emit OracleUpdated(address(oracle_));
     }
 
-    /// @notice What a call on this chain costs RIGHT NOW, in VOID.
-    /// @dev    The owner sets it in dollars; this is what the payer will actually
-    ///         hand over at the current rate. It is the number the wallet should
-    ///         show.
+    /// @notice What a transaction on this chain costs right now, in VOID.
+    /// @dev The genesis holder sets the initial dollar value. Later changes are
+    ///      made only by the chain DAO; this is the amount the wallet shows.
     function feeInVoid(uint256 tokenId) public view returns (uint256) {
         uint256 usd = apps[tokenId].feePerCallUsd;
         if (usd == 0) return 0;
@@ -563,16 +537,15 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     ///         without developers there is no use, and without use the chain is
     ///         worth nothing even to the owner.
     ///
-    ///         The owner earns from the activity, not from controlling the door.
+    ///         The holder earns from activity, not from controlling the door.
     function registerApp(uint256 tokenId, address app) external {
         ChainApp storage chain = apps[tokenId];
         if (!chain.active) revert NotActive(tokenId);
         if (app == address(0)) revert ZeroAddress();
 
-        // On a closed chain, the controller publishes. Once the DAO-control
-        // switch is on, that means a passed proposal, never the deed holder
-        // acting on their own.
-        if (!chain.permissionlessDeploy && !_isChainController(tokenId, msg.sender)) {
+        // A closed chain admits a new app only through its DAO. Existing apps
+        // remain untouched, and no holder can bypass an approved policy.
+        if (!chain.permissionlessDeploy && daoOf[tokenId] != msg.sender) {
             revert DeploymentClosed(tokenId, msg.sender);
         }
 
@@ -627,7 +600,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     ///         not confiscate old ones.
     function setPermissionlessDeploy(uint256 tokenId, bool open)
         external
-        onlyChainController(tokenId)
+        onlyThisChainsDao(tokenId)
     {
         apps[tokenId].permissionlessDeploy = open;
         emit DeploymentPolicyChanged(tokenId, open);

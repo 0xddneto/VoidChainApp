@@ -185,6 +185,7 @@ contract RedTeam4 is Test {
             IVoidChainDeed(address(deed)), IERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
         vm.prank(gov);
         treasury.setAuthorizedSettler(address(runtime), true);
@@ -199,6 +200,7 @@ contract RedTeam4 is Test {
             uint256 chain = i + 1;
             address owner = actors[i];
             deed.setOwner(chain, owner);
+            runtime.registerDao(chain, address(this));
             vm.prank(owner);
             runtime.activate(chain, FEE);
             NoopApp app = new NoopApp(IVoidChainAppRuntime(address(runtime)), chain);
@@ -490,7 +492,6 @@ contract RedTeam4 is Test {
         (address app,) = _appAndFee(chain);
         address owner = actors[0];
 
-        vm.prank(owner);
         runtime.setFee(chain, 49); // below the threshold where 2% rounded to zero
 
         for (uint256 i; i < 5; ++i) {

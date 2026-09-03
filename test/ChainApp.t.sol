@@ -145,6 +145,9 @@ contract ChainAppTest is Test {
             IERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
+        runtime.setDaoFactoryOnce(address(this));
+        runtime.registerDao(CHAIN1, address(this));
+        runtime.registerDao(CHAIN2, address(this));
         runtime.setOracle(IRuntimeOracle(address(oracle)));
 
         deed.setOwner(CHAIN1, alice);
@@ -383,7 +386,7 @@ contract ChainAppTest is Test {
         assertFalse(runtime.belongsTo(CHAIN1, address(theirApp)));
     }
 
-    /// @notice A chain can be closed, and then only the owner publishes.
+    /// @notice A chain can be closed, and then only its DAO publishes.
     /// @dev    Closing does not confiscate: what was already up keeps working.
     function test_ClosedChainOnlyAcceptsTheOwner() public {
         address builder = address(0xB1D);
@@ -391,7 +394,6 @@ contract ChainAppTest is Test {
         vm.prank(builder);
         runtime.registerApp(CHAIN1, address(before));
 
-        vm.prank(alice);
         runtime.setPermissionlessDeploy(CHAIN1, false);
 
         Recorder rejected = new Recorder(IVoidChainAppRuntime(address(runtime)), CHAIN1);
@@ -402,35 +404,44 @@ contract ChainAppTest is Test {
         runtime.registerApp(CHAIN1, address(rejected));
 
         assertTrue(runtime.belongsTo(CHAIN1, address(before)), "closing does not confiscate what already existed");
+
+        Recorder approved = new Recorder(IVoidChainAppRuntime(address(runtime)), CHAIN1);
+        runtime.registerApp(CHAIN1, address(approved));
+        assertTrue(runtime.belongsTo(CHAIN1, address(approved)), "only the DAO may admit a new app");
     }
 
-    /// @notice Only the owner opens and closes the chain to publications.
-    function test_OnlyDeedHolderChangesDeploymentPolicy() public {
+    /// @notice Only the chain DAO opens and closes publication.
+    function test_OnlyChainDaoChangesDeploymentPolicy() public {
         vm.expectRevert(
-            abi.encodeWithSelector(VoidChainAppRuntime.NotDeedHolder.selector, CHAIN1, bob)
+            abi.encodeWithSelector(VoidChainAppRuntime.NotThisChainsDao.selector, CHAIN1, bob)
         );
         vm.prank(bob);
         runtime.setPermissionlessDeploy(CHAIN1, false);
     }
 
-    function test_OnlyDeedHolderChangesFee() public {
+    function test_OnlyChainDaoChangesFee() public {
         vm.expectRevert(
-            abi.encodeWithSelector(VoidChainAppRuntime.NotDeedHolder.selector, CHAIN1, bob)
+            abi.encodeWithSelector(VoidChainAppRuntime.NotThisChainsDao.selector, CHAIN1, bob)
         );
         vm.prank(bob);
         runtime.setFee(CHAIN1, 1 ether);
     }
 
-    /// @notice The buyer commands the chainapp in the same block as the sale.
-    function test_BuyerCommandsImmediately() public {
+    /// @notice Selling the NFT cannot give a buyer unilateral fee control.
+    function test_BuyerCannotBypassTheChainDao() public {
         deed.setOwner(CHAIN1, bob);
 
         vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainAppRuntime.NotThisChainsDao.selector, CHAIN1, bob)
+        );
+        runtime.setFee(CHAIN1, 0.5 ether);
+
         runtime.setFee(CHAIN1, 0.5 ether);
         assertEq(runtime.feeOf(CHAIN1), 0.5 ether);
 
         vm.expectRevert(
-            abi.encodeWithSelector(VoidChainAppRuntime.NotDeedHolder.selector, CHAIN1, alice)
+            abi.encodeWithSelector(VoidChainAppRuntime.NotThisChainsDao.selector, CHAIN1, alice)
         );
         vm.prank(alice);
         runtime.setFee(CHAIN1, 0.1 ether);
@@ -445,8 +456,7 @@ contract ChainAppTest is Test {
     ///         a legitimate chain from charging a lot for something worth a lot.
     ///         This test now proves the protection that actually exists.
     function test_TollCeilingIsWhatThePayerSigned() public {
-        // The owner may charge whatever they like -- there is no ceiling in the contract.
-        vm.prank(alice);
+        // The DAO may set the fee, while each payer still signs their own cap.
         runtime.setFee(CHAIN1, 101 ether);
 
         // But the payer declares their limit, and above it the call refuses.
