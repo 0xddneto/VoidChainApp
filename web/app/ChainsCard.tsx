@@ -116,7 +116,7 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
 
       <div className={styles.directoryGuide}>
         <p><b>Calls</b> are successful, metered runtime executions to a space’s published apps — not blocks or every parent-chain transaction.</p>
-        <p><b>Toll per call</b> is the access price set in USD and paid in VOID at execution time. Robinhood testnet ETH gas is separate.</p>
+        <p><b>Toll per call</b> is the access price set in USD and paid in VOID at execution time: 98% goes to the deed holder and 2% to protocol. Robinhood testnet ETH gas is separate.</p>
       </div>
 
       <div className={styles.scroller}>

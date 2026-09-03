@@ -235,7 +235,8 @@ export default function Mint() {
           The toll is what an execution space charges for one runtime call to an application.
           The owner sets it in dollars and it is paid in VOID, converted at the
           moment of the call — so the price stays the same in real terms whatever
-          the token is doing. It goes to the current deed holder.
+          the token is doing. The current deed holder receives 98%; the protocol
+          receives the remaining 2%.
         </p>
 
         <div className={styles.steps}>
