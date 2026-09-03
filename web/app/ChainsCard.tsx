@@ -268,7 +268,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
                   {detail.apps.map((a) => (
                     <li key={a.address}>
                       <Copyable value={a.address} short />
-                      {chain.id === chainOneDex.chainTokenId && dexApps.has(a.address.toLowerCase()) && <a className={styles.chainLink} href="/dex" onClick={(event) => event.stopPropagation()}>Open DEX ↗</a>}
+                      {chain.id === chainOneDex.chainTokenId && dexApps.has(a.address.toLowerCase()) && <a className={styles.chainLink} href="https://voiddex-0xddnetos-projects.vercel.app" target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Open DEX ↗</a>}
                       <span className={styles.note}>by <Copyable value={a.publisher} short /></span>
                     </li>
                   ))}
