@@ -25,6 +25,7 @@ script/deployments/
 DECISIONS.md
 notes/
 *-NOTES.md
+.archive/
 
 # Editor and tooling configuration, including files some frameworks regenerate
 # on every run
