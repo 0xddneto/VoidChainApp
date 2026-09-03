@@ -4,11 +4,13 @@
     "rpc": "https://robinhood-testnet.drpc.org"
   },
   "migration": {
-    "version": "v2-pending-holder-activation",
+    "version": "v2-active",
     "legacyRuntime": "0x66833df7B5404E6c75F3e5126F7105F2fDceE4FD",
     "legacyPaymaster": "0xe910C93915B8cf2C34F5beB2b0BE94D74a661aba",
     "chainOneHolder": "0xA7a12A1D7000e40Ecc18a62Af456791b89cB2770",
-    "reserveMovedWei": "985281540000000"
+    "reserveMovedWei": "985281540000000",
+    "activationBlock": 112458475,
+    "activationTx": "0x01ae6db10766c0a9cafce5f3c9700e3f01de5b5dee80db20d4c7d38f0765f4c8"
   },
   "production": {
     "VoidChainDeed": "0x7797e2b67c0cfe6c61e8b398951ea423aaad2dc1",

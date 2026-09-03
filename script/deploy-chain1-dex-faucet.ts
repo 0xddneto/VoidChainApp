@@ -1,5 +1,5 @@
 /** Publishes the paid tUSD/tLINK claim app for the current Chain #1 DEX. */
-import 'dotenv/config';
+import { config } from 'dotenv';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +8,10 @@ import { privateKeyToAccount } from 'viem/accounts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
+// Scripts are launched both from the repository root and through npm's
+// `--prefix script` command. Load the project-scoped secret file explicitly
+// so deployment never depends on the caller's working directory.
+config({ path: resolve(root, 'script/.env') });
 const deployment = JSON.parse(readFileSync(resolve(root, 'web/lib/deployment.json'), 'utf8'));
 const configPath = resolve(root, 'web/lib/dex-chain1.json');
 const dex = JSON.parse(readFileSync(configPath, 'utf8')) as { chainTokenId: number; runtime: Address; pools: Array<{ asset: Address }> ; faucet?: Address };

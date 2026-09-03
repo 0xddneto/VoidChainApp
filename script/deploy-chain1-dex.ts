@@ -27,7 +27,11 @@ import { privateKeyToAccount } from 'viem/accounts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
-const deployment = JSON.parse(readFileSync(resolve(root, 'web/lib/deployment.json'), 'utf8'));
+// A staged runtime can receive its DEX before it becomes the public Runtime.
+// This keeps the explorer pointer atomic: deployment first, then promotion.
+const deploymentSource = resolve(root, process.env.DEPLOYMENT_SOURCE ?? 'web/lib/deployment.json');
+const dexConfigDestination = resolve(root, process.env.DEX_CONFIG_OUTPUT ?? 'web/lib/dex-chain1.json');
+const deployment = JSON.parse(readFileSync(deploymentSource, 'utf8'));
 const rpcUrl = process.env.PARENT_RPC ?? deployment.network.rpc;
 const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
 if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey ?? '')) {
@@ -179,8 +183,9 @@ const config = {
     { address: poolLink, label: 'VOID / tLINK', asset: testLink, token0: linkPair.token0, token1: linkPair.token1 },
   ],
 };
-writeFileSync(resolve(root, 'web/lib/dex-chain1.json'), `${JSON.stringify(config, null, 2)}\n`);
+writeFileSync(dexConfigDestination, `${JSON.stringify(config, null, 2)}\n`);
 
 console.log('\n✓ DEX deployed and registered on VOID Chain #1.');
 console.log(`  factory: ${factory}`);
 console.log(`  pools:   ${poolUsd}, ${poolLink}`);
+console.log(`  config:  ${dexConfigDestination}`);

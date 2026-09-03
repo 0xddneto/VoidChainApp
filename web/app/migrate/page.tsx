@@ -66,7 +66,7 @@ export default function V2MigrationPage() {
       const receipt = await rpc.waitForTransactionReceipt({ hash });
       if (receipt.status !== 'success') throw new Error('V2 activation reverted.');
       setActive(true);
-      setNotice(`V2 activated: ${hash.slice(0, 10)}…${hash.slice(-8)}. The final promotion can now run.`);
+      setNotice(`V2 activated: ${hash.slice(0, 10)}…${hash.slice(-8)}. Refresh VoidScan after the deployment is published.`);
     } catch (error: any) {
       setNotice(error?.shortMessage ?? error?.message ?? 'Could not activate V2.');
     } finally {
@@ -93,7 +93,7 @@ export default function V2MigrationPage() {
               <div><dt>State</dt><dd>{active === true ? 'Activated' : active === false ? 'Waiting for holder' : 'Loading…'}</dd></div>
             </dl>
             {active !== true && <button className={styles.criticalActivate} disabled={busy || fee === null} onClick={() => void activate()}>{busy ? 'Activating…' : isHolder ? 'Activate V2' : 'Connect Chain #1 holder'}</button>}
-            {active === true && <p className={styles.criticalNotice}>V2 is active. The deployment can now be promoted and its DEX can be redeployed on the V2 runtime.</p>}
+            {active === true && <p className={styles.criticalNotice}>V2 is active. VoidScan follows this runtime; apps deployed from now on belong to the V2 chain record.</p>}
             {notice && <p className={styles.criticalNotice} role="status">{notice}</p>}
           </div>
         </div>
