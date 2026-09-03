@@ -33,10 +33,13 @@ export default function V2MigrationPage() {
     const wallet = provider();
     void wallet?.request({ method: 'eth_accounts' }).then((accounts) => setAccount(firstAddress(accounts))).catch(() => undefined);
     void Promise.all([
-      rpc.readContract({ address: DEPLOY.production.VoidChainAppRuntime as Address, abi: ABI.runtime, functionName: 'feeOf', args: [1n] }),
+      rpc.readContract({ address: DEPLOY.production.VoidChainAppRuntime as Address, abi: ABI.runtime, functionName: 'statsOf', args: [1n] }),
       rpc.readContract({ address: v2Runtime, abi: ABI.runtime, functionName: 'statsOf', args: [1n] }),
-    ]).then(([oldFee, stats]) => {
-      setFee(oldFee as bigint);
+    ]).then(([oldStats, stats]) => {
+      // `activate` takes the deed holder's fixed USD fee, not its current
+      // VOID conversion. The latter moves with the oracle and is only shown to
+      // a user before a call; using it here would permanently change the price.
+      setFee((oldStats as readonly unknown[])[1] as bigint);
       setActive(Boolean((stats as readonly unknown[])[0]));
     }).catch(() => setNotice('Could not read the migration state from Robinhood testnet.'));
   }, []);

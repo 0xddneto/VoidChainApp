@@ -13,12 +13,12 @@
   "production": {
     "VoidChainDeed": "0x7797e2b67c0cfe6c61e8b398951ea423aaad2dc1",
     "VoidChainTreasury": "0x195a2e19fc2f6764641f198daa6f348bd433262e",
-    "VoidChainAppRuntime": "0xfd1cc55e21385e4eb7653041cfd51d884a684243",
-    "VoidPaymaster": "0x602a7a561a507c6b8f05b69d2b48443749347188",
-    "VoidChainDaoFactory": "0x82501dc8541c6f3d237114e4c826ae5aa339cf1a"
+    "VoidChainAppRuntime": "0x424ec038baf1a9786a8eba1212954513ed31aa5d",
+    "VoidPaymaster": "0x79d1cdb8c7e5f49ef2f0ceee9ab478c651435fbb",
+    "VoidChainDaoFactory": "0x2974b5843f436e588562d70112b2c53d43f3b669"
   },
   "chainOne": {
     "tokenId": 1,
-    "dao": "0x3109EC6Fbca284a99857679EeeCf3edd99CfEb1c"
+    "dao": "0xf11AF5fa387B4138400f806b2b255FE4f36C129D"
   }
 }

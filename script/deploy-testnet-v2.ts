@@ -34,6 +34,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 const out = resolve(root, 'out');
 const previous = JSON.parse(readFileSync(resolve(root, 'web/lib/deployment.json'), 'utf8'));
+// A failed/staged V2 can be replaced without ever touching the Deed: pass its
+// record here to move its ETH reserve into the replacement pair.
+const reserveSourcePath = process.env.PAYMASTER_RESERVE_SOURCE;
+const reserveSource = reserveSourcePath
+  ? JSON.parse(readFileSync(resolve(root, reserveSourcePath), 'utf8'))
+  : previous;
 const rpcUrl = process.env.PARENT_RPC ?? previous.network.rpc;
 const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
 const expectedChainId = 46_630;
@@ -95,6 +101,8 @@ async function send(address: Address, abi: Abi, functionName: string, args: read
 
 const oldRuntime = getAddress(previous.production.VoidChainAppRuntime) as Address;
 const oldPaymaster = getAddress(previous.production.VoidPaymaster) as Address;
+const reservePaymaster = getAddress(reserveSource.production.VoidPaymaster) as Address;
+const reserveRuntime = getAddress(reserveSource.production.VoidChainAppRuntime) as Address;
 const deed = getAddress(previous.production.VoidChainDeed) as Address;
 const treasury = getAddress(previous.production.VoidChainTreasury) as Address;
 const token = getAddress(previous.testnet.VoidTestToken) as Address;
@@ -112,11 +120,12 @@ if (await rpc.getChainId() !== expectedChainId) {
   throw new Error(`Refusing to deploy outside Robinhood testnet ${expectedChainId}.`);
 }
 
-const [oldForwarder, oldPaymasterRuntime, deedOwner, oldReserve, marginBps, limits, refillPolicy] = await Promise.all([
+const [oldForwarder, oldPaymasterRuntime, reservePaymasterRuntime, deedOwner, oldReserve, marginBps, limits, refillPolicy] = await Promise.all([
   rpc.readContract({ address: oldRuntime, abi: runtimeAbi, functionName: 'forwarder' }) as Promise<Address>,
   rpc.readContract({ address: oldPaymaster, abi: paymasterAbi, functionName: 'runtime' }) as Promise<Address>,
+  rpc.readContract({ address: reservePaymaster, abi: paymasterAbi, functionName: 'runtime' }) as Promise<Address>,
   rpc.readContract({ address: deed, abi: deedAbi, functionName: 'ownerOf', args: [chainOne] }) as Promise<Address>,
-  rpc.getBalance({ address: oldPaymaster }),
+  rpc.getBalance({ address: reservePaymaster }),
   rpc.readContract({ address: oldPaymaster, abi: paymasterAbi, functionName: 'marginBps' }) as Promise<bigint>,
   Promise.all([
     rpc.readContract({ address: oldPaymaster, abi: paymasterAbi, functionName: 'ethFloor' }) as Promise<bigint>,
@@ -134,8 +143,12 @@ const [oldForwarder, oldPaymasterRuntime, deedOwner, oldReserve, marginBps, limi
 if (oldForwarder.toLowerCase() !== oldPaymaster.toLowerCase() || oldPaymasterRuntime.toLowerCase() !== oldRuntime.toLowerCase()) {
   throw new Error('The current runtime/paymaster pairing is not the expected immutable pair. Refusing migration.');
 }
+if (reservePaymasterRuntime.toLowerCase() !== reserveRuntime.toLowerCase()) {
+  throw new Error('The selected reserve source is not paired with its stated runtime. Refusing migration.');
+}
 
 console.log(`  legacy runtime:   ${oldRuntime}`);
+console.log(`  reserve source:    ${reservePaymaster}`);
 console.log(`  Chain #1 holder:   ${deedOwner}`);
 console.log(`  legacy reserve:    ${formatEther(oldReserve)} ETH`);
 
@@ -155,7 +168,7 @@ await send(paymaster, paymasterAbi, 'setRefillPolicy', refillPolicy);
 
 console.log('\n[3/4] Moving the sponsored-gas reserve');
 if (oldReserve > 0n) {
-  await send(oldPaymaster, paymasterAbi, 'withdrawEth', [paymaster, oldReserve]);
+  await send(reservePaymaster, paymasterAbi, 'withdrawEth', [paymaster, oldReserve]);
   const v2Reserve = await rpc.getBalance({ address: paymaster });
   if (v2Reserve !== oldReserve) throw new Error('V2 paymaster reserve does not match the transferred legacy reserve.');
   console.log(`  ✓ ${formatEther(v2Reserve)} ETH moved to V2`);
@@ -176,6 +189,7 @@ const record = {
     createdAt: new Date().toISOString(),
     legacyRuntime: oldRuntime,
     legacyPaymaster: oldPaymaster,
+    reserveSourcePaymaster: reservePaymaster,
     chainOneHolder: deedOwner,
     reserveMovedWei: oldReserve.toString(),
     note: 'Deeds, VOID token and treasury are reused. Chain #1 must be activated by its Deed holder before public promotion.',
