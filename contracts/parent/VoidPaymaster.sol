@@ -222,6 +222,10 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     ///      delivery service and make the signing screen needlessly dangerous.
     uint256 public constant MAX_PERMITS_PER_CALL = 2;
 
+    /// @dev One permit pays the Paymaster in VOID; at most eight further
+    ///      permits open the Runtime's bounded per-call token budgets.
+    uint256 public constant MAX_ASSET_PERMITS_PER_CALL = 9;
+
     struct SponsoredCall {
         address user;
         uint256 tokenId;
@@ -300,6 +304,19 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     ///         paymaster, which charges toll and gas, and the runtime, through
     ///         which applications pull. Two signatures, no transactions.
     struct Permit {
+        address spender;
+        uint256 value;
+        uint256 deadline;
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+    }
+
+    /// @notice ERC-2612 permission for an explicit app asset.
+    /// @dev The token is part of the permission so an asset signature can never
+    ///      be interpreted as a VOID permission.
+    struct AssetPermit {
+        address token;
         address spender;
         uint256 value;
         uint256 deadline;
@@ -436,6 +453,8 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     error DuplicatePermitSpender(address spender);
     error TooManyPermits(uint256 given, uint256 max);
     error AllowanceTooLow(address user, address spender, uint256 available, uint256 needed);
+    error UnexpectedAssetPermit(address token, address spender);
+    error DuplicateAssetPermit(address token, address spender);
     error UnexpectedPrepaidToken(address given, address expected);
     error PrepaidDisplayMismatch();
     error TollChanged(uint256 signed, uint256 current);
@@ -553,6 +572,49 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         return _sponsor(gasStart, req, signature);
     }
 
+    /// @notice Relays a complete ChainApp action using signatures only.
+    /// @dev Each permission is restricted to one of two things: VOID to this
+    ///      Paymaster for the displayed toll + gas ceiling, or a token already
+    ///      listed in the signed app budget to the frozen Runtime. This is not
+    ///      an arbitrary permit-delivery endpoint.
+    function sponsorWithAssetPermits(
+        SponsoredCall calldata req,
+        bytes calldata signature,
+        AssetPermit[] calldata permissions
+    ) external nonReentrant returns (bool executed, bytes memory result) {
+        uint256 gasStart = gasleft();
+        if (permissions.length > MAX_ASSET_PERMITS_PER_CALL) {
+            revert TooManyPermits(permissions.length, MAX_ASSET_PERMITS_PER_CALL);
+        }
+
+        for (uint256 i; i < permissions.length; ++i) {
+            AssetPermit calldata permission = permissions[i];
+            if (permission.token == address(0) || permission.spender == address(0)) revert ZeroAddress();
+            for (uint256 j; j < i; ++j) {
+                if (permissions[j].token == permission.token && permissions[j].spender == permission.spender) {
+                    revert DuplicateAssetPermit(permission.token, permission.spender);
+                }
+            }
+
+            uint256 needed;
+            if (permission.token == address(voidToken) && permission.spender == address(this)) {
+                needed = req.maxToll + req.maxGasVoid;
+            } else if (permission.spender == address(runtime)) {
+                needed = _spendLimit(req.spends, permission.token);
+            } else {
+                revert UnexpectedAssetPermit(permission.token, permission.spender);
+            }
+            if (needed == 0 || permission.value < needed) {
+                revert AllowanceTooLow(req.user, permission.spender, permission.value, needed);
+            }
+            _applyAssetPermit(req.user, permission, needed);
+        }
+
+        _requireAllowance(req.user, address(this), req.maxToll + req.maxGasVoid);
+        _requireSpendAllowances(req.user, req.spends);
+        return _sponsor(gasStart, req, signature);
+    }
+
     /// @notice Sponsors one VOID-funded app call after one normal ERC-20 approval.
     /// @dev The user approves this contract for the exact sum shown by the
     ///      interface (app amount + chain fee + gas cap), then signs ONE
@@ -625,6 +687,11 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         if (voidToken.allowance(user, p.spender) < atLeast) revert PermitDidNotStick(user);
     }
 
+    function _applyAssetPermit(address user, AssetPermit calldata p, uint256 atLeast) private {
+        try IERC20Permit(p.token).permit(user, p.spender, p.value, p.deadline, p.v, p.r, p.s) {} catch {}
+        if (IERC20(p.token).allowance(user, p.spender) < atLeast) revert PermitDidNotStick(user);
+    }
+
     function _sponsor(uint256 gasStart, SponsoredCall calldata req, bytes calldata signature)
         private
         returns (bool executed, bytes memory result)
@@ -655,8 +722,7 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         // =================================================================
         uint256 prefund = req.maxToll + req.maxGasVoid;
         _requireAllowance(req.user, address(this), prefund);
-        uint256 runtimeBudget = _voidSpendLimit(req.spends);
-        if (runtimeBudget > 0) _requireAllowance(req.user, address(runtime), runtimeBudget);
+        _requireSpendAllowances(req.user, req.spends);
         _pull(req.user, prefund);
 
         if (req.maxToll > 0) {
@@ -1033,13 +1099,32 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         if (!voidToken.transferFrom(from, address(this), amount)) revert TransferFailed();
     }
 
-    /// @dev Adds the signed VOID budgets so the runtime permit is checked
-    ///      against the amount an app may actually pull, before any gas is
-    ///      spent on the app call. Non-VOID budgets use their own approval path
-    ///      and are deliberately outside the paymaster's permit scope.
+    /// @dev Adds the signed VOID budgets so the legacy VOID-only permit is
+    ///      checked against the amount an app may actually pull.
     function _voidSpendLimit(Spend[] calldata spends) private view returns (uint256 total) {
         for (uint256 i; i < spends.length; ++i) {
             if (spends[i].token == address(voidToken)) total += spends[i].amount;
+        }
+    }
+
+    function _spendLimit(Spend[] calldata spends, address token) private pure returns (uint256 total) {
+        for (uint256 i; i < spends.length; ++i) {
+            if (spends[i].token == token) total += spends[i].amount;
+        }
+    }
+
+    /// @dev All app token permissions are proven before the relayer can spend
+    ///      gas inside application code. A token is checked once even if the
+    ///      signed request uses it in several budget entries.
+    function _requireSpendAllowances(address user, Spend[] calldata spends) private view {
+        for (uint256 i; i < spends.length; ++i) {
+            address token = spends[i].token;
+            bool seen;
+            for (uint256 j; j < i; ++j) if (spends[j].token == token) seen = true;
+            if (seen) continue;
+            uint256 needed = _spendLimit(spends, token);
+            uint256 available = IERC20(token).allowance(user, address(runtime));
+            if (available < needed) revert AllowanceTooLow(user, address(runtime), available, needed);
         }
     }
 

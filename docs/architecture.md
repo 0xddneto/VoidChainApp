@@ -12,7 +12,7 @@ wallet or relayer
         v
 Robinhood Chain testnet (46630)
         |
-        +--> VoidPaymaster (optional signed sponsorship)
+        +--> VoidPaymaster (required route for every official app action)
         |
         v
 VoidChainAppRuntime + tokenId
@@ -33,6 +33,22 @@ assets or unilateral chain-policy power.
 the collection's internal namespace and possible future migration. It is not a
 live EIP-155 network ID, and a wallet must not be asked to add it as an RPC
 network.
+
+## VOID-only application invariant
+
+Every official VoidScan/VoidDEX action is a signed request to `VoidPaymaster`:
+the relayer supplies parent-chain ETH, the Runtime collects that chain's fee in
+VOID, and the paymaster charges a bounded VOID gas reimbursement. The user
+must never be routed by an official app to a bare token faucet, pool, or
+runtime call that bypasses the chain fee or asks them to supply ETH.
+
+For an application asset that moves during the call, the app must support
+EIP-2612 (or be integrated through a separately reviewed signature standard).
+The user signs an exact one-call permit to the frozen Runtime; there is no
+unlimited allowance and no approval transaction. Non-compliant ERC-20 assets
+are not eligible for the gasless official route until they receive a safe
+adapter. `sponsorWithAssetPermits` rejects any permit not tied to the signed
+app budget, the selected chain, and either the Runtime or Paymaster.
 
 ## Safety boundaries
 

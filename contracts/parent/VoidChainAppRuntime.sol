@@ -393,6 +393,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     error NoExecutionInProgress();
     error BudgetExceeded(address token, uint256 wanted, uint256 budget);
     error BudgetLengthMismatch();
+    error DuplicateBudgetToken(address token);
     error TooManyBudgetedTokens(uint256 given, uint256 max);
     error NftNotAuthorized(address collection, uint256 tokenId);
 
@@ -741,6 +742,9 @@ contract VoidChainAppRuntime is ReentrancyGuard {
 
         for (uint256 i; i < auth.tokens.length; ++i) {
             if (auth.tokens[i] == address(0)) revert ZeroAddress();
+            for (uint256 j; j < i; ++j) {
+                if (auth.tokens[j] == auth.tokens[i]) revert DuplicateBudgetToken(auth.tokens[i]);
+            }
             spendBudget[auth.tokens[i]] = auth.limits[i];
             budgetedTokens.push(auth.tokens[i]);
         }

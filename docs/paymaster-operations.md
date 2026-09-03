@@ -5,6 +5,21 @@ relayer pays the parent-chain ETH. It keeps the VOID charged for gas in
 `reimbursableVoid`; that balance is not revenue and must be converted back to
 ETH to keep the reserve solvent.
 
+## Required execution path
+
+The product must submit every official chain-app action through the Paymaster.
+The signed request binds the chain ID, app address, calldata, chain-fee cap,
+gas cap, expiry and exact per-token budgets. The Runtime then splits the
+actual chain fee on every successful call: 98% is accrued to that deed's
+current holder and 2% to the protocol treasury.
+
+Apps which spend assets besides VOID must use EIP-2612 permits (or a reviewed
+equivalent adapter). `sponsorWithAssetPermits` only accepts a permit to the
+Paymaster for VOID gas/toll, or a permit to the Runtime for an asset explicitly
+listed in that signed call. It rejects arbitrary spenders, duplicate permits
+and insufficient limits. Do not add a direct-wallet fallback to an official
+app: it reintroduces ETH gas and can bypass the product's UX guarantee.
+
 ## Automatic refill
 
 The refill is deliberately outside a user transaction. The user path only

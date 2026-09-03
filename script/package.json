@@ -8,6 +8,7 @@
     "deploy:chain1-dex": "tsx deploy-chain1-dex.ts",
     "deploy:chain1-dex-faucet": "tsx deploy-chain1-dex-faucet.ts",
     "load:chain1-dex": "tsx load-chain1-dex.ts",
+    "prove:sponsored-chain1-swap": "tsx prove-sponsored-chain1-swap.ts",
     "prove:purchase": "tsx prove-purchase.ts",
     "paymaster:keeper": "tsx paymaster-keeper.ts",
     "recover:testnet-eth": "tsx recover-testnet-eth.ts --dry-run",

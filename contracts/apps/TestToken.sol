@@ -14,12 +14,19 @@ contract TestToken {
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
+    mapping(address => uint256) public nonces;
+
+    bytes32 public constant PERMIT_TYPEHASH = keccak256(
+        "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+    );
 
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
     error InsufficientBalance(uint256 available, uint256 required);
     error InsufficientAllowance(uint256 available, uint256 required);
+    error PermitExpired(uint256 deadline);
+    error BadPermitSignature();
 
     constructor(string memory name_, string memory symbol_, uint256 initialSupply) {
         name = name_;
@@ -38,6 +45,42 @@ contract TestToken {
         allowance[msg.sender][spender] = value;
         emit Approval(msg.sender, spender, value);
         return true;
+    }
+
+    function DOMAIN_SEPARATOR() public view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes(name)),
+                keccak256("1"),
+                block.chainid,
+                address(this)
+            )
+        );
+    }
+
+    /// @notice EIP-2612 permission for a sponsored ChainApp action.
+    function permit(
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+        if (block.timestamp > deadline) revert PermitExpired(deadline);
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                DOMAIN_SEPARATOR(),
+                keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, nonces[owner]++, deadline))
+            )
+        );
+        address signer = ecrecover(digest, v, r, s);
+        if (signer == address(0) || signer != owner) revert BadPermitSignature();
+        allowance[owner][spender] = value;
+        emit Approval(owner, spender, value);
     }
 
     function transferFrom(address from, address to, uint256 value) external returns (bool) {
