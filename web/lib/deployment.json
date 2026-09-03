@@ -2,19 +2,19 @@
   "network": {
     "chainId": 46630,
     "rpc": "https://robinhood-testnet.drpc.org",
-    "deployBlock": 112003829
+    "deployBlock": 112021909
   },
   "production": {
-    "VoidChainDeed": "0x7b4e5937588ca89e7f85001abfdfab263fe2825d",
-    "VoidChainTreasury": "0x1b51c0ffd2d7fa6b6301f15e5a28e8f3650c0bbc",
-    "VoidChainAppRuntime": "0xfe690b98e2f4e39eca3c038db80159e29f095475",
-    "VoidPaymaster": "0xb87ee6c76d3f6af1fab5a03ef641d9d9e3f15d40",
-    "VoidChainDaoFactory": "0xb1905dc7c38c3c6307277c0e8f204ba17a9e0529"
+    "VoidChainDeed": "0x505aedaac53ccc2ad9c9c5c8ed33d167a50a2718",
+    "VoidChainTreasury": "0x91c160bf275f6172102fa8b8892b2ebe403b2ff8",
+    "VoidChainAppRuntime": "0x197d273828f5ee25214c93b7a51c98b1e2f4ae93",
+    "VoidPaymaster": "0x9cdd7448ce460403db0fa3523b1888dd62c656ab",
+    "VoidChainDaoFactory": "0x66289b9d4fb01c71b8a20672b4e02a40a56b9031"
   },
   "testnet": {
-    "VoidTestToken": "0x543a42d7956965cf4a4e0588c72d5732c45ec42e",
-    "VoidTestOracle": "0x3b6d88258288a745dd120661a91aa4d86f141d03",
-    "VoidNftAmm": "0xdca95155c64ee32804306937ffb197005e99d41d"
+    "VoidTestToken": "0x190db23f81374037d5479381e96fab26be230fa6",
+    "VoidTestOracle": "0x3ae5d834b7fce81dafb3a1cf6b8a7c3cc2afa4a9",
+    "VoidNftAmm": "0xe17fb846a13d3d16143b8ee43d7cfb54b629f0b2"
   },
   "parameters": {
     "nfts": 1111,
@@ -27,16 +27,16 @@
     "inPool": 100
   },
   "demoApps": {
-    "1": "0x66865dec33502c93425f6520abe5e308c83b2359",
-    "2": "0x69a6a73522c4d6c7090d0ce4c084b592a8e9ddd5",
-    "3": "0x7d06e35e166d57e0e9d570cf34e4d47268cec0db",
-    "4": "0xd4f312a195b26786c5265f07cdd418a39d3169cd",
-    "5": "0xa2ecc70eb89bddd431eff1ddcc3eb266259b89f5",
-    "6": "0x80efd18cbffec207144f581cca7e5fc46930dfe4",
-    "7": "0x45499f712d16c82a85dade8e54ac019315587982",
-    "8": "0x55b8eee69e4f97b7a072297ce3611187bc5f7df4",
-    "9": "0xdb7070c7b80f6bb69d4baa9a87c7158c5250ef55",
-    "10": "0xcf5fd668256d848aaa234e580b3255d5076602db"
+    "1": "0x46b8dcfe704aab8267a1a9906070e2c16796e2c0",
+    "2": "0xb56a57473ab01ab0cd0f5e6f744bd6092c55c326",
+    "3": "0x948cdd7bd348973495f7aa794bd9dca475e9bc4a",
+    "4": "0x1defa88c3c00055280ecc8a78b578b23d0747c53",
+    "5": "0x87dcc68a78d056baee9dbfefbc5ebb78d5126d10",
+    "6": "0xde8021751dbd3c5f4976b43c98430217cb740f43",
+    "7": "0x62ca241260a3511bab30461fff9682c0a41bc1a0",
+    "8": "0x48f0d45fd3568448ebe0a3a8e3cc564be3c3fd57",
+    "9": "0xa96511d9489e2ba94ae5f2346ba00b4d660b1130",
+    "10": "0xb89fb42a2575161eaca1ccfc223518023267b8f6"
   },
   "chainIdBase": "46630000"
 }
