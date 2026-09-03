@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { createPublicClient, createWalletClient, custom, encodeFunctionData, http, type Address } from 'viem';
-import pending from '@/lib/deployment-v3-pending.json';
+import pending from '@/lib/deployment-v4-pending.json';
 import { ABI, DEPLOY, RH_TESTNET } from '@/lib/testnet';
 import styles from '../page.module.css';
 
 type Provider = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
 const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
-const v3Runtime = pending.production.VoidChainAppRuntime as Address;
+const v4Runtime = pending.production.VoidChainAppRuntime as Address;
 const holder = pending.migration.chainOneHolder.toLowerCase();
 
 function provider(): Provider | undefined {
@@ -20,7 +20,7 @@ function firstAddress(value: unknown): Address | null {
   return typeof account === 'string' && /^0x[\da-f]{40}$/i.test(account) ? account as Address : null;
 }
 
-export default function V3MigrationPage() {
+export default function V4MigrationPage() {
   const [account, setAccount] = useState<Address | null>(null);
   const [fee, setFee] = useState<bigint | null>(null);
   const [active, setActive] = useState<boolean | null>(null);
@@ -34,7 +34,7 @@ export default function V3MigrationPage() {
     void wallet?.request({ method: 'eth_accounts' }).then((accounts) => setAccount(firstAddress(accounts))).catch(() => undefined);
     void Promise.all([
       rpc.readContract({ address: DEPLOY.production.VoidChainAppRuntime as Address, abi: ABI.runtime, functionName: 'statsOf', args: [1n] }),
-      rpc.readContract({ address: v3Runtime, abi: ABI.runtime, functionName: 'statsOf', args: [1n] }),
+      rpc.readContract({ address: v4Runtime, abi: ABI.runtime, functionName: 'statsOf', args: [1n] }),
     ]).then(([oldStats, stats]) => {
       // `activate` takes the deed holder's fixed USD fee, not its current
       // VOID conversion. The latter moves with the oracle and is only shown to
@@ -49,11 +49,11 @@ export default function V3MigrationPage() {
     if (!wallet) return setNotice('Connect the wallet that owns VOID Chain #1.');
     const current = firstAddress(await wallet.request({ method: 'eth_requestAccounts' }));
     setAccount(current);
-    if (!current || current.toLowerCase() !== holder) return setNotice('Only the current Deed holder can activate V3.');
+    if (!current || current.toLowerCase() !== holder) return setNotice('Only the current Deed holder can activate V4.');
     if (fee === null) return setNotice('The existing Chain #1 fee is still loading.');
 
     setBusy(true);
-    setNotice('Confirm the V3 activation in your wallet…');
+    setNotice('Confirm the V4 activation in your wallet…');
     try {
       const chain = await wallet.request({ method: 'eth_chainId' });
       if (chain !== RH_TESTNET.chainIdHex) {
@@ -62,13 +62,13 @@ export default function V3MigrationPage() {
       }
       const client = createWalletClient({ account: current, transport: custom(wallet) });
       const data = encodeFunctionData({ abi: ABI.runtime, functionName: 'activate', args: [1n, fee] });
-      const hash = await client.sendTransaction({ account: current, chain: null, to: v3Runtime, data });
+      const hash = await client.sendTransaction({ account: current, chain: null, to: v4Runtime, data });
       const receipt = await rpc.waitForTransactionReceipt({ hash });
-      if (receipt.status !== 'success') throw new Error('V3 activation reverted.');
+      if (receipt.status !== 'success') throw new Error('V4 activation reverted.');
       setActive(true);
-      setNotice(`V3 activated: ${hash.slice(0, 10)}…${hash.slice(-8)}. Refresh VoidScan after the deployment is published.`);
+      setNotice(`V4 activated: ${hash.slice(0, 10)}…${hash.slice(-8)}. Refresh VoidScan after the deployment is published.`);
     } catch (error: any) {
-      setNotice(error?.shortMessage ?? error?.message ?? 'Could not activate V3.');
+      setNotice(error?.shortMessage ?? error?.message ?? 'Could not activate V4.');
     } finally {
       setBusy(false);
     }
@@ -78,22 +78,22 @@ export default function V3MigrationPage() {
     <main className={styles.wrap}>
       <header className={`${styles.header} ${styles.bar}`}><a className={styles.logo} href="/">VOID<span>SCAN</span></a></header>
       <section className={styles.panel}>
-        <div className={styles.panelHead}><h2><span className={styles.sectionIndex}>V3</span> Chain #1 migration</h2><span className={styles.note}>VOID-only execution</span></div>
+        <div className={styles.panelHead}><h2><span className={styles.sectionIndex}>V4</span> Chain #1 migration</h2><span className={styles.note}>VOID-only execution</span></div>
         <div className={styles.panelBody}>
           <div className={styles.activationCritical}>
             <div>
               <p className={styles.criticalKicker}>MANDATORY VOID-ONLY EXECUTION</p>
-              <h3>Activate Chain #1 on the V3 runtime</h3>
-              <p>The Deed, VOID token, treasury and Chain #1 owner stay unchanged. V3 disables all direct Runtime execution: every registered app action must arrive through the immutable Paymaster and be charged in VOID.</p>
+              <h3>Activate Chain #1 on the V4 runtime</h3>
+              <p>The Deed, VOID token, treasury and Chain #1 owner stay unchanged. V4 disables all direct Runtime execution: every registered app action must arrive through the immutable Paymaster and be charged in VOID. Apps keep safe, read-only state queries for wallets and VoidScan.</p>
             </div>
             <dl className={styles.detailFacts}>
               <div><dt>Current holder</dt><dd>{pending.migration.chainOneHolder}</dd></div>
-              <div><dt>V3 runtime</dt><dd>{v3Runtime}</dd></div>
-              <div><dt>V3 paymaster</dt><dd>{pending.production.VoidPaymaster}</dd></div>
+              <div><dt>V4 runtime</dt><dd>{v4Runtime}</dd></div>
+              <div><dt>V4 paymaster</dt><dd>{pending.production.VoidPaymaster}</dd></div>
               <div><dt>State</dt><dd>{active === true ? 'Activated' : active === false ? 'Waiting for holder' : 'Loading…'}</dd></div>
             </dl>
-            {active !== true && <button className={styles.criticalActivate} disabled={busy || fee === null} onClick={() => void activate()}>{busy ? 'Activating…' : isHolder ? 'Activate V3' : 'Connect Chain #1 holder'}</button>}
-            {active === true && <p className={styles.criticalNotice}>V3 is active. New official apps use the signature-and-VOID route only.</p>}
+            {active !== true && <button className={styles.criticalActivate} disabled={busy || fee === null} onClick={() => void activate()}>{busy ? 'Activating…' : isHolder ? 'Activate V4' : 'Connect Chain #1 holder'}</button>}
+            {active === true && <p className={styles.criticalNotice}>V4 is active. New official apps use the signature-and-VOID route only.</p>}
             {notice && <p className={styles.criticalNotice} role="status">{notice}</p>}
           </div>
         </div>

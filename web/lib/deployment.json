@@ -7,10 +7,11 @@
   "production": {
     "VoidChainDeed": "0x7797e2b67c0cfe6c61e8b398951ea423aaad2dc1",
     "VoidChainTreasury": "0x195a2e19fc2f6764641f198daa6f348bd433262e",
-    "VoidChainAppRuntime": "0x424ec038baf1a9786a8eba1212954513ed31aa5d",
-    "VoidPaymaster": "0x79d1cdb8c7e5f49ef2f0ceee9ab478c651435fbb",
+    "VoidChainAppRuntime": "0x182f4b60342931931fd3fe7e2a7406b5064e7dee",
+    "VoidPaymaster": "0x7dc61046b1bf95d83235faded09d3d5a6d29f684",
     "VoidCollectionMintPaymaster": "0xad3c5af974d52363005b26f1bd1fe7df59dc7388",
-    "VoidChainDaoFactory": "0x2974b5843f436e588562d70112b2c53d43f3b669"
+    "VoidChainDaoFactory": "0xfb5d3b047c141b927ada18dce217e2d6dae5013a",
+    "VoidChainAppFactoryV3": "0x6f8184b7f2b5ad725b33b08e5bdb53cdc83daa3e"
   },
   "governance": {
     "paymasterGovernor": "0x440D2340C907735632A5fa0070273AFeF3D26827",

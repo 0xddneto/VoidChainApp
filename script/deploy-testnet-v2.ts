@@ -120,7 +120,7 @@ const paymasterAbi = artifact('VoidPaymaster').abi;
 const treasuryAbi = artifact('VoidChainTreasury').abi;
 const deedAbi = artifact('VoidChainDeed').abi;
 const daoFactoryAbi = artifact('VoidChainDaoFactory').abi;
-const usesV3Factory = runtimeArtifact === 'VoidChainAppRuntimeV3';
+const usesV3Factory = runtimeArtifact === 'VoidChainAppRuntimeV3' || runtimeArtifact === 'VoidChainAppRuntimeV4';
 
 console.log(`\nVOID CHAINS — TESTNET ${runtimeVersion} IMMUTABLE RUNTIME MIGRATION\n`);
 if (await rpc.getChainId() !== expectedChainId) {

@@ -12,7 +12,8 @@ interface IVoidChainAppRuntimeV3Factory {
 /// @dev Logic runs by delegatecall so its state belongs to this gateway, while
 /// `msg.sender` remains the Runtime. Calling a module implementation directly
 /// only touches that implementation's isolated storage; it cannot use the
-/// registered app's balances or state. Calling this gateway directly reverts.
+/// registered app's balances or state. State-changing calls to this gateway
+/// are accepted only from the Runtime. Read-only calls use `query` below.
 contract VoidChainAppGateway {
     address public immutable runtime;
     uint256 public immutable chainId;
@@ -21,6 +22,7 @@ contract VoidChainAppGateway {
     error NotRuntime(address caller);
     error InvalidImplementation();
     error InitialisationFailed(bytes reason);
+    error QueryFailed(bytes reason);
 
     constructor(address runtime_, uint256 chainId_, address implementation_, bytes memory initialiseData) {
         if (runtime_ == address(0) || chainId_ == 0 || implementation_.code.length == 0) {
@@ -36,7 +38,10 @@ contract VoidChainAppGateway {
     }
 
     fallback() external payable {
-        if (msg.sender != runtime) revert NotRuntime(msg.sender);
+        // `address(this)` is only reached by `query`, which uses staticcall.
+        // A mutating selector in that path necessarily reverts in the EVM;
+        // it can never become a route around the Runtime or Paymaster.
+        if (msg.sender != runtime && msg.sender != address(this)) revert NotRuntime(msg.sender);
         address implementation_ = implementation;
         assembly {
             calldatacopy(0, 0, calldatasize())
@@ -46,6 +51,16 @@ contract VoidChainAppGateway {
             case 0 { revert(0, returndatasize()) }
             default { return(0, returndatasize()) }
         }
+    }
+
+    /// @notice Executes a view selector against this gateway's state.
+    /// @dev Calling self with STATICCALL preserves delegatecall storage layout
+    /// while making every attempted write fail. This keeps app state readable
+    /// without letting wallets call a chain app outside the Runtime.
+    function query(bytes calldata data) external view returns (bytes memory result) {
+        (bool ok, bytes memory response) = address(this).staticcall(data);
+        if (!ok) revert QueryFailed(response);
+        return response;
     }
 }
 
