@@ -18,6 +18,69 @@ export const pool = new pg.Pool({ connectionString: DATABASE_URL, max: 8 });
 
 export const TOTAL_CHAINS = 1_111;
 
+/**
+ * Makes the database follow exactly the deployment in deployment.json.
+ *
+ * A testnet redeploy can reuse token #1, but it must never reuse that token's
+ * old owner, apps or transaction history. Profiles are deliberately outside
+ * this reset: they belong to wallet addresses, not to a deployment.
+ */
+export async function alignDeployment(runtime: string, deed: string): Promise<boolean> {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS indexer_deployment (
+       id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
+       runtime_address BYTEA NOT NULL,
+       deed_address BYTEA NOT NULL,
+       deploy_block BIGINT NOT NULL,
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+     )`,
+  );
+
+  const { rows } = await pool.query<{
+    runtime_address: Buffer;
+    deed_address: Buffer;
+    deploy_block: string;
+  }>('SELECT runtime_address, deed_address, deploy_block FROM indexer_deployment WHERE id = TRUE');
+
+  const expectedRuntime = toBytes(runtime)!;
+  const expectedDeed = toBytes(deed)!;
+  const expectedBlock = FIRST_BLOCK.toString();
+  const current = rows[0];
+  const matches = current
+    && current.runtime_address.equals(expectedRuntime)
+    && current.deed_address.equals(expectedDeed)
+    && current.deploy_block === expectedBlock;
+
+  if (matches) return false;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Every table reached through `chains` is deployment-derived. CASCADE
+    // removes stale ownership, apps, DAO mirrors and financial mirrors without
+    // touching user_profiles or user_socials, which are wallet-local data.
+    await client.query('TRUNCATE TABLE chains CASCADE');
+    await client.query('DELETE FROM indexer_state WHERE id = TRUE');
+    await client.query(
+      `INSERT INTO indexer_deployment (id, runtime_address, deed_address, deploy_block)
+       VALUES (TRUE, $1, $2, $3)
+       ON CONFLICT (id) DO UPDATE SET
+         runtime_address = EXCLUDED.runtime_address,
+         deed_address = EXCLUDED.deed_address,
+         deploy_block = EXCLUDED.deploy_block,
+         updated_at = now()`,
+      [expectedRuntime, expectedDeed, expectedBlock],
+    );
+    await client.query('COMMIT');
+    return true;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 /** The Robinhood block a call was ordered in. */
 export interface BlockInfo {
   timestamp: number;
@@ -53,6 +116,10 @@ export interface AppRow {
 export interface OwnerRow {
   chain: number;
   owner: string;
+}
+export interface NameRow {
+  chain: number;
+  name: string;
 }
 
 /**
@@ -102,6 +169,7 @@ export async function writePass(
   calls: CallRow[],
   apps: AppRow[],
   owners: OwnerRow[],
+  names: NameRow[],
   newHead: bigint,
 ): Promise<void> {
   const client = await pool.connect();
@@ -122,6 +190,13 @@ export async function writePass(
     for (const o of owners) {
       await client.query(`UPDATE chains SET owner_address = $2, updated_at = now() WHERE id = $1`,
         [o.chain, toBytes(o.owner)]);
+    }
+
+    // The deed is the canonical name source. Storing the event here makes the
+    // directory searchable without asking 1,111 contracts on every page load.
+    for (const n of names) {
+      await client.query(`UPDATE chains SET name = $2, updated_at = now() WHERE id = $1`,
+        [n.chain, n.name]);
     }
 
     for (const c of calls) {

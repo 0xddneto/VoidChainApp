@@ -186,6 +186,12 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     ///         could not tell one user from another.
     address public executingCaller;
 
+    /// @dev The account whose one-call token budget an app may draw from.
+    ///      It is normally the same wallet as `executingCaller`. On the
+    ///      prepaid Paymaster path it is the Paymaster, after the user approved
+    ///      one exact VOID amount there for this one execution.
+    address private executingSpendPayer;
+
     /// @notice The oracle that converts the toll from dollars into VOID.
     /// @dev    Replaceable by the deed's governance: oracles break, and an
     ///         immutable one here would stop all 1,111 chains at once.
@@ -638,7 +644,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         nonReentrant
         returns (bytes memory result)
     {
-        return _execute(tokenId, msg.sender, target, data, maxFee);
+        return _execute(tokenId, msg.sender, msg.sender, target, data, maxFee);
     }
 
     /// @notice The same `execute`, but acting for someone who has no ETH.
@@ -668,7 +674,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     ) external nonReentrant returns (bytes memory result) {
         if (msg.sender != forwarder) revert NotTheForwarder(msg.sender);
         if (user == address(0)) revert ZeroAddress();
-        return _execute(tokenId, user, target, data, maxFee);
+        return _execute(tokenId, user, user, target, data, maxFee);
     }
 
     /// @notice `execute` opening a budget, for those paying their own gas.
@@ -684,7 +690,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         SpendAuth calldata auth
     ) external nonReentrant returns (bytes memory result) {
         _openAuth(auth);
-        return _execute(tokenId, msg.sender, target, data, maxFee);
+        return _execute(tokenId, msg.sender, msg.sender, target, data, maxFee);
     }
 
 
@@ -741,7 +747,25 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         if (msg.sender != forwarder) revert NotTheForwarder(msg.sender);
         if (user == address(0)) revert ZeroAddress();
         _openAuth(auth);
-        return _execute(tokenId, user, target, data, maxFee);
+        return _execute(tokenId, user, user, target, data, maxFee);
+    }
+
+    /// @notice Executes a signed, prepaid VOID budget for the real user.
+    /// @dev The frozen forwarder is both the toll payer and the app-budget
+    ///      payer. It can only reach this function after validating the user
+    ///      signature and collecting the exact prefund.
+    function executeForWithPrepaidBudget(
+        address user,
+        uint256 tokenId,
+        address target,
+        bytes calldata data,
+        uint256 maxFee,
+        SpendAuth calldata auth
+    ) external nonReentrant returns (bytes memory result) {
+        if (msg.sender != forwarder) revert NotTheForwarder(msg.sender);
+        if (user == address(0)) revert ZeroAddress();
+        _openAuth(auth);
+        return _execute(tokenId, user, msg.sender, target, data, maxFee);
     }
 
     /// @notice An application spends, from the current user, within what they
@@ -768,7 +792,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         if (amount > budget) revert BudgetExceeded(token, amount, budget);
         spendBudget[token] = budget - amount;
 
-        if (!IERC20(token).transferFrom(executingCaller, to, amount)) {
+        if (!IERC20(token).transferFrom(executingSpendPayer, to, amount)) {
             revert CallFailed("spend refused by the token");
         }
         emit Spent(chain, executingCaller, token, msg.sender, to, amount);
@@ -777,6 +801,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     function _execute(
         uint256 tokenId,
         address caller,
+        address spendPayer,
         address target,
         bytes calldata data,
         uint256 maxFee
@@ -831,11 +856,13 @@ contract VoidChainAppRuntime is ReentrancyGuard {
 
         executingChain = tokenId;
         executingCaller = caller;
+        executingSpendPayer = spendPayer;
 
         (bool ok, bytes memory returned) = target.call(data);
 
         executingChain = 0;
         executingCaller = address(0);
+        executingSpendPayer = address(0);
 
         // The budget dies with the call. A surviving leftover would be a
         // permission the next caller inherits without ever having signed

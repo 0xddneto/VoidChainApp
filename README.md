@@ -40,10 +40,15 @@ runtime transaction, charges the signer in VOID, and lets a relayer pay that
 ETH. The protocol's 2% share is sent directly to its configured public treasury
 address; the deed holder's 98% remains individually claimable.
 
-The test collection market is itself a registered app: a buyer signs the exact
-VOID price and one-use permissions, while the Paymaster submits the parent-chain
-transaction. The market route is intentionally closed to arbitrary targets and
-permits. The DAO rule is permanent: the first holder sets the initial fee at
+The test collection market is protocol infrastructure, not an app inside a
+deed. A buyer makes one exact VOID approval to the Paymaster, then signs one
+mint that names the collection market, VOID token, signed label “VOID deed
+mint”, deed price and gas cap. There is no transaction fee at mint because the
+deed remains inactive until its holder activates it and chooses that first fee.
+The Mint Paymaster gives the fixed collection market a temporary, one-call
+allowance; that market accepts only the Paymaster, buys only the next pool deed
+and transfers it only to the signing wallet. The route is closed to arbitrary
+targets. The DAO rule is permanent: the first holder sets the initial fee at
 activation, then every fee or new-app-policy change requires a DAO vote. The
 holder keeps proposal rights but cannot bypass that vote.
 
@@ -61,7 +66,9 @@ documented in [docs/repository-map.md](docs/repository-map.md).
 | `contracts/parent/VoidChainAppRuntime.sol` | Token-scoped app registry, execution boundary, fee collection and revenue accounting. |
 | `contracts/parent/VoidChainDao*.sol` | Deterministic per-deed DAO factory and general, deed-scoped governance. |
 | `contracts/parent/VoidPaymaster.sol` | Signed, budgeted sponsorship of runtime transactions. |
-| `contracts/apps/` | Example permissionless apps (swap, market and launchpad). |
+| `script/paymaster-keeper.ts` | Permissionless, separate reserve-refill keeper. |
+| `contracts/apps/` | Example permissionless chain apps (swap, market and launchpad). |
+| `contracts/testnet/VoidCollectionMarket.sol` | Testnet-only collection mint outside every deed, so all chains can start inactive. |
 | `indexer/` | Robinhood event indexer and Postgres projection. |
 | `infra/` | Versioned local Postgres infrastructure and operator instructions. |
 | `web/` | VoidScan explorer, profile and test-deed claim interface. |

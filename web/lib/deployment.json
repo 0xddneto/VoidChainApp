@@ -2,25 +2,26 @@
   "network": {
     "chainId": 46630,
     "rpc": "https://robinhood-testnet.drpc.org",
-    "deployBlock": 112059003
+    "deployBlock": 112265093
   },
   "production": {
-    "VoidChainDeed": "0x671c492cf401dfbfac53415955e26af90e2c413c",
-    "VoidChainTreasury": "0x3eb23719f287831609e709c13328f5b52929ac45",
-    "VoidChainAppRuntime": "0xf5abe9046a55fba1629c280d8545811a37e972fc",
-    "VoidPaymaster": "0x5011c2cc1c15aaefa92c48ed7f5e9019401ae9da",
-    "VoidChainDaoFactory": "0x1e7a4917183c1bb57a79201ae7e350999221ddbf"
+    "VoidChainDeed": "0x5a6c1aaffb1c481471ce026d2b0ce354f9791582",
+    "VoidChainTreasury": "0x29fcbc8e4947ac0bdfa257d8cbec163749c2f592",
+    "VoidChainAppRuntime": "0x263ec5155019e637901d81125f7e13ff8bb56f3c",
+    "VoidPaymaster": "0x1c780323ead5f7ef5e346c8a68663cae3c022314",
+    "VoidCollectionMintPaymaster": "0x304af2f0aa1608ae239b874970c9c56321e92b45",
+    "VoidChainDaoFactory": "0x797e04e532ba9467b3133e36ffa08d54dd815926"
   },
   "governance": {
     "paymasterGovernor": "0x440D2340C907735632A5fa0070273AFeF3D26827",
     "protocolTreasury": "0x892F840aF9CFE78D4FF91D8e6D0F783264388A78"
   },
   "testnet": {
-    "VoidTestToken": "0xcd91092e7f1069259f1a3c86178f9687ad2bea24",
-    "VoidTestOracle": "0xdf3a0b8bdac41e2a2b716521daa36a06fcf07422",
-    "VoidNftAmm": "0x81aa8f1062b2ffa5c1e5fdc63023f9aac7e8e2ff",
-    "VoidMarketApp": "0x21c6b5e1bd6976580720371afc8f5880deb2e6a5",
-    "marketChainId": 1111
+    "VoidTestToken": "0xa852520a67245076541409f04efe48ac5811dc91",
+    "VoidTestOracle": "0x3fee3406b497e4994ac4b4c11f1e5a893c751e4a",
+    "VoidNftAmm": "0xd8cc7835fa619b5788e4e98e901c3345da25386f",
+    "VoidCollectionMarket": "0xa246f2d6a33e079cb6f3fb30a7df7b0dc169d67a",
+    "marketPurchaseFlow": "collection-prepaid-v2"
   },
   "parameters": {
     "nfts": 1111,
@@ -30,19 +31,8 @@
     "tollUsd": "1000000000000000",
     "voidUsd": "1000000000000000",
     "voidPerEth": "2411000000000000000000000",
-    "inPool": 100
+    "inPool": 1111
   },
-  "demoApps": {
-    "1": "0x3618d98f78b73c5f32689801a08b3d5690eee790",
-    "2": "0x0c694b5ccd54ef772e96f02bff33ffec54260fc2",
-    "3": "0x4a19ea455824fc59c970417f99757c7410b54489",
-    "4": "0xeafdd161d2b08bc393e1a517693e137015d98ab6",
-    "5": "0xe964cbf522def3189b22d5447c46da566ebba488",
-    "6": "0xd437c4a0f43ec0249a66b4d82fda9443dfc6a141",
-    "7": "0x405cbcf426ceb1e1e1c53e644790d62bb0fb0f15",
-    "8": "0xef292a80877ff1e5df977d23522fafa2dd601157",
-    "9": "0x261a6779e9cec2af17f194d3f82e29889bda974f",
-    "10": "0x5d609587701fce0a5b543601c7959e47c363971a"
-  },
+  "demoApps": {},
   "chainIdBase": "46630000"
 }

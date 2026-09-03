@@ -13,6 +13,7 @@ import { Copyable } from '../../Copyable';
 import { ProfileEditor } from '../ProfileEditor';
 import styles from '../../page.module.css';
 import { WalletProfileButton } from '../../WalletProfileButton';
+import { ProfileAvatarEditor } from './ProfileAvatarEditor';
 import own from './page.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -48,12 +49,7 @@ export default async function ProfileRoute({
       <main className={styles.wrap}>
         <section className={own.card}>
           <div className={own.identity}>
-            {profile.avatarUri ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img className={own.avatar} src={profile.avatarUri} alt="" />
-            ) : (
-              <div className={`${own.avatar} ${own.avatarBlank}`} aria-hidden="true" />
-            )}
+            <ProfileAvatarEditor address={profile.address} profile={profile} />
 
             <div className={own.who}>
               <h1>{profile.displayName ?? 'Unnamed holder'}</h1>
@@ -104,8 +100,10 @@ export default async function ProfileRoute({
                   {chains.map((c) => (
                     <tr key={c.id}>
                       <td>
-                        <div className={styles.chainName}>VOID Chain #{c.id}</div>
-                        <div className={styles.chainSub}>{c.name ?? 'no name set'}</div>
+                        <a className={styles.chainLink} href={`/?chain=${c.id}#chain-directory`}>
+                          {c.name || `VOID Chain #${c.id}`}
+                        </a>
+                        <div className={styles.chainSub}>Open chain profile · DAO and L3 path</div>
                       </td>
                       <td className={styles.chainId}>
                         <Copyable value={String(c.chainId)} />

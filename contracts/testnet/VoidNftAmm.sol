@@ -43,6 +43,12 @@ contract VoidNftAmm {
     IERC20 public immutable token;
     IERC721 public immutable collection;
 
+    /// @notice The deployer chooses the one collection-mint contract once.
+    ///         Pool purchases cannot bypass the wallet limit enforced there.
+    address public immutable saleOperatorGovernor;
+    address public saleOperator;
+    bool public saleOperatorSet;
+
     /// @notice How many tokens one deed is worth. Immutable.
     uint256 public immutable tokensPerNFT;
 
@@ -65,8 +71,10 @@ contract VoidNftAmm {
     uint256 public feesAccrued;
 
     event Deposited(uint256 indexed tokenId, address indexed from, uint256 paid);
+    event BatchDeposited(uint256 indexed firstTokenId, uint256 count, address indexed from, uint256 paid);
     event BoughtRandom(uint256 indexed tokenId, address indexed to, uint256 cost);
     event BoughtSpecific(uint256 indexed tokenId, address indexed to, uint256 cost);
+    event SaleOperatorSet(address indexed operator);
 
     error FeeTooHigh(uint256 given, uint256 max);
     error SpecificBelowRandom();
@@ -76,15 +84,22 @@ contract VoidNftAmm {
     error CostAboveMaximum(uint256 cost, uint256 limit);
     error TransferFailed();
     error ZeroAddress();
+    error NotSaleOperator(address caller);
+    error NotSaleOperatorGovernor(address caller);
+    error SaleOperatorAlreadySet();
 
     constructor(
         IERC20 token_,
         IERC721 collection_,
         uint256 tokensPerNFT_,
         uint256 randomFeeBps_,
-        uint256 specificFeeBps_
+        uint256 specificFeeBps_,
+        address saleOperatorGovernor_
     ) {
-        if (address(token_) == address(0) || address(collection_) == address(0)) {
+        if (
+            address(token_) == address(0) || address(collection_) == address(0)
+                || saleOperatorGovernor_ == address(0)
+        ) {
             revert ZeroAddress();
         }
         if (randomFeeBps_ > MAX_FEE_BPS) revert FeeTooHigh(randomFeeBps_, MAX_FEE_BPS);
@@ -93,9 +108,22 @@ contract VoidNftAmm {
 
         token = token_;
         collection = collection_;
+        saleOperatorGovernor = saleOperatorGovernor_;
         tokensPerNFT = tokensPerNFT_;
         randomFeeBps = randomFeeBps_;
         specificFeeBps = specificFeeBps_;
+    }
+
+    /// @notice Permanently routes collection sales through its mint contract.
+    /// @dev The initial governor can make this call once, after the market app
+    ///      exists. Before then no account can buy directly from this pool.
+    function setSaleOperatorOnce(address operator_) external {
+        if (msg.sender != saleOperatorGovernor) revert NotSaleOperatorGovernor(msg.sender);
+        if (saleOperatorSet) revert SaleOperatorAlreadySet();
+        if (operator_ == address(0)) revert ZeroAddress();
+        saleOperatorSet = true;
+        saleOperator = operator_;
+        emit SaleOperatorSet(operator_);
     }
 
     // ---------------------------------------------------------------------
@@ -150,12 +178,37 @@ contract VoidNftAmm {
         emit Deposited(tokenId, msg.sender, payout);
     }
 
+    /// @notice Seeds a launch inventory in compact batches.
+    /// @dev Keeps the same payout and accounting as `sell`, but avoids 1,111
+    ///      separate deployment transactions. Every transfer remains an ERC-721
+    ///      transfer from the caller, so the caller must approve this pool.
+    function seed(uint256[] calldata tokenIds, uint256 minPayoutTotal)
+        external
+        returns (uint256 payout)
+    {
+        uint256 count = tokenIds.length;
+        payout = payoutToSell() * count;
+        if (payout < minPayoutTotal) revert PayoutBelowMinimum(payout, minPayoutTotal);
+
+        for (uint256 i; i < count; ++i) {
+            uint256 tokenId = tokenIds[i];
+            collection.transferFrom(msg.sender, address(this), tokenId);
+            inventory.push(tokenId);
+            slotOf[tokenId] = inventory.length;
+        }
+
+        feesAccrued += (tokensPerNFT - payoutToSell()) * count;
+        if (payout > 0 && !token.transfer(msg.sender, payout)) revert TransferFailed();
+        emit BatchDeposited(count == 0 ? 0 : tokenIds[0], count, msg.sender, payout);
+    }
+
     // ---------------------------------------------------------------------
     // Comprar do pool
     // ---------------------------------------------------------------------
 
     /// @notice Buys the next one in line. Cheaper than choosing.
     function buyRandom(uint256 maxCost) external returns (uint256 tokenId) {
+        if (msg.sender != saleOperator) revert NotSaleOperator(msg.sender);
         if (available() == 0) revert EmptyInventory();
 
         uint256 cost = priceToBuy(false);
@@ -177,6 +230,7 @@ contract VoidNftAmm {
     ///         queue contiguous without shifting everything — the cost is
     ///         constant, not linear.
     function buySpecific(uint256 tokenId, uint256 maxCost) external {
+        if (msg.sender != saleOperator) revert NotSaleOperator(msg.sender);
         uint256 slot = slotOf[tokenId];
         if (slot == 0) revert NotInInventory(tokenId);
 

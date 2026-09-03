@@ -20,6 +20,12 @@
   bytecode verification record.
 - [ ] Define ownership, oracle, relayer reserve, rate-limit, monitoring,
   incident-response and key-rotation procedures.
+- [ ] Create the real VOID/ETH liquidity, verify the matching 30-minute-TWAP
+  pool and fresh ETH/USD Chainlink feed, then have governance set the exact
+  router/WETH/pool-fee route and refill threshold/target.
+- [ ] Run at least two independent low-funded permissionless keeper wallets;
+  prove a bounded refill and alert on reserve, TWAP/feed failure and missed
+  refill before admitting value-bearing sponsored transactions.
 - [ ] Decide the real VOID supply, distribution, liquidity, permit support and
   gas-sponsorship reserve model. Testnet faucet behavior is not a mainnet model.
 - [ ] If claiming independent per-NFT networks, complete the rollup requirements

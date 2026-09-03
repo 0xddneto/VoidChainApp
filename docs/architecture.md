@@ -59,14 +59,20 @@ made only by that same DAO after a passed five-day vote. There is no switch to
 return this power to a holder. Identity metadata remains holder-managed, since
 changing a label or social link does not rewrite execution rules or custody.
 
-The collection market is a registered runtime application, not an exception to
-the runtime boundary. A buyer signs the exact pool price, the exact chain fee
-and two one-use EIP-2612 permissions. `VoidMarketApp` can pull only that signed
-VOID budget, gives the fixed AMM an exact temporary allowance, and transfers
-only the deed returned by that AMM to the authenticated runtime caller.
-`VoidPaymaster` pays the parent-chain ETH through a relayer; it accepts permits
-only for itself and the runtime, and its signed request cannot name an
-arbitrary market target.
+The collection market is protocol infrastructure, outside every deed's runtime.
+That is intentional: a collection must be able to sell a deed before its buyer
+has activated a chain. A buyer first makes one exact ERC-20 approval of VOID to
+the Paymaster, then signs one `MarketPrepaidCall`. The signature contains the
+collection-market address, token address, signed symbol `VOID`, signed label
+`VOID deed mint`, pool-price cap, gas cap and expiry. It contains no chain fee:
+the purchased chain is still inactive and its first holder sets that fee later.
+`VoidCollectionMintPaymaster` accepts only the immutable collection-market
+address selected once during deployment, pulls only the exact total, gives that market a
+temporary one-call allowance, refunds unused VOID and clears the allowance
+when the call ends. `VoidCollectionMarket` accepts calls only from the
+Paymaster, buys only the next pool deed and transfers it only to the signed
+buyer. The market relay rejects every other route. All 1,111 deeds therefore
+start inactive.
 
 ## What a real independent chain would require
 

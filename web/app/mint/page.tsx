@@ -49,9 +49,9 @@ export default function Mint() {
   const [voidBal, setVoidBal] = useState(0n);
   const [ethBal, setEthBal] = useState(0n);
   const [available, setAvailable] = useState(0n);
-  const [tollVoid, setTollVoid] = useState(0n);
   const [price, setPrice] = useState(0n);
   const [deeds, setDeeds] = useState<Deed[]>([]);
+  const [alreadyMinted, setAlreadyMinted] = useState(false);
 
   const T = DEPLOY.testnet;
   const P = DEPLOY.production;
@@ -65,30 +65,24 @@ export default function Mint() {
     setAvailable(avail as bigint);
     setPrice(p as bigint);
 
-    // What the dollar toll comes to in VOID right now. Read from a chain that is
-    // already active rather than computed here, so the number on screen is the
-    // one the contract would charge.
-    const sample = Object.keys(DEPLOY.demoApps)[0];
-    if (sample) {
-      const t = await rpc
-        .readContract({
-          address: P.VoidChainAppRuntime as Address, abi: ABI.runtime,
-          functionName: 'feeOf', args: [BigInt(sample)],
-        })
-        .catch(() => 0n);
-      setTollVoid(t as bigint);
-    }
+    if (!who) { setVoidBal(0n); setEthBal(0n); setDeeds([]); setAlreadyMinted(false); return; }
 
-    if (!who) { setVoidBal(0n); setEthBal(0n); setDeeds([]); return; }
-
-    // Only the open test faucet is a normal wallet transaction. Buying a deed
-    // goes through the Paymaster and does not require test ETH.
+    // The purchase is relayed by the Paymaster. Its one explicit VOID approval
+    // is a normal wallet transaction, so it needs a small amount of test ETH.
     setEthBal(await rpc.getBalance({ address: who }));
 
     const bal = await rpc.readContract({
       address: T.VoidTestToken as Address, abi: ABI.token, functionName: 'balanceOf', args: [who],
     });
     setVoidBal(bal as bigint);
+
+    const market = marketDeployment();
+    if (market) {
+      const minted = await rpc.readContract({
+        address: market.market, abi: ABI.collectionMarket, functionName: 'hasMinted', args: [who],
+      }).catch(() => false);
+      setAlreadyMinted(minted as boolean);
+    }
 
     // Which deeds are theirs. The deed exposes no enumeration, so we sweep all
     // 1,111 in parallel — it is a read, it is cheap, and it keeps a page that
@@ -183,98 +177,93 @@ export default function Mint() {
       return;
     }
 
-    setBusy('signing');
     try {
-      const [currentPrice, toll, permitNonce, paymasterNonce] = await Promise.all([
+      const [currentPrice, paymasterNonce, currentAllowance] = await Promise.all([
         rpc.readContract({ address: T.VoidNftAmm as Address, abi: ABI.amm, functionName: 'priceToBuy', args: [false] }) as Promise<bigint>,
-        rpc.readContract({ address: P.VoidChainAppRuntime as Address, abi: ABI.runtime, functionName: 'feeOf', args: [market.chainId] }) as Promise<bigint>,
-        rpc.readContract({ address: T.VoidTestToken as Address, abi: ABI.token, functionName: 'nonces', args: [account] }) as Promise<bigint>,
-        rpc.readContract({ address: P.VoidPaymaster as Address, abi: ABI.paymaster, functionName: 'nonces', args: [account] }) as Promise<bigint>,
+        rpc.readContract({ address: P.VoidCollectionMintPaymaster as Address, abi: ABI.mintPaymaster, functionName: 'nonces', args: [account] }) as Promise<bigint>,
+        rpc.readContract({ address: T.VoidTestToken as Address, abi: ABI.token, functionName: 'allowance', args: [account, P.VoidCollectionMintPaymaster as Address] }) as Promise<bigint>,
       ]);
       if (currentPrice !== price) throw new Error('The pool price changed. Review the updated quote and try again.');
 
       const deadline = BigInt(Math.floor(Date.now() / 1000)) + MARKET_SIGNATURE_LIFETIME_SECONDS;
-      const data = encodeFunctionData({ abi: ABI.marketApp, functionName: 'buyRandom', args: [currentPrice] });
+      const totalApproval = currentPrice + MARKET_MAX_GAS_VOID;
+
+      // The only wallet transaction in a purchase. It is a standard ERC-20
+      // approval, so the wallet shows VOID, the Paymaster recipient and this
+      // exact cap. The Paymaster consumes it in full or refunds unused VOID.
+      if (currentAllowance < totalApproval) {
+        if (ethBal === 0n) {
+          throw new Error('A small amount of Robinhood test ETH is needed for the one VOID approval. The purchase itself is still sponsored in VOID.');
+        }
+        setBusy('approval');
+        setMsg({ kind: 'info', text: `Approve exactly ${fmt(totalApproval, 18, 3)} VOID for this mint. Your wallet will show VOID and the Mint Paymaster.` });
+        const wallet = createWalletClient({ account, transport: custom(p) });
+        const hash = await wallet.sendTransaction({
+          account, chain: null, to: T.VoidTestToken as Address,
+          data: encodeFunctionData({ abi: ABI.token, functionName: 'approve', args: [P.VoidCollectionMintPaymaster as Address, totalApproval] }),
+        });
+        const approval = await rpc.waitForTransactionReceipt({ hash });
+        if (approval.status !== 'success') throw new Error('The VOID approval was not confirmed.');
+      }
+
       const request = {
-        user: account, tokenId: market.chainId.toString(), target: market.app, data,
-        maxToll: toll.toString(), maxGasVoid: MARKET_MAX_GAS_VOID.toString(),
+        user: account, market: market.market,
+        paymentToken: T.VoidTestToken, paymentSymbol: 'VOID', purchaseLabel: 'VOID deed mint',
+        appSpend: currentPrice.toString(),
+        maxGasVoid: MARKET_MAX_GAS_VOID.toString(),
         callGasLimit: MARKET_CALL_GAS_LIMIT.toString(),
-        spends: [{ token: T.VoidTestToken, amount: currentPrice.toString() }],
-        nftSpends: [], nonce: paymasterNonce.toString(), deadline: deadline.toString(),
-      };
-      const permitTypes = {
-        Permit: [
-          { name: 'owner', type: 'address' }, { name: 'spender', type: 'address' },
-          { name: 'value', type: 'uint256' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' },
-        ],
+        nonce: paymasterNonce.toString(), deadline: deadline.toString(),
       };
       const domainFields = [
         { name: 'name', type: 'string' }, { name: 'version', type: 'string' },
         { name: 'chainId', type: 'uint256' }, { name: 'verifyingContract', type: 'address' },
       ];
-      const permitDomain = { name: 'VOID', version: '1', chainId: RH_TESTNET.chainId, verifyingContract: T.VoidTestToken };
       const typedCall = {
-        domain: { name: 'VoidPaymaster', version: '1', chainId: RH_TESTNET.chainId, verifyingContract: P.VoidPaymaster },
-        primaryType: 'SponsoredCall',
+        domain: { name: 'VoidCollectionMintPaymaster', version: '1', chainId: RH_TESTNET.chainId, verifyingContract: P.VoidCollectionMintPaymaster },
+        primaryType: 'MarketPrepaidCall',
         types: {
           EIP712Domain: domainFields,
-          Spend: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }],
-          SpendNft: [{ name: 'collection', type: 'address' }, { name: 'tokenId', type: 'uint256' }],
-          SponsoredCall: [
-            { name: 'user', type: 'address' }, { name: 'tokenId', type: 'uint256' }, { name: 'target', type: 'address' },
-            { name: 'data', type: 'bytes' }, { name: 'maxToll', type: 'uint256' }, { name: 'maxGasVoid', type: 'uint256' },
-            { name: 'callGasLimit', type: 'uint256' }, { name: 'spends', type: 'Spend[]' }, { name: 'nftSpends', type: 'SpendNft[]' },
+          MarketPrepaidCall: [
+            { name: 'user', type: 'address' }, { name: 'market', type: 'address' },
+            { name: 'paymentToken', type: 'address' }, { name: 'paymentSymbol', type: 'string' },
+            { name: 'purchaseLabel', type: 'string' }, { name: 'appSpend', type: 'uint256' },
+            { name: 'maxGasVoid', type: 'uint256' }, { name: 'callGasLimit', type: 'uint256' },
             { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' },
           ],
         },
         message: request,
       };
-      const sign = (typedData: unknown) => p.request({
-        method: 'eth_signTypedData_v4', params: [account, JSON.stringify(typedData)],
+
+      setBusy('signing');
+      setMsg({ kind: 'info', text: `Sign one mint: ${fmt(currentPrice, 18, 3)} VOID for the deed and a ${fmt(MARKET_MAX_GAS_VOID, 18, 0)} VOID maximum for sponsored gas. Unused VOID is refunded.` });
+      const signature = await p.request({
+        method: 'eth_signTypedData_v4', params: [account, JSON.stringify(typedCall)],
       }) as Promise<Hex>;
 
-      setMsg({ kind: 'info', text: 'Sign two one-use VOID permissions, then the exact market purchase. No ETH transaction is requested.' });
-      const paymasterPermit = await sign({
-        domain: permitDomain, primaryType: 'Permit', types: { EIP712Domain: domainFields, ...permitTypes },
-        message: { owner: account, spender: P.VoidPaymaster, value: (toll + MARKET_MAX_GAS_VOID).toString(), nonce: permitNonce.toString(), deadline: deadline.toString() },
-      });
-      const runtimePermit = await sign({
-        domain: permitDomain, primaryType: 'Permit', types: { EIP712Domain: domainFields, ...permitTypes },
-        message: { owner: account, spender: P.VoidChainAppRuntime, value: currentPrice.toString(), nonce: (permitNonce + 1n).toString(), deadline: deadline.toString() },
-      });
-      const signature = await sign(typedCall);
-
-      const splitSignature = (value: Hex) => ({
-        v: Number.parseInt(value.slice(130, 132), 16), r: value.slice(0, 66), s: `0x${value.slice(66, 130)}`,
-      });
       setBusy('buy');
       setMsg({ kind: 'info', text: 'Submitting the signed purchase through the Paymaster…' });
       const result = await fetch('/api/market/sponsor', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          request, signature,
-          permissions: [
-            { spender: P.VoidPaymaster, value: (toll + MARKET_MAX_GAS_VOID).toString(), deadline: deadline.toString(), ...splitSignature(paymasterPermit) },
-            { spender: P.VoidChainAppRuntime, value: currentPrice.toString(), deadline: deadline.toString(), ...splitSignature(runtimePermit) },
-          ],
-        }),
+        body: JSON.stringify({ request, signature }),
       });
       const body = await result.json() as { hash?: Hex; error?: string };
       if (!result.ok || !body.hash) throw new Error(body.error ?? 'The relayer refused the purchase.');
       const receipt = await rpc.waitForTransactionReceipt({ hash: body.hash });
       if (receipt.status !== 'success') throw new Error('The sponsored transaction reverted.');
-      setMsg({ kind: 'ok', text: 'The deed is yours. VOID paid the pool price, the chain fee, and sponsored execution.' });
+      setMsg({ kind: 'ok', text: 'The deed is yours. VOID paid the pool price and sponsored execution. Activate your chain when you are ready.' });
       await refresh(account);
     } catch (e: any) {
       setMsg({ kind: 'err', text: e?.shortMessage ?? e?.message ?? 'Sponsored purchase failed.' });
     } finally { setBusy(null); }
   }
 
-  // The signed ceiling covers the pool price plus the maximum chain fee and
+  // The signed ceiling covers the pool price and
   // sponsored gas. The Paymaster refunds every unused unit after settlement.
-  const requiredVoid = price + tollVoid + MARKET_MAX_GAS_VOID;
+  const requiredVoid = price + MARKET_MAX_GAS_VOID;
   const hasVoid = voidBal >= requiredVoid;
   const connected = Boolean(account && chainOk);
+  const sponsoredMarketReady = Boolean(marketDeployment());
+  const canMint = !alreadyMinted;
 
   return (
     <>
@@ -289,10 +278,10 @@ export default function Mint() {
       <main className={styles.wrap}>
         <div className={styles.hero}>
           <div className={styles.testnet}>● Robinhood testnet · no real value</div>
-          <h1>Claim a deed. Open a space.</h1>
+          <h1>Mint a VOID Deed. Open a chain.</h1>
           <p>
             The deed binds an isolated execution space in the VOID runtime to your wallet.
-            You set its toll, collect what it earns, and anyone can publish an application
+            You set its transaction fee, collect what it earns, and anyone can publish an application
             without asking you. This testnet release settles on Robinhood Chain; it is not
             an independent L3 or RPC network yet.
           </p>
@@ -308,13 +297,6 @@ export default function Mint() {
             <dd>{fmt(price, 18, 0)}<small> VOID</small></dd>
           </div>
           <div className={styles.fact}>
-            <dt>Transaction fee</dt>
-            <dd>
-              $0.001
-              {tollVoid > 0n && <small> ≈ {fmt(tollVoid, 18, 3)} VOID</small>}
-            </dd>
-          </div>
-          <div className={styles.fact}>
             <dt>Your balance</dt>
             <dd>{fmt(voidBal, 18, 0)}<small> VOID</small></dd>
           </div>
@@ -327,14 +309,14 @@ export default function Mint() {
               <h2>Connect your wallet</h2>
               <p>
                 Robinhood Chain testnet is registered automatically if you do not have it yet.
-                Connecting only lets this page read your address. Buying a deed is
-                relayed by the Paymaster: you sign a bounded purchase and pay in VOID,
-                without sending ETH from your wallet.
+                Connecting only lets this page read your address. Minting a deed is
+                relayed by the Paymaster. The mint is paid in VOID after one
+                explicit, exact VOID approval in your wallet.
               </p>
               {connected && (
                 <p className={ethBal === 0n ? styles.noEth : undefined}>
                   Test ETH: <b className={styles.mono}>{fmt(ethBal, 18, 5)} ETH</b>
-                  {ethBal === 0n && ' — not needed for the sponsored purchase.'}
+                  {ethBal === 0n && ' — a small amount is needed for the one VOID approval.'}
                 </p>
               )}
               <button className={styles.btn} onClick={connect} disabled={busy !== null || connected}>
@@ -348,7 +330,7 @@ export default function Mint() {
             <div className={styles.stepBody}>
               <h2>Get VOID</h2>
               <p>
-                VOID pays the pool price, the chain fee, and sponsored execution. The test faucet is
+                VOID pays the pool price and sponsored execution. The test faucet is
                 free and unlimited, but its claim is still a normal testnet transaction.
               </p>
               <button className={styles.btn} onClick={getVoid} disabled={!connected || busy !== null}>
@@ -360,19 +342,19 @@ export default function Mint() {
           <section className={styles.step} data-blocked={!hasVoid}>
             <div className={styles.num}>3</div>
             <div className={styles.stepBody}>
-              <h2>Buy a deed with VOID</h2>
+              <h2>Mint a deed with VOID</h2>
               <p>
-                The pool hands over the next one in line — buying at random is cheaper
-                than picking. You sign the exact price and two one-use permissions; the Paymaster
-                sends the transaction and pays parent-chain ETH. From the next block, the execution
-                space is bound to your wallet.
+                Mint receives the next available VOID Deed. Approve one exact VOID limit to the
+                Paymaster, then sign the mint. The signature shows the VOID token, deed price,
+                collection market and gas limit. Your chain starts inactive; you choose its fee when you activate it.
+                Unused VOID returns to your wallet.
               </p>
               <div className={styles.row}>
-                <button className={styles.btn} onClick={buy} disabled={!hasVoid || busy !== null || available === 0n}>
-                  {busy === 'signing' ? 'Awaiting signatures…' : busy === 'buy' ? 'Buying…' : 'Buy with VOID'}
+                <button className={styles.btn} onClick={buy} disabled={!sponsoredMarketReady || !canMint || !hasVoid || busy !== null || available === 0n}>
+                  {busy === 'approval' ? 'Approving VOID…' : busy === 'signing' ? 'Sign mint…' : busy === 'buy' ? 'Minting…' : 'Mint'}
                 </button>
                 <span className={styles.mono}>
-                  {available === 0n ? 'sold out' : `${fmt(price, 18, 0)} VOID + refunded unused gas`}
+                  {!canMint ? 'mint limit reached for this wallet' : available === 0n ? 'sold out' : `${fmt(price, 18, 0)} VOID + refunded unused gas`}
                 </span>
               </div>
             </div>

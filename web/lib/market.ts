@@ -6,12 +6,12 @@ export const MARKET_MAX_GAS_VOID = 10_000n * 10n ** 18n;
 export const MARKET_SIGNATURE_LIFETIME_SECONDS = 10n * 60n;
 
 type MarketDeployment = {
-  VoidMarketApp?: string;
-  marketChainId?: number;
+  VoidCollectionMarket?: string;
+  marketPurchaseFlow?: string;
 };
 
-export function marketDeployment(): { app: `0x${string}`; chainId: bigint } | null {
+export function marketDeployment(): { market: `0x${string}` } | null {
   const testnet = DEPLOY.testnet as typeof DEPLOY.testnet & MarketDeployment;
-  if (!testnet.VoidMarketApp || !testnet.marketChainId) return null;
-  return { app: testnet.VoidMarketApp as `0x${string}`, chainId: BigInt(testnet.marketChainId) };
+  if (!testnet.VoidCollectionMarket || testnet.marketPurchaseFlow !== 'collection-prepaid-v2') return null;
+  return { market: testnet.VoidCollectionMarket as `0x${string}` };
 }

@@ -147,6 +147,8 @@
 }
 .walletButton:disabled { cursor: wait; opacity: 0.72; }
 .walletMark { width: 7px; height: 7px; border: 1px solid var(--accent); border-radius: 50%; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent); }
+.walletAvatar { width: 22px; height: 22px; border: 1px solid var(--line-strong); border-radius: 50%; object-fit: cover; }
+.walletAvatarBlank { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 35%, var(--surface-2)), var(--surface-2)); }
 .walletMessage { position: absolute; right: 0; top: calc(100% + 7px); width: max-content; max-width: 250px; border: 1px solid color-mix(in srgb, #d65437 45%, var(--line)); border-radius: 6px; background: var(--surface); color: var(--ink-2); font: 10px/1.35 var(--mono); padding: 6px 8px; z-index: 3; }
 
 /* ---- introduction ------------------------------------------------------ */
@@ -373,12 +375,15 @@
 .scroller { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .table th { border-bottom: 1px solid var(--line); color: var(--ink-3); font: 9px var(--mono); letter-spacing: 0.1em; padding: 12px 17px; text-align: left; text-transform: uppercase; white-space: nowrap; }
+.table th.numCell { text-align: right; }
 .table td { border-bottom: 1px solid color-mix(in srgb, var(--line) 86%, transparent); padding: 13px 17px; vertical-align: middle; }
 .table tbody tr:last-child td { border-bottom: 0; }
 .rowLink { cursor: pointer; transition: background 120ms ease; }
 .rowLink:hover { background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
 .rowLink:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .chainName { color: var(--ink); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+.chainLink { color: var(--ink); font-family: var(--mono); font-size: 12px; font-weight: 600; text-decoration: none; }
+.chainLink:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .chainSub { max-width: 180px; overflow: hidden; color: var(--ink-3); font: 10px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .chainId { color: var(--ink-2); font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
 .addr { color: var(--ink-2); font: 11px var(--mono); }
@@ -403,6 +408,53 @@
 .detailList { list-style: none; margin: 0; padding: 0; }
 .detailList li { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); color: var(--ink-2); font-size: 11px; padding: 9px 0; }
 .detailList li:last-child { border-bottom: 0; }
+
+/* ---- owner-editable on-chain chain identity --------------------------- */
+.chainNameEditor { align-items: center; border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--line)); border-radius: 10px; display: flex; flex-wrap: wrap; gap: 12px 18px; justify-content: space-between; margin: 0 0 23px; padding: 14px 16px; background: color-mix(in srgb, var(--accent) 5%, var(--surface-2)); }
+.chainNameEditor > div:first-child { min-width: 0; }
+.editorKicker { color: var(--accent); font: 9px var(--mono); letter-spacing: .12em; margin: 0 0 5px; }
+.chainNameEditor h3 { color: var(--ink); font: 13px var(--mono); margin: 0; overflow-wrap: anywhere; }
+.chainNameEditor p:not(.editorKicker):not(.editorNotice) { color: var(--ink-3); font: 10px/1.45 var(--mono); margin: 5px 0 0; max-width: 66ch; }
+.editorButton, .editorCancel { border: 1px solid color-mix(in srgb, var(--accent) 68%, var(--line)); border-radius: 5px; background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: var(--ink); cursor: pointer; font: 10px var(--mono); min-height: 32px; padding: 0 10px; white-space: nowrap; }
+.editorButton:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.editorButton:disabled, .editorCancel:disabled { cursor: wait; opacity: .55; }
+.editorCancel { background: transparent; border-color: var(--line-strong); color: var(--ink-3); }
+.editorForm { align-items: center; display: flex; flex: 1 1 360px; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.editorForm input { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 5px; color: var(--ink); font: 11px var(--mono); height: 32px; min-width: 180px; padding: 0 9px; }
+.editorForm input:focus { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 15%, transparent); }
+.editorNotice { border-top: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); color: var(--ink-2); flex: 1 0 100%; font: 10px/1.45 var(--mono); margin: 0; padding-top: 10px; }
+.activationEditor { align-items: center; border: 1px solid color-mix(in srgb, var(--live) 45%, var(--line)); border-radius: 10px; display: flex; flex-wrap: wrap; gap: 12px 18px; justify-content: space-between; margin: 0 0 23px; padding: 14px 16px; background: color-mix(in srgb, var(--live) 6%, var(--surface-2)); }
+.activationEditor > div:first-child { min-width: 0; }
+.activationEditor h3 { color: var(--ink); font: 13px var(--mono); margin: 0; }
+.activationEditor p:not(.editorKicker):not(.editorNotice) { color: var(--ink-3); font: 10px/1.45 var(--mono); margin: 5px 0 0; max-width: 66ch; }
+.activationFee { color: var(--ink-3); display: grid; font: 9px var(--mono); gap: 4px; letter-spacing: .05em; }
+.activationFee input { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 5px; color: var(--ink); font: 11px var(--mono); height: 32px; min-width: 130px; padding: 0 9px; }
+.activationFee input:focus { border-color: var(--live); outline: 2px solid color-mix(in srgb, var(--live) 15%, transparent); }
+
+/* ---- independent L3 migration ----------------------------------------- */
+.l3Panel { border: 1px solid color-mix(in srgb, #8e7dff 44%, var(--line)); border-radius: 11px; background: linear-gradient(135deg, color-mix(in srgb, #8e7dff 9%, var(--surface-2)), var(--surface-2)); margin: 0 0 23px; overflow: hidden; }
+.l3Head { align-items: flex-start; border-bottom: 1px solid color-mix(in srgb, #8e7dff 24%, var(--line)); display: flex; gap: 14px; justify-content: space-between; padding: 16px 17px 13px; }
+.l3Kicker { color: #aa9fff; font: 9px var(--mono); letter-spacing: .13em; margin: 0 0 5px; text-transform: uppercase; }
+.l3Head h3 { color: var(--ink); font-size: 14px; letter-spacing: -.025em; margin: 0; }
+.l3State { border: 1px solid color-mix(in srgb, #8e7dff 52%, var(--line)); border-radius: 999px; color: #b6aeff; font: 8px var(--mono); letter-spacing: .09em; padding: 4px 7px; white-space: nowrap; }
+.l3Intro { color: var(--ink-2); font-size: 11px; line-height: 1.55; margin: 0; max-width: 88ch; padding: 13px 17px 0; }
+.l3Steps { display: grid; gap: 1px; list-style: none; margin: 15px 17px; padding: 0; background: color-mix(in srgb, #8e7dff 18%, var(--line)); }
+.l3Steps li { align-items: flex-start; background: color-mix(in srgb, var(--surface) 88%, transparent); display: grid; gap: 10px; grid-template-columns: 42px 1fr; padding: 11px; }
+.l3Steps span { align-items: center; border: 1px solid var(--line-strong); border-radius: 4px; display: inline-flex; font: 8px var(--mono); height: 20px; justify-content: center; letter-spacing: .06em; }
+.l3Steps .l3Done { border-color: color-mix(in srgb, var(--live) 65%, var(--line)); color: var(--live); }
+.l3Steps .l3Pending { border-color: color-mix(in srgb, #8e7dff 45%, var(--line)); color: #b6aeff; }
+.l3Steps b { color: var(--ink); display: block; font: 10px var(--mono); font-weight: 500; }
+.l3Steps small { color: var(--ink-3); display: block; font: 10px/1.45 var(--mono); margin-top: 4px; }
+.l3Facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: color-mix(in srgb, #8e7dff 18%, var(--line)); margin: 15px 17px; }
+.l3Facts > div { background: color-mix(in srgb, var(--surface) 88%, transparent); min-height: 62px; padding: 10px; }
+.l3Facts dt { color: var(--ink-3); font: 8px var(--mono); letter-spacing: .1em; margin-bottom: 6px; text-transform: uppercase; }
+.l3Facts dd { color: var(--ink); font: 10px var(--mono); margin: 0; overflow-wrap: anywhere; }
+.l3Actions { align-items: center; border-top: 1px solid color-mix(in srgb, #8e7dff 20%, var(--line)); display: flex; flex-wrap: wrap; gap: 9px; padding: 14px 17px; }
+.l3Primary { border: 1px solid color-mix(in srgb, #8e7dff 65%, var(--line)); border-radius: 5px; background: color-mix(in srgb, #8e7dff 17%, var(--surface)); color: var(--ink); cursor: pointer; font: 10px var(--mono); min-height: 32px; padding: 0 10px; }
+.l3Primary:hover:not(:disabled) { border-color: #b6aeff; color: #c9c4ff; }
+.l3Primary:disabled { cursor: wait; opacity: .55; }
+.l3OwnerNote { color: var(--ink-3); font: 10px/1.45 var(--mono); }
+.l3Notice { border-top: 1px solid color-mix(in srgb, #8e7dff 20%, var(--line)); color: var(--ink-2); font: 10px/1.45 var(--mono); margin: 0; padding: 10px 17px; }
 
 /* ---- DAO governance module -------------------------------------------- */
 .daoPanel { border: 1px solid color-mix(in srgb, var(--created) 34%, var(--line)); border-radius: 11px; background: linear-gradient(135deg, color-mix(in srgb, var(--created) 9%, var(--surface-2)), var(--surface-2)); margin: 0 0 23px; overflow: hidden; }
@@ -476,6 +528,7 @@
   .cardSearch input { width: 100%; }
   .panelHead { flex-wrap: wrap; }
   .daoFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .l3Facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .daoCompose { grid-template-columns: 1fr 1fr; }
   .daoCompose > :first-child { grid-column: 1 / -1; }
 }
@@ -504,6 +557,10 @@
   .daoCompose { grid-template-columns: 1fr; padding-left: 12px; padding-right: 12px; }
   .daoCompose > :first-child { grid-column: auto; }
   .daoScope, .daoHead, .daoNotice, .daoProposalHead, .daoEmpty, .proposal { padding-left: 12px; padding-right: 12px; }
+  .l3Head, .l3Intro, .l3Actions, .l3Notice { padding-left: 12px; padding-right: 12px; }
+  .l3Steps, .l3Facts { margin-left: 12px; margin-right: 12px; }
   .proposalActions { align-items: stretch; flex-wrap: wrap; }
   .proposalActions input { flex: 1 1 100%; width: 100%; }
+  .editorForm { justify-content: flex-start; }
+  .editorForm input { flex: 1 1 100%; width: 100%; }
 }

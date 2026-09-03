@@ -9,7 +9,7 @@
  * because a request body can claim any address.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Profile, Social } from '@/lib/chains';
 import styles from './editor.module.css';
 
@@ -28,12 +28,13 @@ function profileMessage(address: string, nonce: string): string {
 
 export function ProfileEditor({ address, profile }: { address: string; profile: Profile }) {
   const [wallet, setWallet] = useState<string | null>(null);
+  const [walletReady, setWalletReady] = useState(false);
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<State>('idle');
   const [msg, setMsg] = useState<string | null>(null);
 
   const [displayName, setDisplayName] = useState(profile.displayName ?? '');
-  const [avatarUri, setAvatarUri] = useState(profile.avatarUri ?? '');
+  const [avatarUri] = useState(profile.avatarUri ?? '');
   const [bio, setBio] = useState(profile.bio ?? '');
   const [socials, setSocials] = useState<Social[]>(
     profile.socials.length > 0 ? profile.socials : [{ platform: '', handle: '' }],
@@ -41,6 +42,24 @@ export function ProfileEditor({ address, profile }: { address: string; profile: 
 
   const eth = () => (typeof window !== 'undefined' ? (window as any).ethereum : undefined);
   const isOwner = wallet?.toLowerCase() === address.toLowerCase();
+
+  // The header has already connected this browser wallet. A separate editor
+  // must read that approved account instead of making the holder connect twice.
+  useEffect(() => {
+    const p = eth();
+    if (!p) {
+      setWalletReady(true);
+      return;
+    }
+    const update = (accounts: unknown) => {
+      const next = Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : null;
+      setWallet(next);
+      setWalletReady(true);
+    };
+    void p.request({ method: 'eth_accounts' }).then(update).catch(() => setWalletReady(true));
+    p.on?.('accountsChanged', update);
+    return () => p.removeListener?.('accountsChanged', update);
+  }, []);
 
   async function connect() {
     const p = eth();
@@ -105,16 +124,17 @@ export function ProfileEditor({ address, profile }: { address: string; profile: 
   if (!open) {
     return (
       <div className={styles.bar}>
-        {!wallet && (
+        {walletReady && !wallet && (
           <button type="button" className={styles.btn} onClick={connect} disabled={state !== 'idle'}>
             {state === 'connecting' ? 'Connecting…' : 'Connect to edit'}
           </button>
         )}
-        {wallet && isOwner && (
+        {walletReady && wallet && isOwner && (
           <button type="button" className={styles.btn} onClick={() => setOpen(true)}>
             Edit profile
           </button>
         )}
+        {walletReady && wallet && !isOwner && !msg && <span className={styles.msg}>This profile belongs to another wallet.</span>}
         {msg && <span className={styles.msg}>{msg}</span>}
       </div>
     );
@@ -126,12 +146,6 @@ export function ProfileEditor({ address, profile }: { address: string; profile: 
         Display name
         <input value={displayName} maxLength={64}
                onChange={(e) => setDisplayName(e.target.value)} />
-      </label>
-
-      <label>
-        Avatar URL
-        <input value={avatarUri} maxLength={400} placeholder="https://…"
-               onChange={(e) => setAvatarUri(e.target.value)} />
       </label>
 
       <label>

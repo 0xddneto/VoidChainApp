@@ -3,8 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:contracts": "tsx compile-contracts.ts",
     "deploy:testnet": "tsx deploy-testnet.ts",
     "prove:purchase": "tsx prove-purchase.ts",
+    "paymaster:keeper": "tsx paymaster-keeper.ts",
     "recover:testnet-eth": "tsx recover-testnet-eth.ts --dry-run",
     "typecheck": "tsc --noEmit"
   },
@@ -15,6 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
+    "solc": "0.8.28",
     "typescript": "^5.9.3"
   }
 }

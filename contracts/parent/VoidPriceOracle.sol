@@ -70,6 +70,12 @@ contract VoidPriceOracle {
     /// @notice TWAP window, in seconds. 30 minutes, the industry default.
     uint32 public constant TWAP_WINDOW = 1800;
 
+    /// @dev The compact fixed-point conversion is intentionally restricted to
+    ///      the range a normal VOID/ETH market uses. A larger value indicates a
+    ///      bad pool, decimal mismatch or configuration failure — not a price
+    ///      the paymaster should trust.
+    int24 public constant MAX_ABS_TICK = 100_000;
+
     /// @notice Past this, the Chainlink price is considered stale.
     /// @dev    A stalled feed is worse than no feed: it answers, confidently,
     ///         with a number that no longer holds. We would rather revert than
@@ -78,12 +84,21 @@ contract VoidPriceOracle {
 
     error StaleFeed(uint256 updatedAt, uint256 nowTs);
     error BadFeedAnswer(int256 answer);
+    error BadFeedRound(uint80 roundId, uint80 answeredInRound, uint256 updatedAt);
+    error UnsupportedFeedDecimals(uint8 decimals);
     error PoolNotReady();
+    error UnexpectedPoolTokens(address token0, address token1, address voidToken);
+    error TickOutOfRange(int24 tick);
 
     constructor(IAggregatorV3 ethUsdFeed_, IUniswapV3Pool voidEthPool_, address voidToken) {
         ethUsdFeed = ethUsdFeed_;
         voidEthPool = voidEthPool_;
-        voidIsToken0 = voidEthPool_.token0() == voidToken;
+        address token0 = voidEthPool_.token0();
+        address token1 = voidEthPool_.token1();
+        if (token0 != voidToken && token1 != voidToken) {
+            revert UnexpectedPoolTokens(token0, token1, voidToken);
+        }
+        voidIsToken0 = token0 == voidToken;
     }
 
     // ---------------------------------------------------------------------
@@ -92,13 +107,18 @@ contract VoidPriceOracle {
 
     /// @notice How much one ETH is worth in dollars, with 18 decimals.
     function ethUsd() public view returns (uint256) {
-        (, int256 answer,, uint256 updatedAt,) = ethUsdFeed.latestRoundData();
+        (uint80 roundId, int256 answer,, uint256 updatedAt, uint80 answeredInRound) =
+            ethUsdFeed.latestRoundData();
         if (answer <= 0) revert BadFeedAnswer(answer);
+        if (updatedAt == 0 || answeredInRound < roundId) {
+            revert BadFeedRound(roundId, answeredInRound, updatedAt);
+        }
         if (block.timestamp > updatedAt + MAX_FEED_AGE) {
             revert StaleFeed(updatedAt, block.timestamp);
         }
         // Chainlink's feed normally has 8 decimals; we normalize to 18.
         uint8 d = ethUsdFeed.decimals();
+        if (d > 18) revert UnsupportedFeedDecimals(d);
         return uint256(answer) * (10 ** (18 - d));
     }
 
@@ -153,6 +173,7 @@ contract VoidPriceOracle {
         // Integer division truncates toward zero; for negatives that rounds UP,
         // which would bias the price. We correct downward.
         if (delta < 0 && (delta % int56(uint56(TWAP_WINDOW)) != 0)) tick--;
+        if (tick > MAX_ABS_TICK || tick < -MAX_ABS_TICK) revert TickOutOfRange(tick);
         return tick;
     }
 

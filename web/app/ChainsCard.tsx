@@ -12,9 +12,13 @@
  * keystroke for a dataset that fits in one response.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChainDetail, ChainRow, ChainStatus } from '@/lib/chains';
+import { DEPLOY } from '@/lib/testnet';
 import { Copyable } from './Copyable';
+import { ChainActivationEditor } from './ChainActivationEditor';
+import { ChainL3Migration } from './ChainL3Migration';
+import { ChainNameEditor } from './ChainNameEditor';
 import { DaoPanel } from './DaoPanel';
 import styles from './page.module.css';
 
@@ -93,6 +97,15 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
     return () => window.removeEventListener('voidscan:search', receive);
   }, []);
 
+  // Profile pages and shared links can point directly to a particular chain
+  // while keeping the explorer's in-place detail view.
+  useEffect(() => {
+    const requested = Number(new URLSearchParams(window.location.search).get('chain'));
+    if (!Number.isInteger(requested) || requested < 1) return;
+    const chain = chains.find((item) => item.id === requested);
+    if (chain) setOpen(chain);
+  }, [chains]);
+
   const pages = Math.max(1, Math.ceil(found.length / PER_PAGE));
   const current = Math.min(page, pages - 1);
   const shown = found.slice(current * PER_PAGE, current * PER_PAGE + PER_PAGE);
@@ -135,8 +148,8 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
                   tabIndex={0} role="button"
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(c); } }}>
                 <td>
-                  <div className={styles.chainName}>VOID Chain #{c.id}</div>
-                  <div className={styles.chainSub}>{c.name ?? 'no name set'}</div>
+                  <div className={styles.chainName}>{c.name || `VOID Chain #${c.id}`}</div>
+                  <div className={styles.chainSub}>{c.name ? `VOID Chain #${c.id}` : 'no name set'}</div>
                 </td>
                 <td className={styles.chainId}>{c.chainId}</td>
                 <td className={styles.chainId}>{short(c.owner)}</td>
@@ -186,11 +199,17 @@ function Pager({
  *
  * It shows what the chain is and what has happened on it — not only who owns
  * it. Someone deciding whether to build on a chain, or to buy it, needs the
- * activity and the applications, and those are the same facts either way.
+ * activity and the contracts, and those are the same facts either way.
  */
 function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
   const [detail, setDetail] = useState<ChainDetail | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState(chain.name ?? '');
+  const [active, setActive] = useState(chain.status === 'live');
+  const nameChanged = useCallback((next: string) => setDisplayName(next), []);
+
+  useEffect(() => setDisplayName(chain.name ?? ''), [chain]);
+  useEffect(() => setActive(chain.status === 'live'), [chain]);
 
   useEffect(() => {
     let live = true;
@@ -207,23 +226,28 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
     <section className={styles.panel}>
       <div className={styles.panelHead}>
         <button type="button" className={styles.back} onClick={onBack}>← all spaces</button>
-        <h2>VOID Chain #{chain.id}</h2>
-        <span className={`${styles.pill} ${PILL_CLASS[chain.status]}`}>
-          {STATUS_LABEL[chain.status]}
+        <h2>{displayName || `VOID Chain #${chain.id}`}</h2>
+        <span className={`${styles.pill} ${active ? PILL_CLASS.live : PILL_CLASS.reserved}`}>
+          {active ? STATUS_LABEL.live : STATUS_LABEL.reserved}
         </span>
       </div>
 
       <div className={styles.detailBody}>
         <dl className={styles.detailFacts}>
-          <div><dt>Name</dt><dd>{chain.name ?? 'no name set'}</dd></div>
+          <div><dt>Name</dt><dd>{displayName || 'no name set'}</dd></div>
           <div><dt>Runtime ID</dt><dd><Copyable value={String(chain.chainId)} /></dd></div>
+          <div><dt>VoidChain contract</dt><dd><Copyable value={DEPLOY.production.VoidChainAppRuntime} short /></dd></div>
+          <div><dt>Deed contract</dt><dd><Copyable value={DEPLOY.production.VoidChainDeed} short /></dd></div>
           <div><dt>Owner</dt><dd><Copyable value={chain.owner ?? ''} short /></dd></div>
           <div><dt>Transactions</dt><dd>{nf.format(chain.txCount)}</dd></div>
-          <div><dt>Applications</dt><dd>{nf.format(chain.contractCount)}</dd></div>
+          <div><dt>Apps</dt><dd>{nf.format(chain.contractCount)}</dd></div>
           <div><dt>Addresses</dt><dd>{nf.format(chain.addressCount)}</dd></div>
           <div><dt title="Gross tolls paid to this space; the protocol split is accounted for separately.">Revenue</dt><dd>{voidAmount(chain.revenue)} VOID</dd></div>
         </dl>
 
+        <ChainNameEditor tokenId={chain.id} fallbackName={displayName} onNameChanged={nameChanged} />
+        <ChainActivationEditor tokenId={chain.id} onActivated={() => setActive(true)} />
+        <ChainL3Migration tokenId={chain.id} runtimeId={chain.chainId} />
         <DaoPanel tokenId={chain.id} />
 
         {failed && <p className={styles.noHits}>Could not load this chain: {failed}</p>}
@@ -234,7 +258,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
             <div>
               <h3>Applications</h3>
               {detail.apps.length === 0 ? (
-                <p className={styles.noHits}>Nobody has published here yet.</p>
+                <p className={styles.noHits}>No applications published yet.</p>
               ) : (
                 <ul className={styles.detailList}>
                   {detail.apps.map((a) => (

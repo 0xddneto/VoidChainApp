@@ -7,7 +7,9 @@
  */
 import deployment from './deployment.json';
 
-export const DEPLOY = deployment;
+export const DEPLOY = deployment as typeof deployment & {
+  production: typeof deployment.production & { VoidCollectionMintPaymaster?: string };
+};
 
 export const RH_TESTNET = {
   chainIdHex: '0xb626', // 46630
@@ -37,18 +39,26 @@ export const ABI = {
     { type: 'function', name: 'buyRandom', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }] },
     { type: 'function', name: 'sell', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [{ type: 'uint256' }] },
   ],
-  marketApp: [
+  collectionMarket: [
     { type: 'function', name: 'quoteRandom', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }, { type: 'uint256' }] },
-    { type: 'function', name: 'buyRandom', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }] },
+    { type: 'function', name: 'hasMinted', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'bool' }] },
+    { type: 'function', name: 'buyRandomFor', stateMutability: 'nonpayable', inputs: [{ type: 'address' }, { type: 'uint256' }], outputs: [{ type: 'uint256' }] },
   ],
   deed: [
     { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
     { type: 'function', name: 'ownerOf', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'address' }] },
+    { type: 'function', name: 'identityOf', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'tuple', components: [
+      { name: 'name', type: 'string' }, { name: 'description', type: 'string' },
+      { name: 'imageURI', type: 'string' }, { name: 'externalURL', type: 'string' },
+      { name: 'socials', type: 'string[]' },
+    ] }] },
     { type: 'function', name: 'isApprovedForAll', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'bool' }] },
     { type: 'function', name: 'setApprovalForAll', stateMutability: 'nonpayable', inputs: [{ type: 'address' }, { type: 'bool' }], outputs: [] },
+    { type: 'function', name: 'rename', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'string' }], outputs: [] },
   ],
   runtime: [
     { type: 'function', name: 'statsOf', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'bool' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }] },
+    { type: 'function', name: 'activate', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
     { type: 'function', name: 'feeOf', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }] },
     { type: 'function', name: 'setTollCeiling', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
     { type: 'function', name: 'setFee', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
@@ -56,6 +66,9 @@ export const ABI = {
     { type: 'function', name: 'execute', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'address' }, { type: 'bytes' }, { type: 'uint256' }], outputs: [{ type: 'bytes' }] },
   ],
   paymaster: [
+    { type: 'function', name: 'nonces', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
+  ],
+  mintPaymaster: [
     { type: 'function', name: 'nonces', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
   ],
   daoFactory: [

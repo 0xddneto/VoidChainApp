@@ -18,7 +18,7 @@ import {
   CHAIN_ID_BASE, DEED, MAX_BLOCKS_PER_PASS,
   PARENT_RPC, POLL_INTERVAL_MS, RUNTIME,
 } from './config.js';
-import { cursor, pool, seedChains, writePass, type BlockInfo, type CallRow } from './db.js';
+import { alignDeployment, cursor, pool, seedChains, writePass, type BlockInfo, type CallRow } from './db.js';
 
 const EVENTS = {
   activated: parseAbiItem('event ChainAppActivated(uint256 indexed tokenId, address activator)'),
@@ -30,6 +30,9 @@ const EVENTS = {
   ),
   transfer: parseAbiItem(
     'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
+  ),
+  renamed: parseAbiItem(
+    'event VoidChainRenamed(uint256 indexed tokenId, string previousName, string newName)',
   ),
 } as const;
 
@@ -71,16 +74,18 @@ async function scan(): Promise<number> {
     : head;
 
   const range = { fromBlock: from, toBlock: to } as const;
-  const [activated, executed, registered, transfers] = await Promise.all([
-    client.getLogs({ address: RUNTIME, event: EVENTS.activated, ...range }),
-    client.getLogs({ address: RUNTIME, event: EVENTS.executed, ...range }),
-    client.getLogs({ address: RUNTIME, event: EVENTS.registered, ...range }),
-    client.getLogs({ address: DEED, event: EVENTS.transfer, ...range }),
-  ]);
+  // The deployment transaction creates a dense batch of events. Query them in
+  // series: public Robinhood RPCs otherwise reject the simultaneous large
+  // responses even though each individual event query is valid.
+  const activated = await client.getLogs({ address: RUNTIME, event: EVENTS.activated, ...range });
+  const executed = await client.getLogs({ address: RUNTIME, event: EVENTS.executed, ...range });
+  const registered = await client.getLogs({ address: RUNTIME, event: EVENTS.registered, ...range });
+  const transfers = await client.getLogs({ address: DEED, event: EVENTS.transfer, ...range });
+  const renamed = await client.getLogs({ address: DEED, event: EVENTS.renamed, ...range });
 
-  const all = [...activated, ...executed, ...registered, ...transfers];
+  const all = [...activated, ...executed, ...registered, ...transfers, ...renamed];
   if (all.length === 0) {
-    await writePass([], [], [], [], to);
+    await writePass([], [], [], [], [], to);
     return 0;
   }
 
@@ -113,6 +118,7 @@ async function scan(): Promise<number> {
     })),
     // The last Transfer of each token within the batch is its owner at the end.
     transfers.map((l) => ({ chain: Number(l.args.tokenId!), owner: l.args.to! })),
+    renamed.map((l) => ({ chain: Number(l.args.tokenId!), name: l.args.newName! })),
     to,
   );
 
@@ -135,6 +141,10 @@ async function main(): Promise<void> {
   console.log(`  runtime  ${RUNTIME}`);
   console.log(`  deed     ${DEED}`);
   console.log(`  rpc      ${PARENT_RPC}`);
+
+  if (await alignDeployment(RUNTIME, DEED)) {
+    console.log('  deployment changed; rebuilt the local chain mirror');
+  }
 
   // All 1,111 exist as rows from the first second, as 'reserved'. Without that,
   // a chain would only appear in the database once activated, and the foreign

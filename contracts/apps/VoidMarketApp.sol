@@ -34,6 +34,11 @@ contract VoidMarketApp is ChainAppBase, ReentrancyGuard {
     IVoidDeedMarket public immutable market;
     IMarketDeed public immutable deed;
 
+    /// @notice One address may mint one collection deed through this launch app.
+    ///         This remains true if it transfers that deed later; the limit is
+    ///         about the mint, not current NFT ownership.
+    mapping(address buyer => bool) public hasMinted;
+
     event RandomDeedBought(address indexed buyer, uint256 indexed deedId, uint256 cost);
 
     error MarketZeroAddress();
@@ -42,6 +47,7 @@ contract VoidMarketApp is ChainAppBase, ReentrancyGuard {
     error CostAboveMaximum(uint256 cost, uint256 maximum);
     error EmptyMarket();
     error TokenApprovalFailed();
+    error MintLimitReached(address buyer);
 
     constructor(
         IVoidChainAppRuntime runtime_,
@@ -81,6 +87,7 @@ contract VoidMarketApp is ChainAppBase, ReentrancyGuard {
         nonReentrant
         returns (uint256 deedId)
     {
+        if (hasMinted[caller()]) revert MintLimitReached(caller());
         uint256 available = market.available();
         if (available == 0) revert EmptyMarket();
 
@@ -101,6 +108,7 @@ contract VoidMarketApp is ChainAppBase, ReentrancyGuard {
         // The AMM returned the deed to this app because it was the caller. Send
         // only that returned id to the runtime's authenticated user.
         deed.transferFrom(address(this), caller(), deedId);
+        hasMinted[caller()] = true;
         emit RandomDeedBought(caller(), deedId, cost);
     }
 }

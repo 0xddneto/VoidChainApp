@@ -9,9 +9,10 @@
 
 import { useEffect, useState } from 'react';
 import styles from './page.module.css';
+import { ProfileAvatar } from './ProfileAvatar';
 
 type Eip1193Provider = {
-  request(args: { method: string }): Promise<unknown>;
+  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
   on?: (event: string, listener: (value: unknown) => void) => void;
   removeListener?: (event: string, listener: (value: unknown) => void) => void;
 };
@@ -31,6 +32,7 @@ function shortAddress(address: string): string {
 
 export function WalletProfileButton() {
   const [account, setAccount] = useState<string | null>(null);
+  const [profile, setProfile] = useState<{ displayName: string | null; avatarUri: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -43,6 +45,24 @@ export function WalletProfileButton() {
     wallet.on?.('accountsChanged', update);
     return () => wallet.removeListener?.('accountsChanged', update);
   }, []);
+
+  useEffect(() => {
+    if (!account) {
+      setProfile(null);
+      return;
+    }
+
+    let current = true;
+    void fetch(`/api/profile?address=${encodeURIComponent(account)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((identity) => {
+        if (current) setProfile(identity);
+      })
+      .catch(() => {
+        if (current) setProfile(null);
+      });
+    return () => { current = false; };
+  }, [account]);
 
   async function connectOrOpenProfile() {
     if (account) {
@@ -70,7 +90,7 @@ export function WalletProfileButton() {
     }
   }
 
-  const label = account ? shortAddress(account) : busy ? 'Connecting…' : 'Connect wallet';
+  const label = account ? profile?.displayName || shortAddress(account) : busy ? 'Connecting…' : 'Connect wallet';
   const description = account
     ? `Open profile for ${account}`
     : 'Connect a wallet to open your profile';
@@ -84,7 +104,15 @@ export function WalletProfileButton() {
         disabled={busy}
         title={description}
       >
-        <span className={styles.walletMark} aria-hidden="true" />
+        {account ? (
+          <ProfileAvatar
+            src={profile?.avatarUri}
+            className={styles.walletAvatar}
+            blankClassName={styles.walletAvatarBlank}
+          />
+        ) : (
+          <span className={styles.walletMark} aria-hidden="true" />
+        )}
         {label}
       </button>
       {message && <span className={styles.walletMessage} role="status">{message}</span>}

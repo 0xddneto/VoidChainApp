@@ -59,6 +59,17 @@ CREATE TABLE indexer_state (
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- The indexer only has one valid source deployment at a time.  Keeping this
+-- fingerprint prevents an old test deployment from being shown as ownership or
+-- activity for a newly deployed collection that happens to reuse token IDs.
+CREATE TABLE indexer_deployment (
+    id                 BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
+    runtime_address    BYTEA NOT NULL,
+    deed_address       BYTEA NOT NULL,
+    deploy_block       BIGINT NOT NULL,
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE chain_socials (
     chain_id        SMALLINT NOT NULL REFERENCES chains(id) ON DELETE CASCADE,
     platform        TEXT NOT NULL,

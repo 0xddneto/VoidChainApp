@@ -4,14 +4,14 @@
  * Usage:  npx tsx deploy-testnet.ts
  *
  * Deploys everything from scratch and leaves the system in a usable state: 1,111
- * deeds minted and switched on, a pool with stock to buy from, and the bubble
+ * deeds minted but inactive, a pool with stock to buy from, and the bubble
  * working — anyone holding only VOID transacts without ever touching ETH.
  *
  * WHAT IS TESTNET-ONLY AND DOES NOT GO TO MAINNET:
  *
  *   VoidTestToken   — on mainnet the token comes from the market's own factory.
- *                     This one exists because the old test VOID has no `permit`,
- *                     and without `permit` the bubble does not close.
+ *                     This one makes the explicit, exact testnet approval and
+ *                     one-signature purchase path observable in wallets.
  *   VoidTestOracle  — on mainnet the price comes from the VOID/ETH pool's TWAP
  *                     times Chainlink's ETH/USD feed. Neither exists here.
  *   VoidNftAmm      — on mainnet the market is operated by a third party. This
@@ -93,24 +93,23 @@ const VOID_USD = parseEther('0.001');
 const VOID_PER_ETH = parseEther('2411000');
 
 /**
- * How many deeds go into the pool, starting at #1.
- *
- * The pool sells from the beginning of the collection: a buyer arriving first
- * gets deed #1, not #101. An earlier version filled the pool from #101 and kept
- * the first hundred back, which meant the collection appeared to start at 101 to
- * anyone buying.
+ * Testnet launches the complete 1,111-deed collection into the pool. Each
+ * address may mint one deed through the collection market.
  */
-const SEED_INTO_POOL = 100;
-
-/** The chain that hosts the collection market application. */
-const MARKET_CHAIN_ID = 1111n;
+const SEED_INTO_POOL = NFTS;
 
 const BATCH = 20;
 const DAO_BATCH = 20;
+const POOL_SEED_BATCH = 25;
 
 function artifact(file: string): { abi: Abi; bytecode: `0x${string}` } {
   const raw = JSON.parse(readFileSync(`${OUT}/${file}.sol/${file}.json`, 'utf8'));
-  return { abi: raw.abi as Abi, bytecode: raw.bytecode.object as `0x${string}` };
+  // Forge writes bytecode with `0x`; the local solc fallback writes the same
+  // hex string without it. JSON-RPC requires the prefix, so normalize here
+  // instead of silently passing malformed deployment data to the network.
+  const object = raw.bytecode.object as string;
+  const bytecode = (object.startsWith('0x') ? object : `0x${object}`) as `0x${string}`;
+  return { abi: raw.abi as Abi, bytecode };
 }
 
 async function ceiling(): Promise<bigint> {
@@ -237,15 +236,31 @@ console.log('  ✓ wired: oracle, forwarder and DAO factory frozen, settler, 10%
 // Operators may lower it for a clean test deployment when faucet ETH is scarce;
 // the amount is public in the final deployment record and never changes the
 // Paymaster's signature or spending limits.
-const RESERVE = parseEther(process.env.PAYMASTER_RESERVE ?? '0.01');
-if (RESERVE === 0n) throw new Error('PAYMASTER_RESERVE must be greater than zero.');
+const RUNTIME_RESERVE = parseEther(process.env.PAYMASTER_RESERVE ?? '0.001');
+const MINT_RESERVE = parseEther(process.env.MINT_PAYMASTER_RESERVE ?? '0.001');
+const REFILL_TARGET = process.env.PAYMASTER_REFILL_TARGET
+  ? parseEther(process.env.PAYMASTER_REFILL_TARGET)
+  : RUNTIME_RESERVE;
+const REFILL_THRESHOLD = process.env.PAYMASTER_REFILL_THRESHOLD
+  ? parseEther(process.env.PAYMASTER_REFILL_THRESHOLD)
+  : (RUNTIME_RESERVE * 70n) / 100n;
+if (RUNTIME_RESERVE === 0n || MINT_RESERVE === 0n) {
+  throw new Error('Paymaster reserves must be greater than zero.');
+}
+if (REFILL_THRESHOLD === 0n || REFILL_THRESHOLD >= REFILL_TARGET) {
+  throw new Error('Paymaster refill threshold must be positive and lower than its target.');
+}
 await parent.waitForTransactionReceipt({
   hash: await wallet.sendTransaction({
-    account, chain: null, to: paymaster, value: RESERVE,
+    account, chain: null, to: paymaster, value: RUNTIME_RESERVE,
     maxFeePerGas: await ceiling(), maxPriorityFeePerGas: 0n,
   }),
 });
-console.log(`  ✓ paymaster reserve: ${formatEther(RESERVE)} ETH`);
+console.log(`  ✓ runtime paymaster reserve: ${formatEther(RUNTIME_RESERVE)} ETH`);
+await send(paymaster, pmAbi, 'setRefillPolicy', [REFILL_THRESHOLD, REFILL_TARGET, 500n]);
+console.log(
+  `  ✓ refill policy: below ${formatEther(REFILL_THRESHOLD)} ETH → ${formatEther(REFILL_TARGET)} ETH (5% TWAP bound)`,
+);
 
 // ---------------------------------------------------------------------------
 console.log(`\n  [3/9] creating the ${NFTS} chain DAOs`);
@@ -282,23 +297,17 @@ const mintedBatches = await bulk(mintBatches, (ids, nonce, maxFeePerGas) =>
 if (mintedBatches !== mintBatches.length) throw new Error('One or more deed mint batches failed.');
 
 // ---------------------------------------------------------------------------
-console.log(`\n  [5/9] switching on the ${NFTS} chains (toll $0.001)`);
-
-const everyId: number[] = [];
-for (let i = 1; i <= NFTS; i++) everyId.push(i);
-const activated = await bulk(everyId, (id, nonce, maxFeePerGas) =>
-  wallet.writeContract({
-    address: runtime, abi: rtAbi, functionName: 'activate',
-    args: [BigInt(id), TOLL_USD], account, chain: null, nonce,
-    maxFeePerGas, maxPriorityFeePerGas: 0n,
-  }), 'activating');
-if (activated !== everyId.length) throw new Error('One or more activation calls failed.');
+console.log(`\n  [5/9] keeping all ${NFTS} collection deeds inactive`);
+// A deed starts inactive. Its buyer alone sets its original transaction fee by
+// calling runtime.activate from the personal chain card. The collection market
+// below is deliberately outside the runtime, so it never needs a live deed.
+console.log(`  ✓ all ${NFTS} deeds await their holder's activation`);
 
 // ---------------------------------------------------------------------------
 console.log('\n  [6/9] the pool');
 
 const amm = await deploy('VoidNftAmm', [
-  token, deed, TOKENS_PER_NFT, RANDOM_FEE_BPS, SPECIFIC_FEE_BPS,
+  token, deed, TOKENS_PER_NFT, RANDOM_FEE_BPS, SPECIFIC_FEE_BPS, account.address,
 ]);
 
 const tokenAbi = artifact('VoidTestToken').abi;
@@ -309,40 +318,51 @@ await send(deed, deedAbi, 'setApprovalForAll', [amm, true]);
 console.log(`  ✓ pool funded, ${TOKENS_PER_NFT / 10n ** 18n} VOID per deed`);
 
 // ---------------------------------------------------------------------------
-console.log(`\n  [7/9] filling the pool's stock with ${SEED_INTO_POOL} deeds`);
+console.log(`\n  [7/9] filling the pool's stock with all ${SEED_INTO_POOL} deeds`);
 
 const ammAbi = artifact('VoidNftAmm').abi;
 // From #1 upwards, so the first deed bought is the first deed of the collection.
-const forPool: number[] = [];
-for (let i = 1; i <= SEED_INTO_POOL; i++) forPool.push(i);
-
-await bulk(forPool, (id, nonce) =>
-  wallet.writeContract({
-    address: amm, abi: ammAbi, functionName: 'sell',
-    args: [BigInt(id), 0n], account, chain: null, nonce,
-    maxFeePerGas: 30_000_000n, maxPriorityFeePerGas: 0n,
-  }), 'depositing');
-
-// ---------------------------------------------------------------------------
-console.log("\n  [8/9] demo applications on the pool's first 10");
-
-const demoApps: Record<string, Address> = {};
-for (let i = 0; i < 10; i++) {
-  const id = BigInt(i + 1);
-  const app = await deploy('Counter', [runtime, id]);
-  await send(runtime, rtAbi, 'registerApp', [id, app]);
-  demoApps[id.toString()] = app;
+const poolSeedBatches: bigint[][] = [];
+for (let start = 1; start <= SEED_INTO_POOL; start += POOL_SEED_BATCH) {
+  const ids: bigint[] = [];
+  for (let id = start; id < start + POOL_SEED_BATCH && id <= SEED_INTO_POOL; id++) ids.push(BigInt(id));
+  poolSeedBatches.push(ids);
 }
 
-// ---------------------------------------------------------------------------
-console.log("\n  [9/9] market application in chain #1111");
+const seeded = await bulk(poolSeedBatches, (ids, nonce, maxFeePerGas) =>
+  wallet.writeContract({
+    address: amm, abi: ammAbi, functionName: 'seed',
+    args: [ids, 0n], account, chain: null, nonce,
+    maxFeePerGas, maxPriorityFeePerGas: 0n,
+  }), 'seeding pool');
+if (seeded !== poolSeedBatches.length) throw new Error('One or more pool seed batches failed.');
 
-// This is the market path for wallets with no test ETH: the user signs a
-// bounded VOID budget and the paymaster relays the call. The AMM itself never
-// receives a user approval.
-const marketApp = await deploy('VoidMarketApp', [runtime, MARKET_CHAIN_ID, token, amm, deed]);
-await send(runtime, rtAbi, 'registerApp', [MARKET_CHAIN_ID, marketApp]);
-console.log(`  ✓ market app on chain #${MARKET_CHAIN_ID}`);
+// ---------------------------------------------------------------------------
+console.log("\n  [8/9] no applications on inactive deeds");
+
+const demoApps: Record<string, Address> = {};
+
+// ---------------------------------------------------------------------------
+console.log("\n  [9/9] collection market outside all chains");
+
+// The market uses one exact VOID approval to the Paymaster, then one signed
+// purchase. The AMM itself never receives a user approval, and no deed needs
+// to be activated before its owner exists.
+const mintPaymaster = await deploy('VoidCollectionMintPaymaster', [token, oracle, account.address]);
+await send(mintPaymaster, artifact('VoidCollectionMintPaymaster').abi, 'setLimits', [
+  1_000n, 60_000n, await ceiling(),
+]);
+await parent.waitForTransactionReceipt({
+  hash: await wallet.sendTransaction({
+    account, chain: null, to: mintPaymaster, value: MINT_RESERVE,
+    maxFeePerGas: await ceiling(), maxPriorityFeePerGas: 0n,
+  }),
+});
+const collectionMarket = await deploy('VoidCollectionMarket', [token, amm, deed, mintPaymaster]);
+await send(amm, ammAbi, 'setSaleOperatorOnce', [collectionMarket]);
+await send(mintPaymaster, artifact('VoidCollectionMintPaymaster').abi, 'setCollectionMarketOnce', [collectionMarket]);
+console.log(`  ✓ collection mint paymaster reserve: ${formatEther(MINT_RESERVE)} ETH`);
+console.log('  ✓ collection market outside all chains; one mint per wallet; direct pool buys locked');
 
 // ---------------------------------------------------------------------------
 const balanceAfter = await parent.getBalance({ address: account.address });
@@ -370,6 +390,7 @@ const output = {
     VoidChainTreasury: treasury,
     VoidChainAppRuntime: runtime,
     VoidPaymaster: paymaster,
+    VoidCollectionMintPaymaster: mintPaymaster,
     VoidChainDaoFactory: daoFactory,
   },
   governance: {
@@ -380,8 +401,8 @@ const output = {
     VoidTestToken: token,
     VoidTestOracle: oracle,
     VoidNftAmm: amm,
-    VoidMarketApp: marketApp,
-    marketChainId: Number(MARKET_CHAIN_ID),
+    VoidCollectionMarket: collectionMarket,
+    marketPurchaseFlow: 'collection-prepaid-v2',
   },
   parameters: {
     nfts: NFTS,

@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
@@ -63,6 +64,8 @@ interface IWETH {
 }
 
 interface IVoidChainAppRuntime {
+    function feeOf(uint256 tokenId) external view returns (uint256);
+
     function executeFor(
         address user,
         uint256 tokenId,
@@ -79,6 +82,15 @@ interface IVoidChainAppRuntime {
     }
 
     function executeForWithBudget(
+        address user,
+        uint256 tokenId,
+        address target,
+        bytes calldata data,
+        uint256 maxFee,
+        SpendAuth calldata auth
+    ) external returns (bytes memory);
+
+    function executeForWithPrepaidBudget(
         address user,
         uint256 tokenId,
         address target,
@@ -157,6 +169,12 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     ///         turn sponsorship into confiscation from those holding only VOID.
     uint256 public constant MAX_MARGIN_BPS = 3_000;
 
+    /// @dev A refill uses the oracle's 30-minute price. This is the maximum
+    ///      difference accepted from that reference, including pool fee and
+    ///      execution slippage. Governance cannot turn a public refill into a
+    ///      discounted sale of the replacement account.
+    uint256 public constant MAX_REFILL_SLIPPAGE_BPS = 500;
+
     bytes32 public constant SPONSORED_CALL_TYPEHASH = keccak256(
         "SponsoredCall(address user,uint256 tokenId,address target,bytes data,uint256 maxToll,uint256 maxGasVoid,uint256 callGasLimit,Spend[] spends,SpendNft[] nftSpends,uint256 nonce,uint256 deadline)Spend(address token,uint256 amount)SpendNft(address collection,uint256 tokenId)"
     );
@@ -164,6 +182,14 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     bytes32 public constant SPEND_TYPEHASH = keccak256("Spend(address token,uint256 amount)");
     bytes32 public constant SPEND_NFT_TYPEHASH =
         keccak256("SpendNft(address collection,uint256 tokenId)");
+
+    /// @dev Direct fields make the wallet prompt unambiguous: it displays the
+    ///      token contract and app maximum instead of hiding them in an array.
+    bytes32 public constant PREPAID_CALL_TYPEHASH = keccak256(
+        "PrepaidCall(address user,uint256 tokenId,address target,bytes data,address paymentToken,string paymentSymbol,string purchaseLabel,uint256 appSpend,uint256 maxToll,uint256 maxGasVoid,uint256 callGasLimit,uint256 nonce,uint256 deadline)"
+    );
+    bytes32 public constant VOID_SYMBOL_HASH = keccak256("VOID");
+    bytes32 public constant VOID_DEED_PURCHASE_LABEL_HASH = keccak256("VOID deed purchase");
 
     /// @dev ArbOS's gas precompile, where the real L1 cost lives.
     ///
@@ -240,6 +266,25 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         uint256 deadline;
     }
 
+    /// @notice A single-token sponsored call funded by one explicit approval.
+    /// @dev `paymentToken`, `appSpend`, toll and gas cap are all direct EIP-712
+    ///      fields, so the wallet has the complete price breakdown.
+    struct PrepaidCall {
+        address user;
+        uint256 tokenId;
+        address target;
+        bytes data;
+        address paymentToken;
+        string paymentSymbol;
+        string purchaseLabel;
+        uint256 appSpend;
+        uint256 maxToll;
+        uint256 maxGasVoid;
+        uint256 callGasLimit;
+        uint256 nonce;
+        uint256 deadline;
+    }
+
     struct Spend {
         address token;
         uint256 amount;
@@ -287,6 +332,13 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     ISwapRouter public swapRouter;
     address public weth;
     uint24 public poolFee;
+
+    /// @notice The public keeper acts only below this ETH balance and aims for
+    ///         `refillTarget`. Zero disables automatic refills until governance
+    ///         has installed both a real route and an explicit reserve policy.
+    uint256 public refillThreshold;
+    uint256 public refillTarget;
+    uint256 public refillSlippageBps;
 
     function voidPerEth() public view returns (uint256) {
         return oracle.voidPerEth();
@@ -348,6 +400,7 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     event OracleUpdated(address oracle);
     event SwapRouteUpdated(address router, address weth, uint24 poolFee);
     event Refilled(uint256 voidSold, uint256 ethReceived);
+    event RefillPolicyUpdated(uint256 threshold, uint256 target, uint256 slippageBps);
     event LimitsUpdated(uint256 ethFloor, uint256 gasOverhead, uint256 maxGasPrice);
     event GovernorTransferred(address previous, address next);
     event RunwayTreasuryUpdated(address previous, address next);
@@ -375,10 +428,18 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     error BlockBudgetExceeded(uint256 wanted, uint256 budget);
     error RateStepTooLarge(uint256 given, uint256 min, uint256 max);
     error SwapRouteNotSet();
+    error BadRefillPolicy(uint256 threshold, uint256 target, uint256 slippageBps);
+    error RefillNotNeeded(uint256 reserve, uint256 threshold, uint256 reimbursable);
+    error RefillAbovePlan(uint256 given, uint256 maximum);
+    error RefillMinOutTooLow(uint256 given, uint256 minimum);
     error UnexpectedPermitSpender(address spender);
     error DuplicatePermitSpender(address spender);
     error TooManyPermits(uint256 given, uint256 max);
     error AllowanceTooLow(address user, address spender, uint256 available, uint256 needed);
+    error UnexpectedPrepaidToken(address given, address expected);
+    error PrepaidDisplayMismatch();
+    error TollChanged(uint256 signed, uint256 current);
+    error PrepaidBudgetMismatch(uint256 consumed, uint256 allowed);
 
     constructor(
         IERC20 voidToken_,
@@ -490,6 +551,56 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         _requireAllowance(req.user, address(this), req.maxToll + req.maxGasVoid);
         if (runtimeBudget > 0) _requireAllowance(req.user, address(runtime), runtimeBudget);
         return _sponsor(gasStart, req, signature);
+    }
+
+    /// @notice Sponsors one VOID-funded app call after one normal ERC-20 approval.
+    /// @dev The user approves this contract for the exact sum shown by the
+    ///      interface (app amount + chain fee + gas cap), then signs ONE
+    ///      `PrepaidCall`. The Paymaster opens a temporary Runtime allowance
+    ///      only for this call; there is no user-to-Runtime approval.
+    function sponsorPrepaid(PrepaidCall calldata req, bytes calldata signature)
+        external
+        nonReentrant
+        returns (bool executed, bytes memory result)
+    {
+        uint256 gasStart = gasleft();
+        if (
+            keccak256(bytes(req.paymentSymbol)) != VOID_SYMBOL_HASH
+                || keccak256(bytes(req.purchaseLabel)) != VOID_DEED_PURCHASE_LABEL_HASH
+        ) revert PrepaidDisplayMismatch();
+        uint256 worstEth = _validatePrepaid(req, signature);
+        if (req.paymentToken != address(voidToken)) {
+            revert UnexpectedPrepaidToken(req.paymentToken, address(voidToken));
+        }
+
+        uint256 runtimeBudget = req.maxToll + req.appSpend;
+        uint256 prefund = runtimeBudget + req.maxGasVoid;
+        _requireAllowance(req.user, address(this), prefund);
+        _pull(req.user, prefund);
+
+        // Never carry an allowance across calls. The reset also supports tokens
+        // which forbid changing a non-zero approval directly.
+        if (voidToken.allowance(address(this), address(runtime)) > 0) {
+            if (!voidToken.approve(address(runtime), 0)) revert TransferFailed();
+        }
+        if (runtimeBudget > 0 && !voidToken.approve(address(runtime), runtimeBudget)) {
+            revert TransferFailed();
+        }
+
+        (executed, result) = _runPrepaid(req);
+
+        uint256 remaining = voidToken.allowance(address(this), address(runtime));
+        uint256 consumed = runtimeBudget - remaining;
+        if (!voidToken.approve(address(runtime), 0)) revert TransferFailed();
+
+        // `_validatePrepaid` freezes the toll at the current fee. A reverted
+        // runtime call reverts its own token movements, so it consumed nothing.
+        uint256 tollPaid = executed ? req.maxToll : 0;
+        if (consumed < tollPaid || consumed > runtimeBudget) {
+            revert PrepaidBudgetMismatch(consumed, runtimeBudget);
+        }
+        uint256 appPaid = consumed - tollPaid;
+        _settlePrepaid(gasStart, worstEth, req, prefund, tollPaid, appPaid);
     }
 
     /// @dev    The `catch` exists because of a known attack: anyone can see the
@@ -649,6 +760,39 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         nonces[req.user] = expected + 1;
     }
 
+    /// @dev Same reserve and relayer protections as `_validate`, but the toll
+    ///      must still equal the one displayed in the signed purchase.
+    function _validatePrepaid(PrepaidCall calldata req, bytes calldata signature)
+        private
+        returns (uint256 worstEth)
+    {
+        if (voidPerEth() == 0) revert RateNotSet();
+        if (tx.gasprice > maxGasPrice) revert GasPriceAboveLimit(tx.gasprice, maxGasPrice);
+        if (block.timestamp > req.deadline) revert Expired(req.deadline);
+
+        uint256 expected = nonces[req.user];
+        if (req.nonce != expected) revert BadNonce(req.nonce, expected);
+        _requirePrepaidSignedByUser(req, signature);
+
+        uint256 currentToll = runtime.feeOf(req.tokenId);
+        if (currentToll != req.maxToll) revert TollChanged(req.maxToll, currentToll);
+
+        worstEth = (req.callGasLimit + gasOverhead) * tx.gasprice + _l1Fee();
+        uint256 worstCharge = _toVoid(worstEth);
+        if (worstCharge > req.maxGasVoid) revert GasAboveLimit(worstCharge, req.maxGasVoid);
+        if (worstEth > 0 && _gasVoid(worstEth) == 0) {
+            revert RateTooLowToCharge(worstEth, voidPerEth());
+        }
+        if (address(this).balance < worstEth) {
+            revert ReserveTooLow(address(this).balance, worstEth);
+        }
+        _chargeBlockBudget(worstEth);
+        if (gasleft() < req.callGasLimit + FINALIZATION_GAS) {
+            revert NotEnoughGasForCall(gasleft(), req.callGasLimit);
+        }
+        nonces[req.user] = expected + 1;
+    }
+
     /// @dev Extracted from `_sponsor` because the budget arrays did not fit on
     ///      the stack alongside the settlement accounting.
     function _run(SponsoredCall calldata req)
@@ -682,6 +826,68 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
             executed = false;
             emit ExecutionFailed(req.user, req.tokenId, req.target, reason);
         }
+    }
+
+    function _runPrepaid(PrepaidCall calldata req)
+        private
+        returns (bool executed, bytes memory result)
+    {
+        address[] memory tokens = new address[](1);
+        uint256[] memory limits = new uint256[](1);
+        tokens[0] = req.paymentToken;
+        limits[0] = req.appSpend;
+        address[] memory collections = new address[](0);
+        uint256[] memory nftIds = new uint256[](0);
+
+        try runtime.executeForWithPrepaidBudget{gas: req.callGasLimit}(
+            req.user,
+            req.tokenId,
+            req.target,
+            req.data,
+            req.maxToll,
+            IVoidChainAppRuntime.SpendAuth({
+                tokens: tokens,
+                limits: limits,
+                collections: collections,
+                nftIds: nftIds
+            })
+        ) returns (bytes memory returned) {
+            executed = true;
+            result = returned;
+        } catch (bytes memory reason) {
+            executed = false;
+            emit ExecutionFailed(req.user, req.tokenId, req.target, reason);
+        }
+    }
+
+    function _settlePrepaid(
+        uint256 gasStart,
+        uint256 worstEth,
+        PrepaidCall calldata req,
+        uint256 prefund,
+        uint256 tollPaid,
+        uint256 appPaid
+    ) private {
+        uint256 ethSpent = (gasStart - gasleft() + gasOverhead) * tx.gasprice + _l1Fee();
+        uint256 gasVoid = _gasVoid(ethSpent);
+        uint256 charge = _toVoid(ethSpent);
+        if (charge > req.maxGasVoid) {
+            charge = req.maxGasVoid;
+            gasVoid = (charge * BPS) / (BPS + marginBps);
+        }
+        if (ethSpent > worstEth) ethSpent = worstEth;
+
+        reimbursableVoid += gasVoid;
+        surplusVoid += charge - gasVoid;
+
+        uint256 refund = prefund - tollPaid - appPaid - charge;
+        if (refund > 0 && !voidToken.transfer(req.user, refund)) revert TransferFailed();
+
+        (bool ok,) = msg.sender.call{value: ethSpent}("");
+        if (!ok) revert ReimbursementFailed();
+        emit Sponsored(
+            req.user, msg.sender, req.tokenId, tollPaid, gasVoid, charge - gasVoid, ethSpent
+        );
     }
 
     /// @dev This transaction's L1 cost, asked of ArbOS.
@@ -753,6 +959,40 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         );
         address signer = ECDSA.recover(_hashTypedDataV4(structHash), signature);
         if (signer != req.user) revert BadSignature();
+    }
+
+    function _requirePrepaidSignedByUser(PrepaidCall calldata req, bytes calldata signature)
+        private
+        view
+    {
+        bytes32 structHash = _prepaidStructHash(req);
+        address signer = ECDSA.recover(_hashTypedDataV4(structHash), signature);
+        if (signer != req.user) revert BadSignature();
+    }
+
+    /// @dev All fields below are fixed 32-byte ABI words: dynamic values are
+    ///      represented by their EIP-712 hashes. Concatenating these ABI blocks
+    ///      is therefore byte-for-byte identical to one large `abi.encode`, but
+    ///      avoids exhausting the Solidity compiler's stack on this long,
+    ///      deliberately explicit wallet message.
+    function _prepaidStructHash(PrepaidCall calldata req) private pure returns (bytes32) {
+        bytes memory encoded = abi.encode(
+            PREPAID_CALL_TYPEHASH, req.user, req.tokenId, req.target, keccak256(req.data)
+        );
+        encoded = bytes.concat(
+            encoded,
+            abi.encode(
+                req.paymentToken,
+                keccak256(bytes(req.paymentSymbol)),
+                keccak256(bytes(req.purchaseLabel)),
+                req.appSpend
+            )
+        );
+        encoded = bytes.concat(
+            encoded,
+            abi.encode(req.maxToll, req.maxGasVoid, req.callGasLimit, req.nonce, req.deadline)
+        );
+        return keccak256(encoded);
     }
 
     /// @dev A struct array in EIP-712: hash each element, concatenate, and hash
@@ -848,6 +1088,37 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         emit EthWithdrawn(to, amount);
     }
 
+    /// @notice True when the permissionless keeper may rebuild the ETH reserve.
+    function needsRefill() public view returns (bool) {
+        return refillThreshold != 0 && address(swapRouter) != address(0)
+            && address(this).balance < refillThreshold && reimbursableVoid != 0;
+    }
+
+    /// @notice Bounded input and minimum ETH output for the next public refill.
+    /// @dev The keeper submits these exact values. It cannot select a larger
+    ///      sale or lower the on-chain 30-minute-TWAP slippage floor.
+    function refillPlan()
+        public
+        view
+        returns (bool shouldRefill, uint256 amountVoid, uint256 minEthOut)
+    {
+        if (!needsRefill()) return (false, 0, 0);
+
+        uint256 missingEth = refillTarget - address(this).balance;
+        uint256 rate = voidPerEth();
+        if (rate == 0) revert RateNotSet();
+
+        uint256 neededVoid = Math.mulDiv(missingEth, rate, 1e18, Math.Rounding.Ceil);
+        amountVoid = neededVoid < reimbursableVoid ? neededVoid : reimbursableVoid;
+        if (amountVoid == 0) return (false, 0, 0);
+
+        uint256 oracleEthOut = Math.mulDiv(amountVoid, 1e18, rate);
+        minEthOut = Math.mulDiv(
+            oracleEthOut, BPS - refillSlippageBps, BPS, Math.Rounding.Floor
+        );
+        return (true, amountVoid, minEthOut);
+    }
+
     /// @notice Sells the replacement VOID for ETH and rebuilds the reserve on
     ///         its own.
     ///
@@ -873,11 +1144,17 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         returns (uint256 ethOut)
     {
         if (address(swapRouter) == address(0)) revert SwapRouteNotSet();
-        if (amountVoid == 0 || amountVoid > reimbursableVoid) {
-            revert AmountAboveBalance(amountVoid, reimbursableVoid);
+        (bool shouldRefill, uint256 maxVoid, uint256 minAllowed) = refillPlan();
+        if (!shouldRefill) {
+            revert RefillNotNeeded(address(this).balance, refillThreshold, reimbursableVoid);
         }
+        if (amountVoid == 0 || amountVoid > maxVoid) revert RefillAbovePlan(amountVoid, maxVoid);
+        if (minEthOut < minAllowed) revert RefillMinOutTooLow(minEthOut, minAllowed);
         reimbursableVoid -= amountVoid;
 
+        // Reset first and after the swap. This supports strict ERC-20s and
+        // leaves no live router allowance if a route is later migrated.
+        if (!voidToken.approve(address(swapRouter), 0)) revert TransferFailed();
         if (!voidToken.approve(address(swapRouter), amountVoid)) revert TransferFailed();
         ethOut = swapRouter.exactInputSingle(
             ISwapRouter.ExactInputSingleParams({
@@ -890,6 +1167,7 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
                 sqrtPriceLimitX96: 0
             })
         );
+        if (!voidToken.approve(address(swapRouter), 0)) revert TransferFailed();
         IWETH(weth).withdraw(ethOut);
         emit Refilled(amountVoid, ethOut);
     }
@@ -1026,6 +1304,22 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         emit SwapRouteUpdated(address(router_), weth_, poolFee_);
     }
 
+    /// @notice Sets the trigger, target and maximum TWAP slippage for public
+    ///         reserve refills. A zero/zero pair intentionally disables them.
+    function setRefillPolicy(uint256 threshold, uint256 target, uint256 slippageBps)
+        external
+        onlyGovernor
+    {
+        if (
+            slippageBps > MAX_REFILL_SLIPPAGE_BPS
+                || !((threshold == 0 && target == 0) || (threshold > 0 && threshold < target))
+        ) revert BadRefillPolicy(threshold, target, slippageBps);
+        refillThreshold = threshold;
+        refillTarget = target;
+        refillSlippageBps = slippageBps;
+        emit RefillPolicyUpdated(threshold, target, slippageBps);
+    }
+
     function setLimits(
         uint256 ethFloor_,
         uint256 gasOverhead_,
@@ -1051,4 +1345,5 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         emit RunwayTreasuryUpdated(runwayTreasury, next);
         runwayTreasury = next;
     }
+
 }

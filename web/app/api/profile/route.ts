@@ -7,7 +7,16 @@
  */
 import { NextResponse } from 'next/server';
 import { verifyMessage, isAddress } from 'viem';
-import { saveProfile, type Social } from '@/lib/chains';
+import { profileIdentity, saveProfile, type Social } from '@/lib/chains';
+
+const MAX_AVATAR_DATA_URI = 900_000;
+
+function validAvatarUri(value: string): boolean {
+  if (!value) return true;
+  if (value.startsWith('https://')) return value.length <= 400;
+  return value.length <= MAX_AVATAR_DATA_URI
+    && /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(value);
+}
 
 /** The message the wallet signs. Reproduced here so the server checks the same text. */
 export function profileMessage(address: string, nonce: string): string {
@@ -19,6 +28,15 @@ export function profileMessage(address: string, nonce: string): string {
     '',
     'Signing this proves the wallet is yours. It costs no gas and moves nothing.',
   ].join('\n');
+}
+
+export async function GET(req: Request) {
+  const address = new URL(req.url).searchParams.get('address');
+  if (!address || !isAddress(address)) {
+    return NextResponse.json({ error: 'a valid address is required' }, { status: 400 });
+  }
+
+  return NextResponse.json(await profileIdentity(address));
 }
 
 export async function POST(req: Request) {
@@ -60,9 +78,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'the signature does not match that address' }, { status: 401 });
   }
 
+  const avatarUri = body.avatarUri ?? '';
+  if (!validAvatarUri(avatarUri)) {
+    return NextResponse.json({ error: 'profile image must be a PNG, JPEG, WEBP or GIF under 650 KB' }, { status: 400 });
+  }
+
   await saveProfile(address, {
     displayName: (body.displayName ?? '').slice(0, 64),
-    avatarUri: (body.avatarUri ?? '').slice(0, 400),
+    avatarUri,
     bio: (body.bio ?? '').slice(0, 500),
     socials: (body.socials ?? []).slice(0, 8),
   });

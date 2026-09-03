@@ -391,6 +391,20 @@ export interface ProfilePage {
   calls: number;
 }
 
+/** The small identity payload used in the connected-wallet control. */
+export async function profileIdentity(address: string): Promise<Pick<Profile, 'displayName' | 'avatarUri'>> {
+  const bytes = Buffer.from(address.toLowerCase().replace(/^0x/, ''), 'hex');
+  const result = await pool.query(
+    'SELECT display_name, avatar_uri FROM user_profiles WHERE address = $1',
+    [bytes],
+  );
+
+  return {
+    displayName: result.rows[0]?.display_name ?? null,
+    avatarUri: result.rows[0]?.avatar_uri ?? null,
+  };
+}
+
 /**
  * Everything shown on a profile.
  *

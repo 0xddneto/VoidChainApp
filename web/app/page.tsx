@@ -75,28 +75,28 @@ export default async function Home() {
             </h1>
             <p className={styles.heroText}>
               VoidScan makes the collection legible: who holds each deed, which applications
-              live inside it, and what its execution space has earned. Every entry is isolated
+              run inside it, and what its execution space has earned. Every entry is isolated
               in the Void runtime and settled on Robinhood Chain.
             </p>
             <div className={styles.heroLinks}>
-              <a className={`${styles.btn} ${styles.btnPrimary}`} href="/mint">Claim a test deed <span>↗</span></a>
+              <a className={`${styles.btn} ${styles.btnPrimary}`} href="/mint">Mint VOID Deed <span>↗</span></a>
               <a className={styles.heroLink} href="#chain-directory">Browse the registry <span>↓</span></a>
             </div>
           </div>
 
           <aside className={styles.signalCard} aria-label="Network status">
             <div className={styles.signalTop}>
-              <span>VOID / SIGNAL</span>
+              <span>VOID / NETWORK</span>
               <span className={styles.signalLive}>LIVE</span>
             </div>
-            <div className={styles.signalNumber}>{nf.format(totalCalls).padStart(4, "0")}</div>
-            <p>paid transactions observed</p>
+            <div className={styles.signalNumber}>{nf.format(counts.live).padStart(4, "0")}</div>
+            <p>active VOID Chains</p>
             <div className={styles.signalRule} />
             <div className={styles.signalFoot}>
-              <span>Parent</span>
-              <b>{PROTOCOL.parentChainName}</b>
-              <span>Chain ID</span>
-              <b>{PROTOCOL.parentChainId}</b>
+              <span>Supply</span>
+              <b>{TOTAL_CHAINS.toLocaleString('en-US')} deeds</b>
+              <span>Transactions</span>
+              <b>{nf.format(totalCalls)}</b>
             </div>
           </aside>
         </section>

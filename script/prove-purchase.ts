@@ -1,132 +1,227 @@
 /**
- * Proves the mint page's flow works, the way the page itself does it.
+ * Tests the exact purchase sequence used by /mint on the deployed testnet.
  *
- * Usage:  npx tsx prove-purchase.ts
+ * The temporary wallet claims test VOID, sends one exact approval to the
+ * Paymaster, signs one EIP-712 purchase and receives the deed through the
+ * local VoidScan relay. It returns the deed at the end, keeping the public
+ * test pool at 1,111 available deeds.
  *
- * A BRAND-NEW wallet, with zero of everything, does exactly what the page does:
- * gets VOID, approves the pool, buys a deed, and then uses the chain it bought.
- * If this passes, the page works — it calls the same contracts with the same
- * arguments.
+ * Usage: npm run prove:purchase
+ * Requires the local web server with PAYMASTER_RELAYER_PRIVATE_KEY configured.
  */
 import 'dotenv/config';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  createPublicClient, createWalletClient, encodeFunctionData, formatEther,
-  http, parseAbi, parseEther, type Address,
+  createPublicClient,
+  createWalletClient,
+  encodeFunctionData,
+  formatEther,
+  http,
+  parseAbi,
+  parseEther,
+  type Address,
+  type Hex,
 } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
 const RPC = process.env.PARENT_RPC ?? 'https://robinhood-testnet.drpc.org';
+const VOIDSCAN_URL = process.env.VOIDSCAN_URL ?? 'http://localhost:3000';
 const here = dirname(fileURLToPath(import.meta.url));
 const d = JSON.parse(readFileSync(resolve(here, 'deployments/testnet.json'), 'utf8'));
+const deployerKey = process.env.DEPLOYER_PRIVATE_KEY;
+if (!/^0x[0-9a-fA-F]{64}$/.test(deployerKey ?? '')) {
+  throw new Error('DEPLOYER_PRIVATE_KEY is required to fund the temporary test wallet.');
+}
+
 const parent = createPublicClient({ transport: http(RPC) });
-const deployer = privateKeyToAccount(process.env.DEPLOYER_PRIVATE_KEY as `0x${string}`);
-const dep = createWalletClient({ account: deployer, transport: http(RPC) });
+const deployer = privateKeyToAccount(deployerKey as Hex);
+const deployerWallet = createWalletClient({ account: deployer, transport: http(RPC) });
 
 const token = d.testnet.VoidTestToken as Address;
 const amm = d.testnet.VoidNftAmm as Address;
 const deed = d.production.VoidChainDeed as Address;
-const runtime = d.production.VoidChainAppRuntime as Address;
+const paymaster = d.production.VoidCollectionMintPaymaster as Address;
+const collectionMarket = d.testnet.VoidCollectionMarket as Address;
+const chainId = Number(d.network.chainId);
 
-const erc20 = parseAbi([
+const MAX_GAS_VOID = 10_000n * 10n ** 18n;
+const CALL_GAS_LIMIT = 1_500_000n;
+const FAUCET_AMOUNT = 2_500_000n * 10n ** 18n;
+const SIGNATURE_LIFETIME_SECONDS = 10n * 60n;
+
+const tokenAbi = parseAbi([
   'function mintTo(address,uint256)',
   'function approve(address,uint256) returns (bool)',
   'function balanceOf(address) view returns (uint256)',
 ]);
 const ammAbi = parseAbi([
   'function available() view returns (uint256)',
+  'function peek(uint256) view returns (uint256[])',
   'function priceToBuy(bool) view returns (uint256)',
-  'function buyRandom(uint256) returns (uint256)',
+  'function payoutToSell() view returns (uint256)',
+  'function sell(uint256,uint256) returns (uint256)',
 ]);
-const deedAbi = parseAbi(['function ownerOf(uint256) view returns (address)']);
-const rtAbi = parseAbi([
-  'function execute(uint256,address,bytes,uint256) returns (bytes)',
-  'function statsOf(uint256) view returns (bool,uint256,uint256,uint256,uint256)',
-  'function feeOf(uint256) view returns (uint256)',
+const deedAbi = parseAbi([
+  'function ownerOf(uint256) view returns (address)',
+  'function setApprovalForAll(address,bool)',
+]);
+const paymasterAbi = parseAbi(['function nonces(address) view returns (uint256)']);
+const marketAbi = parseAbi([
+  'function hasMinted(address) view returns (bool)',
 ]);
 
 const ceiling = async () => (await parent.getGasPrice()) * 3n;
 
-async function asUser(w: ReturnType<typeof createWalletClient>, acct: any,
-                      to: Address, abi: any, fn: string, args: unknown[]) {
-  const hash = await w.sendTransaction({
-    account: acct, chain: null, to,
-    data: encodeFunctionData({ abi, functionName: fn, args }),
-    maxFeePerGas: await ceiling(), maxPriorityFeePerGas: 0n,
+async function send(
+  wallet: ReturnType<typeof createWalletClient>,
+  account: any,
+  to: Address,
+  abi: any,
+  functionName: string,
+  args: readonly unknown[],
+) {
+  const hash = await wallet.sendTransaction({
+    account,
+    chain: null,
+    to,
+    data: encodeFunctionData({ abi, functionName, args }),
+    maxFeePerGas: await ceiling(),
+    maxPriorityFeePerGas: 0n,
   });
-  return parent.waitForTransactionReceipt({ hash });
+  const receipt = await parent.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') throw new Error(`${functionName} reverted.`);
+  return receipt;
 }
 
-const mark = (b: boolean) => (b ? '✓' : '✗');
-let allOk = true;
-const check = (b: boolean, m: string) => { if (!b) allOk = false; console.log(`    ${mark(b)} ${m}`); };
+function check(condition: boolean, detail: string) {
+  if (!condition) throw new Error(`Check failed: ${detail}`);
+  console.log(`  ✓ ${detail}`);
+}
 
-console.log('\n  WHAT THE PAGE DOES, DONE FOR REAL\n');
+console.log('\n  VOIDSCAN — REAL SPONSORED MINT PROOF\n');
+const user = privateKeyToAccount(generatePrivateKey());
+const userWallet = createWalletClient({ account: user, transport: http(RPC) });
+console.log(`  temporary wallet: ${user.address}`);
 
-// A wallet that never existed.
-const key = generatePrivateKey();
-const user = privateKeyToAccount(key);
-const uw = createWalletClient({ account: user, transport: http(RPC) });
-console.log(`  new user: ${user.address}`);
-console.log(`  their ETH: ${formatEther(await parent.getBalance({ address: user.address }))}\n`);
-
-// They need ETH only for the transactions THEY send. The page does not hide
-// this — what the bubble covers is the sponsored path, and buying from the pool
-// is not one.
-await parent.waitForTransactionReceipt({
-  hash: await dep.sendTransaction({
-    account: deployer, chain: null, to: user.address, value: parseEther('0.003'),
-    maxFeePerGas: await ceiling(), maxPriorityFeePerGas: 0n,
-  }),
+// Only faucet, the explicit approval and cleanup sale need test ETH. The mint
+// itself is sent by the relay and paid from the Paymaster ETH reserve.
+const fundingHash = await deployerWallet.sendTransaction({
+  account: deployer,
+  chain: null,
+  to: user.address,
+  value: parseEther('0.001'),
+  maxFeePerGas: await ceiling(),
+  maxPriorityFeePerGas: 0n,
 });
+const fundingReceipt = await parent.waitForTransactionReceipt({ hash: fundingHash });
+if (fundingReceipt.status !== 'success') throw new Error('Could not fund the temporary test wallet.');
 
-// ---- step 2 of the page: get VOID -----------------------------------------
-console.log('  [2] get VOID');
-const FAUCET = 2_500_000n * 10n ** 18n;
-await asUser(uw, user, token, erc20, 'mintTo', [user.address, FAUCET]);
-const balance = await parent.readContract({ address: token, abi: erc20, functionName: 'balanceOf', args: [user.address] }) as bigint;
-check(balance === FAUCET, `balance: ${formatEther(balance)} VOID`);
+console.log('\n  [1/4] faucet VOID');
+await send(userWallet, user, token, tokenAbi, 'mintTo', [user.address, FAUCET_AMOUNT]);
+const voidBalance = await parent.readContract({
+  address: token, abi: tokenAbi, functionName: 'balanceOf', args: [user.address],
+}) as bigint;
+check(voidBalance === FAUCET_AMOUNT, `received ${formatEther(voidBalance)} VOID`);
 
-// ---- step 3 of the page: approve and buy -----------------------------------
-console.log('\n  [3] buy a deed');
-const price = await parent.readContract({ address: amm, abi: ammAbi, functionName: 'priceToBuy', args: [false] }) as bigint;
-const stockBefore = await parent.readContract({ address: amm, abi: ammAbi, functionName: 'available' }) as bigint;
+console.log('\n  [2/4] one exact VOID approval');
+const [price, nonce, stockBefore, nextIds] = await Promise.all([
+  parent.readContract({ address: amm, abi: ammAbi, functionName: 'priceToBuy', args: [false] }) as Promise<bigint>,
+  parent.readContract({ address: paymaster, abi: paymasterAbi, functionName: 'nonces', args: [user.address] }) as Promise<bigint>,
+  parent.readContract({ address: amm, abi: ammAbi, functionName: 'available' }) as Promise<bigint>,
+  parent.readContract({ address: amm, abi: ammAbi, functionName: 'peek', args: [1n] }) as Promise<readonly bigint[]>,
+]);
+const boughtId = nextIds[0];
+if (boughtId === undefined) throw new Error('The pool was empty before the proof started.');
+const approval = price + MAX_GAS_VOID;
+await send(userWallet, user, token, tokenAbi, 'approve', [paymaster, approval]);
+console.log(`    approved exactly ${formatEther(approval)} VOID to the Paymaster`);
 
-await asUser(uw, user, token, erc20, 'approve', [amm, price * 10n]);
-const r = await asUser(uw, user, amm, ammAbi, 'buyRandom', [price]);
-check(r.status === 'success', `purchase confirmed (${formatEther(price)} VOID)`);
+console.log('\n  [3/4] one signed Mint, relayed by VoidScan');
+const deadline = BigInt(Math.floor(Date.now() / 1000)) + SIGNATURE_LIFETIME_SECONDS;
+const typedRequest = {
+  user: user.address,
+  market: collectionMarket,
+  paymentToken: token,
+  paymentSymbol: 'VOID',
+  purchaseLabel: 'VOID deed mint',
+  appSpend: price,
+  maxGasVoid: MAX_GAS_VOID,
+  callGasLimit: CALL_GAS_LIMIT,
+  nonce,
+  deadline,
+};
+const signature = await user.signTypedData({
+  domain: { name: 'VoidCollectionMintPaymaster', version: '1', chainId, verifyingContract: paymaster },
+  primaryType: 'MarketPrepaidCall',
+  types: {
+    MarketPrepaidCall: [
+      { name: 'user', type: 'address' }, { name: 'market', type: 'address' },
+      { name: 'paymentToken', type: 'address' }, { name: 'paymentSymbol', type: 'string' },
+      { name: 'purchaseLabel', type: 'string' }, { name: 'appSpend', type: 'uint256' },
+      { name: 'maxGasVoid', type: 'uint256' },
+      { name: 'callGasLimit', type: 'uint256' }, { name: 'nonce', type: 'uint256' },
+      { name: 'deadline', type: 'uint256' },
+    ],
+  },
+  message: typedRequest,
+});
+const request = {
+  user: typedRequest.user,
+  market: typedRequest.market,
+  paymentToken: typedRequest.paymentToken,
+  paymentSymbol: typedRequest.paymentSymbol,
+  purchaseLabel: typedRequest.purchaseLabel,
+  appSpend: typedRequest.appSpend.toString(),
+  maxGasVoid: typedRequest.maxGasVoid.toString(),
+  callGasLimit: typedRequest.callGasLimit.toString(),
+  nonce: typedRequest.nonce.toString(),
+  deadline: typedRequest.deadline.toString(),
+};
+const relay = await fetch(`${VOIDSCAN_URL}/api/market/sponsor`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ request, signature }),
+});
+const relayBody = await relay.json() as { hash?: Hex; error?: string };
+if (!relay.ok || !relayBody.hash) throw new Error(relayBody.error ?? 'The local relay refused the signed Mint.');
+const mintReceipt = await parent.waitForTransactionReceipt({ hash: relayBody.hash });
+check(mintReceipt.status === 'success', `relay mined ${relayBody.hash}`);
 
-const stockAfter = await parent.readContract({ address: amm, abi: ammAbi, functionName: 'available' }) as bigint;
-check(stockAfter === stockBefore - 1n, `stock: ${stockBefore} → ${stockAfter}`);
+const [stockAfterMint, hasMinted] = await Promise.all([
+  parent.readContract({ address: amm, abi: ammAbi, functionName: 'available' }) as Promise<bigint>,
+  parent.readContract({ address: collectionMarket, abi: marketAbi, functionName: 'hasMinted', args: [user.address] }) as Promise<boolean>,
+]);
+check(stockAfterMint === stockBefore - 1n, `pool moved ${stockBefore} → ${stockAfterMint}`);
+check(hasMinted, 'market recorded this wallet\'s permanent one-mint limit');
 
-// Which deed did they get? FIFO says it is the oldest one in stock.
-let bought = 0;
-for (let i = 1; i <= d.parameters.nfts; i++) {
-  const o = await parent.readContract({ address: deed, abi: deedAbi, functionName: 'ownerOf', args: [BigInt(i)] }) as string;
-  if (o.toLowerCase() === user.address.toLowerCase()) { bought = i; break; }
+const owner = await parent.readContract({ address: deed, abi: deedAbi, functionName: 'ownerOf', args: [boughtId] }) as Address;
+check(owner.toLowerCase() === user.address.toLowerCase(), 'the deed reached the signing wallet');
+
+console.log('\n  [4/4] return the test deed to keep the pool full');
+const payout = await parent.readContract({ address: amm, abi: ammAbi, functionName: 'payoutToSell' }) as bigint;
+await send(userWallet, user, deed, deedAbi, 'setApprovalForAll', [amm, true]);
+await send(userWallet, user, amm, ammAbi, 'sell', [boughtId, payout]);
+const stockAfterCleanup = await parent.readContract({ address: amm, abi: ammAbi, functionName: 'available' }) as bigint;
+check(stockAfterCleanup === stockBefore, `pool restored to ${stockAfterCleanup}/${d.parameters.nfts}`);
+
+// Do not leave a funded throwaway wallet behind after the proof. Keep a small
+// buffer solely for the transfer's gas; the deployment wallet receives the
+// remainder before this process forgets the temporary key.
+const recoveryBuffer = parseEther('0.00005');
+const userEth = await parent.getBalance({ address: user.address });
+if (userEth > recoveryBuffer) {
+  const recoveryHash = await userWallet.sendTransaction({
+    account: user,
+    chain: null,
+    to: deployer.address,
+    value: userEth - recoveryBuffer,
+    maxFeePerGas: await ceiling(),
+    maxPriorityFeePerGas: 0n,
+  });
+  const recovery = await parent.waitForTransactionReceipt({ hash: recoveryHash });
+  check(recovery.status === 'success', 'unused test ETH returned to the project wallet');
 }
-check(bought > 0, `now owns deed #${bought}`);
 
-// ---- what the purchase means: the chain answers to them --------------------
-console.log('\n  [4] the chain answers to its new owner');
-const stats = await parent.readContract({ address: runtime, abi: rtAbi, functionName: 'statsOf', args: [BigInt(bought)] }) as readonly [boolean, bigint, bigint, bigint, bigint];
-check(stats[0], 'the chain is active');
-const toll = await parent.readContract({ address: runtime, abi: rtAbi, functionName: 'feeOf', args: [BigInt(bought)] }) as bigint;
-check(toll > 0n, `toll: $${formatEther(stats[1])} = ${formatEther(toll)} VOID at the current rate`);
-
-const app = d.demoApps[String(bought)] as Address | undefined;
-if (app) {
-  const bump = encodeFunctionData({ abi: parseAbi(['function bump()']), functionName: 'bump' });
-  await asUser(uw, user, token, erc20, 'approve', [runtime, toll * 100n]);
-  const e = await asUser(uw, user, runtime, rtAbi, 'execute', [BigInt(bought), app, bump, toll]);
-  check(e.status === 'success', 'used their own chain, paying their own toll');
-  const s2 = await parent.readContract({ address: runtime, abi: rtAbi, functionName: 'statsOf', args: [BigInt(bought)] }) as readonly [boolean, bigint, bigint, bigint, bigint];
-  check(s2[4] === 1n, `calls: ${s2[4]}`);
-  check(s2[2] > 0n, `owner revenue pending: ${formatEther(s2[2])} VOID`);
-} else {
-  console.log(`    · deed #${bought} has no demo app; skipped the usage step`);
-}
-
-console.log(`\n  ${allOk ? "✓ THE PAGE'S FLOW WORKS" : '✗ SOMETHING FAILED ABOVE'}\n`);
+console.log('\n  ✓ COMPLETE: one VOID approval + one EIP-712 signature minted through the live Paymaster relay.\n');
