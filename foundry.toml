@@ -15,11 +15,11 @@ test = "test"
 # bugs should be consulted before changing this number.
 solc_version = "0.8.28"
 
-# EVM version pinned — and this is the critical item for an L3.
+# EVM version pinned — and this is critical for a parent-chain runtime.
 #
 # Modern compilers pick the target EVM on their own, and their default is
-# calibrated for Ethereum. We are not on Ethereum: the VOID Chains are L3s
-# running ArbOS, which adopts Ethereum's instructions on its own schedule.
+# calibrated for Ethereum. VOID's current runtime executes on Robinhood Chain,
+# whose ArbOS adoption schedule can differ from Ethereum's.
 # TSTORE, TLOAD and MCOPY (Cancun) only exist on Arbitrum from ArbOS 20 "Atlas".
 #
 # Leaving this at the default means accepting that the compiler may emit
@@ -35,9 +35,20 @@ evm_version = "shanghai"
 optimizer = true
 optimizer_runs = 200
 
-# Fail the build on any warning. A contract holding other people's money should
-# not accumulate ignored warnings.
+# MegaLoad constructs 100 isolated spaces and 2,000 sponsored users before it
+# starts measuring calls. That setup is intentionally bigger than a production
+# block, and Foundry executes it as one test transaction; keep its harness limit
+# above the setup cost so the load test fails on an assertion, not on scaffolding.
+gas_limit = 3_000_000_000
+
+# Fail on Solidity compiler warnings. Foundry's broad style-linter is kept as a
+# separate review signal for now: the existing, deliberately multi-contract test
+# fixtures produce hundreds of non-security style findings, so making every test
+# run fail on them would hide real test failures behind old noise.
 deny = "warnings"
+
+[lint]
+lint_on_build = false
 
 [fmt]
 line_length = 100

@@ -75,7 +75,11 @@ contract TollCeilingTest is Test {
             IVoidChainTreasury(address(treasury))
         );
         runtime.setOracle(IRuntimeOracle(address(oracle)));
-        runtime.setDaoOnce(dao);
+        // The test plays the factory, so it can register a plain address as a
+        // chain's DAO and prank it. What is under test is the runtime's rule,
+        // not the factory's cloning.
+        runtime.setDaoFactoryOnce(address(this));
+        runtime.registerDao(CHAIN, dao);
 
         deed.setOwner(CHAIN, alice);
     }
@@ -180,39 +184,77 @@ contract TollCeilingTest is Test {
     // Who may move it
     // -----------------------------------------------------------------------
 
-    /// @notice Only the DAO. Not the owner of the chain, and not a passer-by.
-    function test_NobodyButTheDaoSetsACeiling() public {
+    /// @notice Only that chain's DAO. Not the owner, and not a passer-by.
+    function test_NobodyButTheChainsDaoSetsACeiling() public {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(VoidChainAppRuntime.NotTheDao.selector, alice));
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainAppRuntime.NotThisChainsDao.selector, CHAIN, alice)
+        );
         runtime.setTollCeiling(CHAIN, CEILING);
 
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(VoidChainAppRuntime.NotTheDao.selector, stranger));
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainAppRuntime.NotThisChainsDao.selector, CHAIN, stranger)
+        );
         runtime.setTollCeiling(CHAIN, CEILING);
     }
 
-    /// @notice The DAO is written once. A contract that can cap what every chain
-    ///         charges is not something to leave behind a setter.
-    function test_TheDaoIsWrittenOnce() public {
-        vm.expectRevert(abi.encodeWithSelector(VoidChainAppRuntime.DaoAlreadySet.selector, dao));
-        runtime.setDaoOnce(address(0xBEEF));
-        assertEq(runtime.dao(), dao, "the DAO should not have moved");
+    /// @notice ANOTHER chain's DAO cannot price this one. A registered DAO is
+    ///         authority over its own chain and nothing else — accepting any of
+    ///         them would be the isolation failing at the top.
+    function test_AnotherChainsDaoCannotPriceThisOne() public {
+        address neighbourDao = address(0xDA02);
+        runtime.registerDao(CHAIN + 1, neighbourDao);
+
+        vm.prank(neighbourDao);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VoidChainAppRuntime.NotThisChainsDao.selector, CHAIN, neighbourDao
+            )
+        );
+        runtime.setTollCeiling(CHAIN, CEILING);
     }
 
-    /// @notice And nobody but the deployer writes it in the first place.
-    function test_OnlyTheDeployerWiresTheDao() public {
+    /// @notice A chain's DAO is recorded once. Governance the protocol could
+    ///         swap out afterwards is not governance.
+    function test_AChainsDaoIsRecordedOnce() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainAppRuntime.DaoAlreadyRegistered.selector, CHAIN, dao)
+        );
+        runtime.registerDao(CHAIN, address(0xBEEF));
+        assertEq(runtime.daoOf(CHAIN), dao, "the DAO should not have moved");
+    }
+
+    /// @notice Only the factory registers a DAO.
+    function test_OnlyTheFactoryRegistersADao() public {
+        vm.prank(stranger);
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainAppRuntime.NotTheDaoFactory.selector, stranger)
+        );
+        runtime.registerDao(CHAIN + 1, address(0xBEEF));
+    }
+
+    /// @notice The factory itself is written once, by the deployer alone.
+    function test_TheFactoryIsWrittenOnceByTheDeployer() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VoidChainAppRuntime.DaoFactoryAlreadySet.selector, address(this)
+            )
+        );
+        runtime.setDaoFactoryOnce(address(0xBEEF));
+
         VoidChainAppRuntime fresh = new VoidChainAppRuntime(
             IVoidChainDeed(address(deed)), IERC20(address(voidToken)),
             IVoidChainTreasury(address(treasury))
         );
-
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(VoidChainAppRuntime.NotTheDeployer.selector, stranger));
-        fresh.setDaoOnce(dao);
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainAppRuntime.NotTheDeployer.selector, stranger)
+        );
+        fresh.setDaoFactoryOnce(address(this));
     }
 
-    /// @notice One chain's ceiling is one chain's. The DAO reaching a chain it
-    ///         was not asked about would be the isolation failing at the top.
+    /// @notice A ceiling binds the chain it was voted for and no other.
     function test_ACeilingBindsOnlyItsOwnChain() public {
         deed.setOwner(CHAIN + 1, alice);
 

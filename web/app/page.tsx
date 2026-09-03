@@ -12,7 +12,9 @@ import {
 } from "@/lib/chains";
 import { ChainsCard } from "./ChainsCard";
 import { Copyable } from "./Copyable";
+import { ExplorerSearch } from "./ExplorerSearch";
 import { Ticker } from "./Ticker";
+import { WalletProfileButton } from "./WalletProfileButton";
 
 // The data comes from the Postgres the indexer keeps current, so the page has
 // to render per request — prerendering would freeze the feed at build time.
@@ -54,43 +56,58 @@ export default async function Home() {
             VOID<span>SCAN</span>
           </div>
 
-          <div className={styles.search}>
-            <svg
-              className={styles.searchIcon}
-              width="13"
-              height="13"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              aria-hidden="true"
-            >
-              <circle cx="7" cy="7" r="4.5" />
-              <path d="M10.5 10.5L14 14" />
-            </svg>
-            <input
-              type="search"
-              placeholder="chain, address, transaction hash or name"
-              aria-label="Search"
-            />
-          </div>
+          <ExplorerSearch />
 
           <div className={styles.actions}>
-            <a className={styles.btn} href="/u">
-              Profile
-            </a>
             <a className={`${styles.btn} ${styles.btnPrimary}`} href="/mint">
-              Mint NFTChain
+              Claim test deed
             </a>
+            <WalletProfileButton />
           </div>
         </div>
       </header>
 
       <main className={styles.wrap}>
+        <section className={styles.hero}>
+          <div className={styles.heroCopy}>
+            <p className={styles.eyebrow}>
+              <span className={styles.pulse} aria-hidden="true" /> Robinhood Chain testnet · live registry
+            </p>
+            <h1>
+              The explorer for deeds that <em>run</em>.
+            </h1>
+            <p className={styles.heroText}>
+              VoidScan makes the collection legible: who holds each deed, which applications
+              live inside it, and what its execution space has earned. Every entry is isolated
+              in the Void runtime and settled on Robinhood Chain.
+            </p>
+            <div className={styles.heroLinks}>
+              <a className={`${styles.btn} ${styles.btnPrimary}`} href="/mint">Claim a test deed <span>↗</span></a>
+              <a className={styles.heroLink} href="#chain-directory">Browse the registry <span>↓</span></a>
+            </div>
+          </div>
+
+          <aside className={styles.signalCard} aria-label="Network status">
+            <div className={styles.signalTop}>
+              <span>VOID / SIGNAL</span>
+              <span className={styles.signalLive}>LIVE</span>
+            </div>
+            <div className={styles.signalNumber}>{nf.format(totalCalls).padStart(4, "0")}</div>
+            <p>metered calls observed</p>
+            <div className={styles.signalRule} />
+            <div className={styles.signalFoot}>
+              <span>Parent</span>
+              <b>{PROTOCOL.parentChainName}</b>
+              <span>Chain ID</span>
+              <b>{PROTOCOL.parentChainId}</b>
+            </div>
+          </aside>
+        </section>
+
         <div className={styles.summary}>
-          <Stat label="Chains" value={nf.format(TOTAL_CHAINS)} unit="total" />
-          <Stat label="Active" value={nf.format(counts.live)} unit="accepting calls" />
-          <Stat label="Calls" value={nf.format(totalCalls)} unit="tolls charged" />
+          <Stat label="Deeds in registry" value={nf.format(TOTAL_CHAINS)} unit="fixed supply" />
+          <Stat label="Live spaces" value={nf.format(counts.live)} unit="accepting calls" />
+          <Stat label="Metered calls" value={nf.format(totalCalls)} unit="successful runtime executions" />
           <Stat
             label="Activation cost"
             value={PROTOCOL.activationCost.toLocaleString("en-US", {
@@ -104,22 +121,22 @@ export default async function Home() {
 
         <section className={styles.panel}>
           <div className={styles.panelHead}>
-            <h2>All {nf.format(TOTAL_CHAINS)}</h2>
+            <h2><span className={styles.sectionIndex}>01</span> Registry atlas</h2>
             <span className={styles.note}>
-              each cell is a chain · {PROTOCOL.parentChainName} {PROTOCOL.parentChainId}
+              {nf.format(TOTAL_CHAINS)} deed-bound execution spaces · {PROTOCOL.parentChainName} {PROTOCOL.parentChainId}
             </span>
           </div>
           <div className={styles.panelBody}>
             <div
               className={styles.constellation}
               role="img"
-              aria-label={`State map of the ${TOTAL_CHAINS} chains: ${counts.live} active, ${counts.reserved} reserved`}
+              aria-label={`State map of the ${TOTAL_CHAINS} execution spaces: ${counts.live} active, ${counts.reserved} reserved`}
             >
               {states.map((status, i) => (
                 <div
                   key={i}
                   className={`${styles.cell} ${CELL_CLASS[status]}`}
-                  title={`VOID Chain #${i + 1} — chain ID ${chainIdForToken(i + 1)} — ${STATUS_LABEL[status].toLowerCase()}`}
+                  title={`VOID Chain #${i + 1} — runtime ID ${chainIdForToken(i + 1)} — ${STATUS_LABEL[status].toLowerCase()}`}
                 />
               ))}
             </div>

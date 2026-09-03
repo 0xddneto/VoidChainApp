@@ -1,8 +1,8 @@
-# Banco do VoidScan.
+# Persistent local infrastructure for VoidScan.
 #
-# The indexer runs outside Docker during development, to iterate quickly; in
-# production it becomes another service here. Postgres is containerized from the
-# start because it is what needs persistence and consistent configuration.
+# The indexer is kept as an ordinary Node process during development, while
+# Postgres lives here so its state and initialization are reproducible. Run it
+# from the repository root with `docker compose -f infra/docker-compose.yml up -d`.
 
 name: voidscan
 
@@ -15,11 +15,11 @@ services:
       POSTGRES_PASSWORD: voidscan
       POSTGRES_DB: voidscan
     ports:
-      # 5433 on the host, so it does not collide with a local Postgres.
+      # 5433 on the host avoids colliding with an existing local Postgres.
       - "5433:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
-      # Scripts in initdb.d only run when the volume is first created.
+      # Init scripts run only the first time this named volume is created.
       - ../db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U voidscan -d voidscan"]

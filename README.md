@@ -1,121 +1,99 @@
 # VoidChainApp
 
-**1,111 NFTs. Each one is a blockchain you own.**
+**A testnet runtime for 1,111 NFT-bound execution spaces.**
 
-Not a token that points at a chain. The deed **is** the chain. You set what it
-costs to use. You collect what it earns. And when you sell it, the buyer commands
-it in the same block — no migration, no handover, nothing to sign afterwards.
+> **Current truth:** this is not 1,111 independent blockchains today. The
+> application executes in one `VoidChainAppRuntime` on Robinhood Chain testnet
+> (EIP-155 chain ID `46630`). A deed isolates an application registry, toll,
+> revenue accounting and owner authority by `tokenId`. It does not yet provide
+> its own blocks, consensus, sequencer, RPC endpoint, bridge or native network
+> gas token.
 
-Live on [Robinhood Chain](https://docs.robinhood.com/chain/) testnet.
+That distinction is intentional and public. The runtime is a testable first
+product; an independent rollup is a separate future system, not a label applied
+to a shared contract.
 
----
+## What a deed controls
 
-## Holding one
+Each of the 1,111 `VoidChainDeed` NFTs binds its current holder to one isolated
+execution space in the runtime.
 
-**You set the price.** A toll per call, denominated in dollars. The contract
-converts it at the moment of the call, so a token that moves in price does not
-move what your users pay.
+- The holder can activate or pause its space and configure its toll within the
+  governance-approved ceiling.
+- Calls only reach applications registered for the supplied `tokenId`; the
+  runtime accounts for tolls and revenue per deed.
+- Anyone may publish an application to an open space. The holder can close new
+  publication, but cannot seize a publisher's contract or its withdrawal right.
+- Ownership is read from `ownerOf()` at execution time, so a deed transfer moves
+  the allowed configuration authority without a migration step.
+- Each deed has a deterministic DAO clone. Votes use actual VOID locked until a
+  proposal closes; there is no off-chain Merkle voting root to trust. The DAO
+  can only set that deed's toll ceiling.
 
-**It costs nothing to run.** No node, no sequencer, no server, no monthly bill.
-A chain nobody used this month costs you nothing this month.
+VOID is the metered currency inside the runtime. Robinhood testnet ETH remains
+the native asset used by a wallet transaction. `VoidPaymaster` can sponsor a
+call and charge the signed VOID budget, but it does not make the parent chain's
+native gas disappear.
 
-**Selling it transfers everything, instantly.** Authority is read from
-`ownerOf()` on every call — never stored, never cached. The moment the NFT moves,
-the chain answers to the buyer and stops answering to you.
+Read the precise boundary and the requirements for a future rollup in
+[docs/architecture.md](docs/architecture.md). Operational gates live in
+[docs/release-checklist.md](docs/release-checklist.md), and the tracked folder
+layout is documented in [docs/repository-map.md](docs/repository-map.md).
 
-**What you earned stays yours.** Sell a chain with revenue still pending and it
-settles to you, not to the buyer.
+## Components
 
-## Building on one
+| Path | Responsibility |
+| --- | --- |
+| `contracts/parent/VoidChainDeed.sol` | The fixed 1,111-deed ERC-721 collection and holder authority. |
+| `contracts/parent/VoidChainAppRuntime.sol` | Token-scoped app registry, execution boundary, toll collection and revenue accounting. |
+| `contracts/parent/VoidChainDao*.sol` | Deterministic per-deed DAO factory and toll-ceiling governance. |
+| `contracts/parent/VoidPaymaster.sol` | Signed, budgeted sponsorship of runtime calls. |
+| `contracts/apps/` | Example permissionless apps (swap, market and launchpad). |
+| `indexer/` | Robinhood event indexer and Postgres projection. |
+| `infra/` | Versioned local Postgres infrastructure and operator instructions. |
+| `web/` | VoidScan explorer, profile and test-deed claim interface. |
+| `script/deploy-testnet.ts` | Reproducible testnet deployment, including all 1,111 DAO clones. |
 
-**Anyone can publish. No permission, no allowlist, no application.** Chains ship
-open, because a chain where the owner picks who deploys is a website with extra
-steps.
+## Local development
 
-**Nobody can take your work.** Only whoever published a contract can withdraw it
-— not the chain owner, not the protocol, not governance. An owner can close the
-door to new deployments, but what is already there keeps running and stays yours.
-
-**Your users never touch ETH.** They sign; a relayer sends the transaction and
-fronts the gas; the paymaster charges them in VOID. From inside it is one
-currency, and nobody has to acquire a second asset to press a button.
-
-**One approval covers everything.** Instead of an unlimited `approve` to every
-app they touch, a user authorizes the runtime once, by signature, with a budget
-written into the call that dies with it.
-
----
-
-## How it works
-
-A chain is a row in `VoidChainAppRuntime`, on the parent chain. Calls to it carry
-the deed's `tokenId`, and it has an economy, rules and revenue of its own.
-
-Isolation is enforced in code, not promised: there is no path in the runtime that
-takes a call on one chain to a contract of another. A contract is reachable only
-through its own chain, which is what makes the toll mandatory rather than
-optional.
-
-A chain that outgrows this arrangement can be promoted to a rollup of its own,
-keeping the same NFT as its title.
-
-| | |
-|---|---|
-| `VoidChainDeed` | the 1,111 NFTs. Each `tokenId` derives its chain ID by formula |
-| `VoidChainAppRuntime` | the chain: charges the toll, isolates execution, holds revenue |
-| `VoidChainTreasury` | pays owners, by pull, so one recipient cannot block another |
-| `VoidPaymaster` | lets someone holding only VOID transact |
-| `VoidPriceOracle` | composes the price the dollar toll is converted at |
-
-## Layout
-
-```
-contracts/   the protocol
-test/        the test suite
-script/      deploy a testnet, and verify it end to end
-web/         the explorer and the mint page
-indexer/     follows the runtime's events, keeps Postgres current
-db/          schema and migrations
-```
-
-## Running it
-
-The contracts:
+Prerequisites: Node.js, Foundry and Docker (only for Postgres/indexer work).
 
 ```bash
-npm install && forge install foundry-rs/forge-std
+npm ci
+forge install foundry-rs/forge-std --no-commit
 forge test
 ```
 
-The site, with its database and indexer:
+For the explorer:
 
 ```bash
-docker compose -f indexer/docker-compose.yml up -d
-cd indexer && npm install && npm run dev
-cd web && npm install && npm run dev
+docker compose -f infra/docker-compose.yml up -d
+cd indexer && npm ci && npm run dev
+cd ../web && npm ci && npm run dev
 ```
 
-Open `/mint`, connect a wallet, take testnet VOID and buy a deed. The chain
-starts answering to you on the next block. You need a small amount of testnet ETH
-for the transactions you send.
+Open `http://localhost:3000`. The frontend reads deployment addresses from
+`web/lib/deployment.json`; the deployment script refreshes that file when a
+testnet stack is deployed.
 
-The site reads its addresses from `web/lib/deployment.json`, which
-`script/deploy-testnet.ts` writes. Nothing is hardcoded: redeploy and the whole
-stack follows.
+For deployment and recovery utilities, install the separately scoped script
+dependencies once with `cd script && npm install`. `npm run deploy:testnet`
+refuses an RPC whose chain ID is not `46630`. The ETH recovery utility starts
+as a dry run, requires explicit `--execute`, and likewise refuses any other
+network; it never prints a private key.
 
-## Tests
+The `MegaLoadTest` deliberately constructs 100 spaces and executes 4,800
+signed sponsored calls in one test transaction. Its higher Foundry harness gas
+limit is only for test scaffolding, not a production block-size claim.
 
-229 passing, including adversarial suites that stay in the repository after the
-issues they found were fixed — a test that reproduces an attack is what stops the
-fix being undone by accident later. `Scale.t.sol` exercises all 1,111 chains at
-once, every call sponsored, with no user holding ETH.
+## Status and safety
 
-## Status
+This repository is **pre-audit testnet software**. Testnet VOID has no value;
+the faucet and price oracle are test fixtures. Do not treat a passing local
+suite as an audit, a mainnet readiness claim or evidence of an independent
+network. The release checklist requires an external security audit, verified
+deployments and a real operations plan before any value-bearing launch.
 
-Testnet, chain ID 46630. The contracts have not been audited. Testnet VOID has no
-value and its faucet is open, and the oracle there returns a fixed price because
-that network has no market to read yet.
+## License
 
-## Licence
-
-MIT.
+MIT

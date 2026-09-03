@@ -77,7 +77,7 @@ contract LoadNft is IERC721 {
 }
 
 /**
- * MASSIVE LOAD: 100 networks, 3 applications on each, thousands of people.
+ * LOAD TEST: 100 spaces, three application types and 1,000 provisioned users.
  *
  * The question this test answers is not "does it work?" -- the others already
  * answer that. It is "what does it cost, and what breaks first as volume rises".
@@ -92,9 +92,11 @@ contract LoadNft is IERC721 {
  * EVERY transaction goes through the paymaster. No user holds a wei of ETH,
  * start to finish -- it is the premise the test checks at the end.
  *
- * The volume is parameterized (`ROUNDS`) because the cost of signing each
- * EIP-712 request dominates run time: the per-transaction measurement is
- * identical at any volume, and the total is arithmetic from there.
+ * This remains intentionally bounded: Forge executes the whole test as one
+ * EVM transaction, whereas production calls are independent transactions. The
+ * chosen volume is 4,800 signed sponsored calls (100 * 12 * 4), enough to
+ * exercise thousands of operations without turning a CI test into a fictional
+ * multi-billion-gas block.
  */
 contract MegaLoadTest is Test {
     function _noNfts() internal pure returns (VoidPaymaster.SpendNft[] memory) {
@@ -123,6 +125,26 @@ contract MegaLoadTest is Test {
                     keccak256("Spend(address token,uint256 amount)"),
                     spends[i].token,
                     spends[i].amount
+                )
+            );
+        }
+        return keccak256(abi.encodePacked(hashes));
+    }
+
+    /// @dev Must match the second nested-array hash in VoidPaymaster exactly.
+    ///      Omitting an empty array still changes the EIP-712 struct hash.
+    function _hashNftSpends(VoidPaymaster.SpendNft[] memory list)
+        internal
+        pure
+        returns (bytes32)
+    {
+        bytes32[] memory hashes = new bytes32[](list.length);
+        for (uint256 i; i < list.length; ++i) {
+            hashes[i] = keccak256(
+                abi.encode(
+                    keccak256("SpendNft(address collection,uint256 tokenId)"),
+                    list[i].collection,
+                    list[i].tokenId
                 )
             );
         }
@@ -160,9 +182,9 @@ contract MegaLoadTest is Test {
     LoadDeed deed;
 
     uint256 constant CHAINS = 100;
-    uint256 constant USERS = 2_000;
-    /// @notice Rounds per application per chain. Total volume = CHAINS * ROUNDS * 3.
-    uint256 constant ROUNDS = 40;
+    uint256 constant USERS = 1_000;
+    /// @notice Four sponsored calls per round: swap, sale buy, market list and market buy.
+    uint256 constant ROUNDS = 12;
 
     uint256 constant RATE = 10_000e18;
     uint256 constant MARGIN_BPS = 1_000;
@@ -359,7 +381,7 @@ contract MegaLoadTest is Test {
             abi.encode(
                 typeHash, req.user, req.tokenId, req.target, keccak256(req.data),
                 req.maxToll, req.maxGasVoid, req.callGasLimit,
-                _hashSpends(req.spends), req.nonce, req.deadline
+                _hashSpends(req.spends), _hashNftSpends(req.nftSpends), req.nonce, req.deadline
             )
         );
         (uint8 v, bytes32 r, bytes32 s) =

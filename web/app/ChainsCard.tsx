@@ -46,26 +46,51 @@ function voidAmount(wei: string): string {
 const short = (a: string | null, head = 6, tail = 4) =>
   a ? `${a.slice(0, head)}…${a.slice(-tail)}` : '—';
 
+// Names are rendered for people ("VOID Chain # 20"), while the registry also
+// exposes bare ids and wallet strings. Searching should not depend on whether
+// someone typed a space, a hash, or an address separator.
+const compactSearch = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+
 export function ChainsCard({ chains }: { chains: ChainRow[] }) {
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
   const [open, setOpen] = useState<ChainRow | null>(null);
 
   const found = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return chains;
+    const raw = query.trim().toLowerCase();
+    if (!raw) return chains;
+
+    // A bare number is overwhelmingly a token/chain id. Keep it exact so
+    // searching `20` does not turn into an accidental list of #20, #200, #201…
+    if (/^\d+$/.test(raw)) {
+      return chains.filter((c) => String(c.id) === raw || String(c.chainId) === raw);
+    }
+
+    const q = compactSearch(raw);
+    const deedName = q.match(/^voidchain(\d+)$/);
+    if (deedName) {
+      return chains.filter((c) => String(c.id) === deedName[1]);
+    }
+
     return chains.filter(
-      (c) =>
-        String(c.id) === q ||
-        String(c.chainId).includes(q) ||
-        (c.name?.toLowerCase().includes(q) ?? false) ||
-        (c.owner?.toLowerCase().includes(q) ?? false),
+      (c) => [
+        `void chain ${c.id}`,
+        String(c.chainId),
+        c.name ?? '',
+        c.owner ?? '',
+      ].some((term) => compactSearch(term).includes(q)),
     );
   }, [chains, query]);
 
   // A search that lands on page 9 of the old result shows an empty card. The
   // page belongs to the result, not to the session.
   useEffect(() => setPage(0), [query]);
+
+  useEffect(() => {
+    const receive = (event: Event) => setQuery((event as CustomEvent<string>).detail ?? '');
+    window.addEventListener('voidscan:search', receive);
+    return () => window.removeEventListener('voidscan:search', receive);
+  }, []);
 
   const pages = Math.max(1, Math.ceil(found.length / PER_PAGE));
   const current = Math.min(page, pages - 1);
@@ -74,19 +99,24 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
   if (open) return <Detail chain={open} onBack={() => setOpen(null)} />;
 
   return (
-    <section className={styles.panel}>
+    <section className={styles.panel} id="chain-directory">
       <div className={styles.panelHead}>
-        <h2>Chains</h2>
+        <h2><span className={styles.sectionIndex}>02</span> Execution-space directory</h2>
         <div className={styles.cardSearch}>
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="name, chain id, or wallet"
-            aria-label="Search chains by name, id or wallet"
+            placeholder="name, runtime ID, or wallet"
+            aria-label="Search execution spaces by name, runtime ID or wallet"
           />
         </div>
         <Pager page={current} pages={pages} total={found.length} onChange={setPage} />
+      </div>
+
+      <div className={styles.directoryGuide}>
+        <p><b>Calls</b> are successful, metered runtime executions to a space’s published apps — not blocks or every parent-chain transaction.</p>
+        <p><b>Toll per call</b> is the access price set in USD and paid in VOID at execution time. Robinhood testnet ETH gas is separate.</p>
       </div>
 
       <div className={styles.scroller}>
@@ -94,10 +124,12 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
           <thead>
             <tr>
               <th>NFT</th>
-              <th>Chain ID</th>
+              <th>Runtime ID</th>
               <th>Owner</th>
               <th>State</th>
-              <th className={styles.numCell}>Calls</th>
+              <th className={styles.numCell}>
+                <abbr title="Successful metered runtime executions, not blocks or all parent-chain transactions.">Calls</abbr>
+              </th>
               <th className={styles.numCell}>Apps</th>
               <th className={styles.numCell}>Addresses</th>
               <th className={styles.numCell}>Revenue</th>
@@ -145,7 +177,7 @@ function Pager({
   return (
     <div className={styles.pager}>
       <span className={styles.note}>
-        {nf.format(total)} {total === 1 ? 'chain' : 'chains'} · page {page + 1} of {pages}
+        {nf.format(total)} {total === 1 ? 'space' : 'spaces'} · page {page + 1} of {pages}
       </span>
       <button type="button" aria-label="Previous page"
               disabled={page === 0} onClick={() => onChange(page - 1)}>←</button>
@@ -180,7 +212,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
   return (
     <section className={styles.panel}>
       <div className={styles.panelHead}>
-        <button type="button" className={styles.back} onClick={onBack}>← all chains</button>
+        <button type="button" className={styles.back} onClick={onBack}>← all spaces</button>
         <h2>VOID Chain #{chain.id}</h2>
         <span className={`${styles.pill} ${PILL_CLASS[chain.status]}`}>
           {STATUS_LABEL[chain.status]}
@@ -190,12 +222,12 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
       <div className={styles.detailBody}>
         <dl className={styles.detailFacts}>
           <div><dt>Name</dt><dd>{chain.name ?? 'no name set'}</dd></div>
-          <div><dt>Chain ID</dt><dd><Copyable value={String(chain.chainId)} /></dd></div>
+          <div><dt>Runtime ID</dt><dd><Copyable value={String(chain.chainId)} /></dd></div>
           <div><dt>Owner</dt><dd><Copyable value={chain.owner ?? ''} short /></dd></div>
-          <div><dt>Calls</dt><dd>{nf.format(chain.txCount)}</dd></div>
+          <div><dt title="Successful metered runtime executions, not blocks or all parent-chain transactions.">Calls</dt><dd>{nf.format(chain.txCount)}</dd></div>
           <div><dt>Applications</dt><dd>{nf.format(chain.contractCount)}</dd></div>
           <div><dt>Addresses</dt><dd>{nf.format(chain.addressCount)}</dd></div>
-          <div><dt>Revenue</dt><dd>{voidAmount(chain.revenue)} VOID</dd></div>
+          <div><dt title="Gross tolls paid to this space; the protocol split is accounted for separately.">Revenue</dt><dd>{voidAmount(chain.revenue)} VOID</dd></div>
         </dl>
 
         {failed && <p className={styles.noHits}>Could not load this chain: {failed}</p>}

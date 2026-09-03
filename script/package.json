@@ -4,11 +4,17 @@
   "type": "module",
   "scripts": {
     "deploy:testnet": "tsx deploy-testnet.ts",
-    "prove:purchase": "tsx prove-purchase.ts"
+    "prove:purchase": "tsx prove-purchase.ts",
+    "recover:testnet-eth": "tsx recover-testnet-eth.ts --dry-run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
     "tsx": "^4.23.13",
     "viem": "^2.56.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^5.9.3"
   }
 }

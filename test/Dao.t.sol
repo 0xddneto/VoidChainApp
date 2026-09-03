@@ -2,13 +2,57 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {VoidChainDao, IVoidChainAppRuntime} from "../contracts/parent/VoidChainDao.sol";
+import {VoidChainDaoFactory} from "../contracts/parent/VoidChainDaoFactory.sol";
 
-/// @notice Records what the DAO told it, so the test can see the effect without
-///         standing up the whole runtime.
+/// @notice Standard ERC-20 behavior is all the DAO requires. In particular,
+///         it does not rely on an off-chain balance root or ERC20Votes hooks.
+contract DaoToken is IERC20 {
+    string public constant name = "Void governance test token";
+    string public constant symbol = "VOTE";
+    uint8 public constant decimals = 18;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amount) external {
+        totalSupply += amount;
+        balanceOf[to] += amount;
+        emit Transfer(address(0), to, amount);
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        _transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        uint256 allowed = allowance[from][msg.sender];
+        if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
+        _transfer(from, to, amount);
+        return true;
+    }
+
+    function _transfer(address from, address to, uint256 amount) private {
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        emit Transfer(from, to, amount);
+    }
+}
+
+/// @notice Records what a DAO told it, so the test can see the effect without
+///         standing up the whole runtime. It also plays the factory registry.
 contract RuntimeSpy is IVoidChainAppRuntime {
     mapping(uint256 => uint256) public ceilingOf;
     mapping(uint256 => bool) public wasSet;
+    mapping(uint256 => address) public daoOf;
     address public lastCaller;
 
     function setTollCeiling(uint256 tokenId, uint256 ceilingUsd) external {
@@ -16,22 +60,18 @@ contract RuntimeSpy is IVoidChainAppRuntime {
         wasSet[tokenId] = true;
         lastCaller = msg.sender;
     }
+
+    function registerDao(uint256 tokenId, address dao) external {
+        daoOf[tokenId] = dao;
+    }
 }
 
-/**
- * The DAO every chain ships with, under attack.
- *
- * The attack that decides whether this contract means anything: vote, move the
- * tokens to a fresh address, vote again. That is why weight comes from a block
- * already in the past, and it is the first thing tested here.
- *
- * The second is the boundary the DAO must not cross. It sets what a chain may
- * charge at most; it does not run the chain, and it must not be able to reach a
- * chain it was not asked about.
- */
+/// @notice The chain DAO under the attacks that matter to vote accounting.
 contract DaoTest is Test {
+    VoidChainDaoFactory factory;
     VoidChainDao dao;
     RuntimeSpy runtime;
+    DaoToken token;
 
     address alice = address(0xA11CE);
     address bob = address(0xB0B);
@@ -39,184 +79,173 @@ contract DaoTest is Test {
 
     uint256 constant ALICE = 600 ether;
     uint256 constant BOB = 400 ether;
-    uint256 constant SUPPLY = ALICE + BOB;
-
     uint256 constant CHAIN = 7;
     uint256 constant CEILING = 0.05 ether; // $0.05 per call
 
-    bytes32 leafAlice;
-    bytes32 leafBob;
-    bytes32 root;
-
     function setUp() public {
         runtime = new RuntimeSpy();
-        dao = new VoidChainDao(IVoidChainAppRuntime(address(runtime)));
-
-        leafAlice = _leaf(alice, ALICE);
-        leafBob = _leaf(bob, BOB);
-        root = _hashPair(leafAlice, leafBob);
-
-        vm.roll(100);
+        token = new DaoToken();
+        token.mint(alice, ALICE);
+        token.mint(bob, BOB);
+        factory = new VoidChainDaoFactory(IVoidChainAppRuntime(address(runtime)), IERC20(address(token)));
+        dao = VoidChainDao(factory.create(CHAIN));
         vm.warp(1_000_000);
     }
 
-    function _leaf(address voter, uint256 balance) internal pure returns (bytes32) {
-        return keccak256(bytes.concat(keccak256(abi.encode(voter, balance))));
+    function _approve(address voter, uint256 amount) internal {
+        vm.prank(voter);
+        token.approve(address(dao), amount);
     }
 
-    function _hashPair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
-        return a < b ? keccak256(abi.encode(a, b)) : keccak256(abi.encode(b, a));
-    }
-
-    function _proofFor(bytes32 sibling) internal pure returns (bytes32[] memory p) {
-        p = new bytes32[](1);
-        p[0] = sibling;
-    }
-
-    /// @dev Alice clears the 1% threshold on her own, so she is the proposer in
-    ///      every case that is not about proposing.
     function _propose() internal returns (uint256 id) {
+        _approve(alice, ALICE);
         vm.prank(alice);
-        id = dao.propose(CHAIN, CEILING, 99, root, SUPPLY, ALICE, _proofFor(leafBob));
+        id = dao.propose(CEILING, ALICE);
     }
 
-    function _openVoting() internal {
-        vm.warp(block.timestamp + dao.DISPUTE_WINDOW() + 1);
+    function _closeVoting() internal {
+        vm.warp(block.timestamp + dao.VOTING_PERIOD() + 1);
     }
 
     // -----------------------------------------------------------------------
-    // The attack the snapshot exists to stop
+    // Locked voting: no synthetic, unverifiable snapshots
     // -----------------------------------------------------------------------
 
-    /// @notice Moving the tokens after the snapshot creates no new vote: the new
-    ///         address held nothing at that block, so it can prove nothing.
-    function test_MovingTokensAfterTheSnapshotProvesNothing() public {
+    function test_ProposingLocksTheVotersActualTokens() public {
         uint256 id = _propose();
-        _openVoting();
 
-        vm.prank(alice);
-        dao.castVote(id, true, ALICE, _proofFor(leafBob));
+        assertEq(token.balanceOf(alice), 0, "the proposer still holds the locked vote");
+        assertEq(token.balanceOf(address(dao)), ALICE, "the DAO did not receive the vote");
+        assertEq(dao.lockedVotes(id, alice), ALICE, "the vote is not recoverable by Alice");
+        assertEq(uint256(dao.state(id)), uint256(VoidChainDao.State.Active), "the proposal is not live");
+    }
 
-        // Carol now holds Alice's tokens. There is no leaf for her, and any
-        // proof she presents fails.
+    /// @notice A balance can only appear in one place while it is counted. Alice
+    ///         cannot move the tokens to Carol and use them again in this vote.
+    function test_LockedVoteCannotBeMovedToVoteAgain() public {
+        uint256 id = _propose();
+
         vm.prank(carol);
-        vm.expectRevert(abi.encodeWithSelector(VoidChainDao.InvalidProof.selector, carol, ALICE));
-        dao.castVote(id, true, ALICE, _proofFor(leafBob));
+        vm.expectRevert();
+        dao.castVote(id, true, ALICE);
     }
 
-    /// @notice Inflating your own weight requires a proof that does not exist.
-    function test_CannotVoteWithMoreThanTheSnapshotSays() public {
+    function test_CannotVoteTwiceOnOneProposal() public {
         uint256 id = _propose();
-        _openVoting();
-
-        vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(VoidChainDao.InvalidProof.selector, bob, ALICE));
-        dao.castVote(id, true, ALICE, _proofFor(leafAlice));
-    }
-
-    /// @notice One address, one vote per proposal.
-    function test_CannotVoteTwice() public {
-        uint256 id = _propose();
-        _openVoting();
-
-        vm.prank(alice);
-        dao.castVote(id, true, ALICE, _proofFor(leafBob));
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(VoidChainDao.AlreadyVoted.selector, id, alice));
-        dao.castVote(id, true, ALICE, _proofFor(leafBob));
+        dao.castVote(id, true, 1);
     }
 
-    // -----------------------------------------------------------------------
-    // The windows
-    // -----------------------------------------------------------------------
-
-    /// @notice Nothing counts until the dispute window closes — that window is
-    ///         what makes a forged root detectable before it decides anything.
-    function test_VotingIsClosedDuringTheDisputeWindow() public {
+    function test_VotesCannotLeaveBeforeTheProposalCloses() public {
         uint256 id = _propose();
 
-        vm.prank(alice);
-        vm.expectRevert();
-        dao.castVote(id, true, ALICE, _proofFor(leafBob));
-    }
-
-    function test_VotingClosesAtTheDeadline() public {
-        uint256 id = _propose();
-        _openVoting();
-        vm.warp(block.timestamp + dao.VOTING_PERIOD() + 1);
-
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(VoidChainDao.VotingClosed.selector, id));
-        dao.castVote(id, true, ALICE, _proofFor(leafBob));
-    }
-
-    /// @notice The snapshot has to be in the past, or a proposer could pick a
-    ///         future block and position themselves after asking the question.
-    function test_SnapshotMustAlreadyHaveHappened() public {
         vm.prank(alice);
         vm.expectRevert(
-            abi.encodeWithSelector(VoidChainDao.SnapshotNotInPast.selector, block.number)
+            abi.encodeWithSelector(VoidChainDao.VotingStillOpen.selector, id, block.timestamp + dao.VOTING_PERIOD())
         );
-        dao.propose(CHAIN, CEILING, block.number, root, SUPPLY, ALICE, _proofFor(leafBob));
+        dao.withdrawVote(id);
     }
 
-    // -----------------------------------------------------------------------
-    // Who may ask
-    // -----------------------------------------------------------------------
+    function test_VotesAreReturnedOnlyToTheVoterAfterClose() public {
+        uint256 id = _propose();
+        _approve(bob, BOB);
+        vm.prank(bob);
+        dao.castVote(id, false, BOB);
 
-    /// @notice Proposing is open, but not free: below the threshold it is refused.
-    function test_ProposingBelowTheThresholdIsRefused() public {
-        // A tree where the proposer holds a dust balance against a large supply.
-        uint256 dust = 1 ether;
-        uint256 hugeSupply = 1_000_000 ether;
-        bytes32 dustLeaf = _leaf(carol, dust);
-        bytes32 otherLeaf = _leaf(bob, hugeSupply - dust);
-        bytes32 dustRoot = _hashPair(dustLeaf, otherLeaf);
-
-        // The expected value is computed BEFORE the prank. Reading a constant
-        // from the contract is an external call, and an external call evaluated
-        // as an argument consumes the prank — the proposer would be this test
-        // contract, and the revert would name the wrong address.
-        uint256 required = (hugeSupply * dao.PROPOSAL_THRESHOLD_BPS()) / dao.BPS();
-        bytes memory expected = abi.encodeWithSelector(
-            VoidChainDao.BelowProposalThreshold.selector, dust, required
-        );
-
-        vm.prank(carol);
-        vm.expectRevert(expected);
-        dao.propose(CHAIN, CEILING, 99, dustRoot, hugeSupply, dust, _proofFor(otherLeaf));
-    }
-
-    /// @notice The threshold is checked against the same root everyone votes on,
-    ///         so a proposer cannot claim a stake the tree does not carry.
-    function test_ProposerMustProveTheirOwnStake() public {
-        vm.prank(carol);
-        vm.expectRevert(abi.encodeWithSelector(VoidChainDao.InvalidProof.selector, carol, ALICE));
-        dao.propose(CHAIN, CEILING, 99, root, SUPPLY, ALICE, _proofFor(leafBob));
-    }
-
-    /// @notice A chain outside the collection cannot be proposed against.
-    function test_NoSuchChainIsRefused() public {
+        _closeVoting();
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(VoidChainDao.NoSuchChain.selector, uint256(1112)));
-        dao.propose(1112, CEILING, 99, root, SUPPLY, ALICE, _proofFor(leafBob));
+        dao.withdrawVote(id);
+        vm.prank(bob);
+        dao.withdrawVote(id);
+
+        assertEq(token.balanceOf(alice), ALICE, "Alice did not recover her vote");
+        assertEq(token.balanceOf(bob), BOB, "Bob did not recover his vote");
+        assertEq(token.balanceOf(address(dao)), 0, "the DAO retained voting tokens");
+    }
+
+    function test_ProposingBelowTheThresholdIsRefused() public {
+        uint256 dust = 1 ether;
+        _approve(carol, dust);
+        vm.prank(carol);
+        vm.expectRevert(abi.encodeWithSelector(VoidChainDao.BelowProposalThreshold.selector, dust, 10 ether));
+        dao.propose(CEILING, dust);
+    }
+
+    // -----------------------------------------------------------------------
+    // One DAO and address per chain
+    // -----------------------------------------------------------------------
+
+    function test_NoSuchChainGetsNoDao() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainDaoFactory.NoSuchChain.selector, uint256(1112))
+        );
+        factory.create(1112);
+    }
+
+    function test_EveryChainGetsItsOwnContract() public {
+        address other = factory.create(CHAIN + 1);
+        assertTrue(other != address(dao), "two chains should not share a DAO");
+        assertEq(VoidChainDao(other).tokenId(), CHAIN + 1, "the clone is bound to the wrong chain");
+        assertEq(dao.tokenId(), CHAIN, "the first clone changed chain");
+    }
+
+    function test_AChainGetsOneDao() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainDaoFactory.AlreadyCreated.selector, CHAIN, address(dao))
+        );
+        factory.create(CHAIN);
+    }
+
+    function test_TheAddressIsPredictable() public {
+        uint256 chain = 900;
+        address predicted = factory.predict(chain);
+        assertEq(factory.create(chain), predicted, "the DAO landed somewhere else");
+    }
+
+    function test_ABatchCreatesARunAndToleratesOverlap() public {
+        factory.createMany(10, 14);
+        for (uint256 id = 10; id <= 14; ++id) {
+            address d = factory.daoOf(id);
+            assertTrue(d != address(0), "chain got no DAO");
+            assertEq(VoidChainDao(d).tokenId(), id, "clone bound to the wrong chain");
+            assertEq(runtime.daoOf(id), d, "the runtime did not record it");
+        }
+
+        address before = factory.daoOf(12);
+        factory.createMany(12, 16);
+        assertEq(factory.daoOf(12), before, "an existing DAO was replaced");
+        assertTrue(factory.daoOf(16) != address(0), "the rest of the batch was skipped");
+    }
+
+    function test_ABatchCannotRunPastTheCollection() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainDaoFactory.NoSuchChain.selector, uint256(1110))
+        );
+        factory.createMany(1110, 1112);
+    }
+
+    function test_TheImplementationCannotBeClaimed() public {
+        VoidChainDao master = VoidChainDao(factory.implementation());
+        assertEq(master.tokenId(), type(uint256).max, "the master should be bound already");
+
+        vm.expectRevert(VoidChainDao.AlreadyInitialised.selector);
+        master.initialise(5, IVoidChainAppRuntime(address(runtime)), IERC20(address(token)));
+    }
+
+    function test_ACloneCannotBeRebound() public {
+        vm.expectRevert(VoidChainDao.AlreadyInitialised.selector);
+        dao.initialise(CHAIN + 5, IVoidChainAppRuntime(address(runtime)), IERC20(address(token)));
     }
 
     // -----------------------------------------------------------------------
     // Quorum and outcome
     // -----------------------------------------------------------------------
 
-    /// @notice A proposal that carries sets the ceiling on the chain it named,
-    ///         and on no other.
     function test_CarriedProposalSetsTheCeilingOnItsOwnChain() public {
         uint256 id = _propose();
-        _openVoting();
-
-        vm.prank(alice);
-        dao.castVote(id, true, ALICE, _proofFor(leafBob));
-
-        vm.warp(block.timestamp + dao.VOTING_PERIOD() + 1);
+        _closeVoting();
         assertEq(uint256(dao.state(id)), uint256(VoidChainDao.State.Succeeded));
 
         dao.execute(id);
@@ -226,77 +255,43 @@ contract DaoTest is Test {
         assertFalse(runtime.wasSet(CHAIN + 1), "a chain nobody voted on was touched");
     }
 
-    /// @notice Turnout below quorum defeats it even with every vote in favour.
     function test_BelowQuorumIsDefeated() public {
-        // Alice has to clear the 1% needed to propose while falling short of the
-        // 10% needed for quorum, so the supply sits between the two: her 600 is
-        // well over 1% of 10,000 and well under 10% of it.
-        uint256 wideSupply = 10_000 ether;
-        bytes32 aLeaf = _leaf(alice, ALICE);
-        bytes32 bLeaf = _leaf(bob, wideSupply - ALICE);
-        bytes32 r = _hashPair(aLeaf, bLeaf);
+        // Alice retains 600 VOID but the supply rises to 10,000, so 600 votes
+        // are enough to ask (1%) but not enough to decide (10%).
+        token.mint(carol, 9_000 ether);
+        uint256 id = _propose();
+        _closeVoting();
 
-        vm.prank(alice);
-        uint256 id = dao.propose(CHAIN, CEILING, 99, r, wideSupply, ALICE, _proofFor(bLeaf));
-        _openVoting();
-
-        vm.prank(alice);
-        dao.castVote(id, true, ALICE, _proofFor(bLeaf));
-
-        vm.warp(block.timestamp + dao.VOTING_PERIOD() + 1);
         assertEq(uint256(dao.state(id)), uint256(VoidChainDao.State.Defeated));
-
         vm.expectRevert();
         dao.execute(id);
-        assertFalse(runtime.wasSet(CHAIN), "a defeated proposal reached the runtime");
     }
 
-    /// @notice More against than for is defeated, quorum or not.
     function test_MoreAgainstThanForIsDefeated() public {
+        token.mint(bob, 300 ether);
         uint256 id = _propose();
-        _openVoting();
-
+        _approve(bob, 700 ether);
         vm.prank(bob);
-        dao.castVote(id, false, BOB, _proofFor(leafAlice));
+        dao.castVote(id, false, 700 ether);
+        _closeVoting();
 
-        vm.warp(block.timestamp + dao.VOTING_PERIOD() + 1);
         assertEq(uint256(dao.state(id)), uint256(VoidChainDao.State.Defeated));
     }
 
-    /// @notice Executing twice applies once.
     function test_CannotExecuteTwice() public {
         uint256 id = _propose();
-        _openVoting();
-        vm.prank(alice);
-        dao.castVote(id, true, ALICE, _proofFor(leafBob));
-        vm.warp(block.timestamp + dao.VOTING_PERIOD() + 1);
-
+        _closeVoting();
         dao.execute(id);
         vm.expectRevert(abi.encodeWithSelector(VoidChainDao.AlreadyExecuted.selector, id));
         dao.execute(id);
     }
 
-    /// @notice Anyone may push a result through. The outcome is already decided
-    ///         and the action is fixed, so the caller only pays the gas —
-    ///         restricting it would let somebody bury a result they disliked.
     function test_AnyoneCanExecuteACarriedProposal() public {
         uint256 id = _propose();
-        _openVoting();
-        vm.prank(alice);
-        dao.castVote(id, true, ALICE, _proofFor(leafBob));
-        vm.warp(block.timestamp + dao.VOTING_PERIOD() + 1);
+        _closeVoting();
 
         vm.prank(address(0xDEADBEEF));
         dao.execute(id);
         assertEq(runtime.ceilingOf(CHAIN), CEILING);
-    }
-
-    /// @notice The DAO never takes custody of anything.
-    function test_TheDaoHoldsNothing() public {
-        uint256 id = _propose();
-        _openVoting();
-        vm.prank(alice);
-        dao.castVote(id, true, ALICE, _proofFor(leafBob));
-        assertEq(address(dao).balance, 0, "the DAO should hold nothing");
     }
 }

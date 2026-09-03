@@ -295,12 +295,17 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     ///         on purpose: the cost sits on the right side of the scale.
     address public forwarder;
 
-    /// @notice The DAO that sets each chain's toll ceiling.
+    /// @notice The factory that gives each chain its DAO.
     ///
-    /// @dev    Written once, like the forwarder, and for the same reason: a
-    ///         contract that can cap what every chain charges is not something
-    ///         to leave behind a setter. Replacing it means a new runtime.
-    address public dao;
+    /// @dev    Written once, like the forwarder, and for the same reason: what
+    ///         decides which contract speaks for a chain is not something to
+    ///         leave behind a setter. Replacing it means a new runtime.
+    address public daoFactory;
+
+    /// @notice Each chain's own DAO. One contract per chain, so a proposal on
+    ///         one cannot reach another and a chain's governance can be replaced
+    ///         without touching the other 1,110.
+    mapping(uint256 tokenId => address) public daoOf;
 
     /// @notice The most a chain may charge per call, in dollars, as its own DAO
     ///         decided. Zero when no ceiling has been set.
@@ -312,13 +317,14 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     mapping(uint256 tokenId => uint256) public tollCeilingUsd;
     mapping(uint256 tokenId => bool) public hasTollCeiling;
 
-    /// @dev    Kept only for the one-time write of the forwarder and the DAO.
-    ///         After that it grants no power at all.
+    /// @dev    Kept only for the one-time write of the forwarder and the DAO
+    ///         factory. After that it grants no power at all.
     address private immutable deployer;
 
     event ChainAppActivated(uint256 indexed tokenId, address activator);
     event ForwarderSet(address forwarder);
-    event DaoSet(address dao);
+    event DaoFactorySet(address factory);
+    event DaoRegistered(uint256 indexed tokenId, address dao);
     event TollCeilingSet(uint256 indexed tokenId, uint256 ceilingUsd);
     event ProtocolSwept(address treasury, uint256 amount);
     event AppRegistered(uint256 indexed tokenId, address app, address publisher);
@@ -363,8 +369,10 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     error Reentered();
     error NotTheForwarder(address who);
     error ForwarderAlreadySet(address current);
-    error DaoAlreadySet(address current);
-    error NotTheDao(address who);
+    error DaoFactoryAlreadySet(address current);
+    error NotTheDaoFactory(address who);
+    error NotThisChainsDao(uint256 tokenId, address who);
+    error DaoAlreadyRegistered(uint256 tokenId, address current);
     error FeeAboveCeiling(uint256 feeUsd, uint256 ceilingUsd);
     error NotTheDeployer(address who);
     error NoExecutionInProgress();
@@ -395,26 +403,45 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         emit ForwarderSet(forwarder_);
     }
 
-    /// @notice Writes the DAO contract. Once only, forever.
-    /// @dev    See the comment on `dao`. Same shape as the forwarder: the power
-    ///         to cap every chain's price is not a key the protocol should keep.
-    function setDaoOnce(address dao_) external {
+    /// @notice Writes the DAO factory. Once only, forever.
+    /// @dev    See the comment on `daoFactory`. Same shape as the forwarder:
+    ///         what decides who speaks for a chain is not a key to keep.
+    function setDaoFactoryOnce(address factory) external {
         if (msg.sender != deployer) revert NotTheDeployer(msg.sender);
-        if (dao != address(0)) revert DaoAlreadySet(dao);
-        if (dao_ == address(0)) revert ZeroAddress();
-        dao = dao_;
-        emit DaoSet(dao_);
+        if (daoFactory != address(0)) revert DaoFactoryAlreadySet(daoFactory);
+        if (factory == address(0)) revert ZeroAddress();
+        daoFactory = factory;
+        emit DaoFactorySet(factory);
     }
 
-    /// @notice The chain's DAO sets what its owner may not charge above.
+    /// @notice Records which contract is a chain's DAO.
+    ///
+    /// @dev    Only the factory, and only once per chain. Once a chain has a
+    ///         DAO, nothing in this contract can point it at a different one:
+    ///         a governance that the protocol could swap is not governance.
+    function registerDao(uint256 tokenId, address dao) external {
+        if (msg.sender != daoFactory) revert NotTheDaoFactory(msg.sender);
+        address current = daoOf[tokenId];
+        if (current != address(0)) revert DaoAlreadyRegistered(tokenId, current);
+        if (dao == address(0)) revert ZeroAddress();
+        daoOf[tokenId] = dao;
+        emit DaoRegistered(tokenId, dao);
+    }
+
+    /// @notice A chain's own DAO sets what that chain's owner may not charge
+    ///         above.
     ///
     /// @dev    It bounds future prices and never touches the current one. A
     ///         ceiling voted below what a chain already charges leaves that toll
     ///         standing and stops it rising further — retroactively cutting a
     ///         price somebody signed a request against would be the same
     ///         surprise, in the other direction.
+    ///
+    ///         The caller has to be the DAO OF THAT CHAIN. Accepting any
+    ///         registered DAO would let chain #7's electorate price chain #9,
+    ///         which is the isolation failing at the top.
     function setTollCeiling(uint256 tokenId, uint256 ceilingUsd) external {
-        if (msg.sender != dao) revert NotTheDao(msg.sender);
+        if (msg.sender != daoOf[tokenId]) revert NotThisChainsDao(tokenId, msg.sender);
         tollCeilingUsd[tokenId] = ceilingUsd;
         hasTollCeiling[tokenId] = true;
         emit TollCeilingSet(tokenId, ceilingUsd);

@@ -17,7 +17,7 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "VoidScan",
   description:
-    "Explorer for the 1,111 VOID Chains — blockchains owned by an NFT, each with its own chain ID, state and history.",
+    "Explorer for 1,111 NFT-bound execution spaces in the VOID runtime on Robinhood Chain testnet.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

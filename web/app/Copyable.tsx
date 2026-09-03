@@ -3,7 +3,7 @@
 /**
  * A value you can click to copy.
  *
- * Every address, hash and chain ID on this site is something a reader will want
+ * Every address, hash and runtime identifier on this site is something a reader will want
  * in a wallet or a terminal, and selecting a truncated address with the mouse
  * gets you the ellipsis. The element carries the full value and copies the full
  * value even when it renders shortened.

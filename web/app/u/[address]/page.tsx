@@ -12,6 +12,7 @@ import { profilePage } from '@/lib/chains';
 import { Copyable } from '../../Copyable';
 import { ProfileEditor } from '../ProfileEditor';
 import styles from '../../page.module.css';
+import { WalletProfileButton } from '../../WalletProfileButton';
 import own from './page.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -40,6 +41,7 @@ export default async function ProfileRoute({
         <div className={`${styles.wrap} ${styles.bar}`}>
           <div className={styles.logo}>VOID<span>SCAN</span></div>
           <a className={own.back} href="/">← explorer</a>
+          <WalletProfileButton />
         </div>
       </header>
 
@@ -71,7 +73,7 @@ export default async function ProfileRoute({
           </div>
 
           <dl className={own.numbers}>
-            <div><dt>Chains owned</dt><dd>{nf.format(chains.length)}</dd></div>
+            <div><dt>Spaces owned</dt><dd>{nf.format(chains.length)}</dd></div>
             <div><dt>Calls charged</dt><dd>{nf.format(calls)}</dd></div>
             <div><dt>Revenue</dt><dd>{voidAmount(revenue)} <small>VOID</small></dd></div>
           </dl>
@@ -81,7 +83,7 @@ export default async function ProfileRoute({
 
         <section className={styles.panel}>
           <div className={styles.panelHead}>
-            <h2>Chains</h2>
+            <h2>Execution spaces</h2>
             <span className={styles.note}>read from the deed contract, not from this profile</span>
           </div>
           {chains.length === 0 ? (
@@ -92,7 +94,7 @@ export default async function ProfileRoute({
                 <thead>
                   <tr>
                     <th>NFT</th>
-                    <th>Chain ID</th>
+                    <th>Runtime ID</th>
                     <th className={styles.numCell}>Calls</th>
                     <th className={styles.numCell}>Apps</th>
                     <th className={styles.numCell}>Revenue</th>

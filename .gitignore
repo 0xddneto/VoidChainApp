@@ -20,13 +20,9 @@ lib/forge-std/
 # sit next to keys.
 script/deployments/
 
-# Working material, kept out on purpose
-#
-# Decisions, research, roadmaps, drafts and correspondence are how the project
-# gets thought through, not what it delivers. If a file is reasoning ABOUT the
-# project rather than the project itself, it does not belong here.
+# Private working material. Product architecture and launch requirements live
+# in the versioned docs/ directory so a clean clone remains understandable.
 DECISIONS.md
-docs/
 notes/
 *-NOTES.md
 
@@ -44,3 +40,6 @@ GEMINI.md
 .DS_Store
 Thumbs.db
 *.log
+
+# TypeScript incremental build state
+*.tsbuildinfo

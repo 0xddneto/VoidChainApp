@@ -21,7 +21,7 @@
  * production.
  */
 import 'dotenv/config';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -38,6 +38,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 
 const PARENT_RPC = process.env.PARENT_RPC ?? 'https://robinhood-testnet.drpc.org';
+const EXPECTED_PARENT_CHAIN_ID = 46_630;
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -54,7 +55,12 @@ const WEB_DEPLOYMENT = resolve(here, '../web/lib/deployment.json');
 
 const DEPLOYMENTS = resolve(here, 'deployments');
 
-const account = privateKeyToAccount(process.env.DEPLOYER_PRIVATE_KEY as `0x${string}`);
+const deployerPrivateKey = process.env.DEPLOYER_PRIVATE_KEY;
+if (!/^0x[0-9a-fA-F]{64}$/.test(deployerPrivateKey ?? '')) {
+  throw new Error('DEPLOYER_PRIVATE_KEY must be a 32-byte key in script/.env or the environment.');
+}
+
+const account = privateKeyToAccount(deployerPrivateKey as `0x${string}`);
 const parent = createPublicClient({ transport: http(PARENT_RPC) });
 const wallet = createWalletClient({ account, transport: http(PARENT_RPC) });
 
@@ -89,6 +95,7 @@ const VOID_PER_ETH = parseEther('2411000');
 const SEED_INTO_POOL = 100;
 
 const BATCH = 20;
+const DAO_BATCH = 20;
 
 function artifact(file: string): { abi: Abi; bytecode: `0x${string}` } {
   const raw = JSON.parse(readFileSync(`${OUT}/${file}.sol/${file}.json`, 'utf8'));
@@ -114,12 +121,14 @@ async function deploy(name: string, args: readonly unknown[]): Promise<Address> 
 }
 
 async function send(address: Address, abi: Abi, fn: string, args: unknown[]) {
-  return parent.waitForTransactionReceipt({
+  const receipt = await parent.waitForTransactionReceipt({
     hash: await wallet.writeContract({
       address, abi, functionName: fn, args, account, chain: null,
       maxFeePerGas: await ceiling(), maxPriorityFeePerGas: 0n,
     }),
   });
+  if (receipt.status !== 'success') throw new Error(`${fn}: transaction reverted`);
+  return receipt;
 }
 
 /**
@@ -132,7 +141,7 @@ async function send(address: Address, abi: Abi, fn: string, args: unknown[]) {
  */
 async function bulk<T>(
   items: T[],
-  build: (item: T, nonce: number) => Promise<`0x${string}`>,
+  build: (item: T, nonce: number, maxFeePerGas: bigint) => Promise<`0x${string}`>,
   label: string,
 ): Promise<number> {
   let done = 0;
@@ -145,7 +154,7 @@ async function bulk<T>(
       });
       const results = await Promise.allSettled(
         pending.map((item, k) =>
-          build(item, base + k).then((h) => parent.waitForTransactionReceipt({ hash: h })),
+          build(item, base + k, maxFee).then((h) => parent.waitForTransactionReceipt({ hash: h })),
         ),
       );
       const left: T[] = [];
@@ -154,7 +163,6 @@ async function bulk<T>(
         else left.push(pending[k]);
       });
       pending = left;
-      void maxFee;
     }
     process.stdout.write(`\r  ${label}: ${done}/${items.length}   `);
   }
@@ -165,6 +173,10 @@ async function bulk<T>(
 // ===========================================================================
 console.log('\n  VOIDS CHAINS — FULL STACK ON TESTNET\n');
 console.log(`  deployer  ${account.address}`);
+const parentChainId = await parent.getChainId();
+if (parentChainId !== EXPECTED_PARENT_CHAIN_ID) {
+  throw new Error(`Refusing to deploy: RPC returned chain ${parentChainId}, expected ${EXPECTED_PARENT_CHAIN_ID}.`);
+}
 const balanceBefore = await parent.getBalance({ address: account.address });
 // Read BEFORE any deployment: none of our events can exist below this block, so
 // this is where the indexer starts sweeping.
@@ -172,7 +184,7 @@ const firstBlock = await parent.getBlockNumber();
 console.log(`  balance   ${formatEther(balanceBefore)} ETH\n`);
 
 // ---------------------------------------------------------------------------
-console.log('  [1/7] token, oracle and deed');
+console.log('  [1/8] token, oracle and deed');
 
 const token = await deploy('VoidTestToken', []);
 const oracle = await deploy('VoidTestOracle', [account.address, VOID_PER_ETH, VOID_USD]);
@@ -181,7 +193,7 @@ const deed = await deploy('VoidChainDeed', [
 ]);
 
 // ---------------------------------------------------------------------------
-console.log('\n  [2/7] treasury, runtime and paymaster');
+console.log('\n  [2/8] treasury, runtime and paymaster');
 
 const treasury = await deploy('VoidChainTreasury', [
   deed, token, account.address, account.address,
@@ -190,24 +202,23 @@ const runtime = await deploy('VoidChainAppRuntime', [deed, token, treasury]);
 const paymaster = await deploy('VoidPaymaster', [
   token, runtime, account.address, account.address, oracle,
 ]);
-// Every chain ships with its DAO: one contract, 1,111 electorates, each voting
-// the ceiling its own chain's toll may not exceed. Wired before any chain is
-// activated, because the wiring is write-once and a chain switched on first
-// would be switched on without one.
-const dao = await deploy('VoidChainDao', [runtime]);
+// Every chain ships with its own DAO. The factory is frozen into the runtime
+// before it creates deterministic clones, because the runtime accepts registry
+// writes only from that one factory.
+const daoFactory = await deploy('VoidChainDaoFactory', [runtime, token]);
 
 const rtAbi = artifact('VoidChainAppRuntime').abi;
 const pmAbi = artifact('VoidPaymaster').abi;
 
 await send(runtime, rtAbi, 'setOracle', [oracle]);
 await send(runtime, rtAbi, 'setForwarderOnce', [paymaster]);
-await send(runtime, rtAbi, 'setDaoOnce', [dao]);
+await send(runtime, rtAbi, 'setDaoFactoryOnce', [daoFactory]);
 await send(treasury, artifact('VoidChainTreasury').abi, 'setAuthorizedSettler', [runtime, true]);
 await send(paymaster, pmAbi, 'setMargin', [1_000n]);
 await send(paymaster, pmAbi, 'setLimits', [
   parseEther('0.001'), 60_000n, await ceiling(), parseEther('0.01'),
 ]);
-console.log('  ✓ wired: oracle, forwarder and DAO frozen, settler, 10% margin');
+console.log('  ✓ wired: oracle, forwarder and DAO factory frozen, settler, 10% margin');
 
 // The bubble's reserve. $100 at $2,411/ETH is about 0.0415 ETH — but on testnet
 // we go with less, because what matters is that it works, not that it scales.
@@ -221,7 +232,23 @@ await parent.waitForTransactionReceipt({
 console.log(`  ✓ paymaster reserve: ${formatEther(RESERVE)} ETH`);
 
 // ---------------------------------------------------------------------------
-console.log(`\n  [3/7] minting the ${NFTS} deeds`);
+console.log(`\n  [3/8] creating the ${NFTS} chain DAOs`);
+
+const factoryAbi = artifact('VoidChainDaoFactory').abi;
+const daoRanges: [bigint, bigint][] = [];
+for (let start = 1; start <= NFTS; start += DAO_BATCH) {
+  daoRanges.push([BigInt(start), BigInt(Math.min(start + DAO_BATCH - 1, NFTS))]);
+}
+const createdDaoRanges = await bulk(daoRanges, ([from, to], nonce, maxFeePerGas) =>
+  wallet.writeContract({
+    address: daoFactory, abi: factoryAbi, functionName: 'createMany', args: [from, to],
+    account, chain: null, nonce,
+    maxFeePerGas, maxPriorityFeePerGas: 0n,
+  }), 'creating DAOs');
+if (createdDaoRanges !== daoRanges.length) throw new Error('One or more DAO creation batches failed.');
+
+// ---------------------------------------------------------------------------
+console.log(`\n  [4/8] minting the ${NFTS} deeds`);
 
 const deedAbi = artifact('VoidChainDeed').abi;
 const mintBatches: bigint[][] = [];
@@ -230,27 +257,29 @@ for (let start = 1; start <= NFTS; start += 50) {
   for (let i = start; i < start + 50 && i <= NFTS; i++) ids.push(BigInt(i));
   mintBatches.push(ids);
 }
-await bulk(mintBatches, (ids, nonce) =>
+const mintedBatches = await bulk(mintBatches, (ids, nonce, maxFeePerGas) =>
   wallet.writeContract({
     address: deed, abi: deedAbi, functionName: 'mintBatch',
     args: [account.address, ids], account, chain: null, nonce,
-    maxFeePerGas: 30_000_000n, maxPriorityFeePerGas: 0n,
+    maxFeePerGas, maxPriorityFeePerGas: 0n,
   }), 'minting');
+if (mintedBatches !== mintBatches.length) throw new Error('One or more deed mint batches failed.');
 
 // ---------------------------------------------------------------------------
-console.log(`\n  [4/7] switching on the ${NFTS} chains (toll $0.001)`);
+console.log(`\n  [5/8] switching on the ${NFTS} chains (toll $0.001)`);
 
 const everyId: number[] = [];
 for (let i = 1; i <= NFTS; i++) everyId.push(i);
-await bulk(everyId, (id, nonce) =>
+const activated = await bulk(everyId, (id, nonce, maxFeePerGas) =>
   wallet.writeContract({
     address: runtime, abi: rtAbi, functionName: 'activate',
     args: [BigInt(id), TOLL_USD], account, chain: null, nonce,
-    maxFeePerGas: 30_000_000n, maxPriorityFeePerGas: 0n,
+    maxFeePerGas, maxPriorityFeePerGas: 0n,
   }), 'activating');
+if (activated !== everyId.length) throw new Error('One or more activation calls failed.');
 
 // ---------------------------------------------------------------------------
-console.log('\n  [5/7] the pool');
+console.log('\n  [6/8] the pool');
 
 const amm = await deploy('VoidNftAmm', [
   token, deed, TOKENS_PER_NFT, RANDOM_FEE_BPS, SPECIFIC_FEE_BPS,
@@ -264,7 +293,7 @@ await send(deed, deedAbi, 'setApprovalForAll', [amm, true]);
 console.log(`  ✓ pool funded, ${TOKENS_PER_NFT / 10n ** 18n} VOID per deed`);
 
 // ---------------------------------------------------------------------------
-console.log(`\n  [6/7] filling the pool's stock with ${SEED_INTO_POOL} deeds`);
+console.log(`\n  [7/8] filling the pool's stock with ${SEED_INTO_POOL} deeds`);
 
 const ammAbi = artifact('VoidNftAmm').abi;
 // From #1 upwards, so the first deed bought is the first deed of the collection.
@@ -279,7 +308,7 @@ await bulk(forPool, (id, nonce) =>
   }), 'depositing');
 
 // ---------------------------------------------------------------------------
-console.log("\n  [7/7] a demo application on the pool's first 10");
+console.log("\n  [8/8] a demo application on the pool's first 10");
 
 const demoApps: Record<string, Address> = {};
 for (let i = 0; i < 10; i++) {
@@ -315,7 +344,7 @@ const output = {
     VoidChainTreasury: treasury,
     VoidChainAppRuntime: runtime,
     VoidPaymaster: paymaster,
-    VoidChainDao: dao,
+    VoidChainDaoFactory: daoFactory,
   },
   testnet: { VoidTestToken: token, VoidTestOracle: oracle, VoidNftAmm: amm },
   parameters: {
@@ -333,6 +362,7 @@ const output = {
 };
 
 const json = JSON.stringify(output, null, 2);
+mkdirSync(DEPLOYMENTS, { recursive: true });
 writeFileSync(resolve(DEPLOYMENTS, 'testnet.json'), json);
 writeFileSync(WEB_DEPLOYMENT, json);
 

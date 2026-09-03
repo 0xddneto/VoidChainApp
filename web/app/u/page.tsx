@@ -11,6 +11,7 @@
 import { useState } from 'react';
 import { isAddress } from 'viem';
 import styles from '../page.module.css';
+import { WalletProfileButton } from '../WalletProfileButton';
 import own from './editor.module.css';
 
 export default function ProfileDoor() {
@@ -44,6 +45,7 @@ export default function ProfileDoor() {
         <div className={`${styles.wrap} ${styles.bar}`}>
           <div className={styles.logo}>VOID<span>SCAN</span></div>
           <a className={styles.note} style={{ marginLeft: 'auto' }} href="/">← explorer</a>
+          <WalletProfileButton />
         </div>
       </header>
 
@@ -53,7 +55,7 @@ export default function ProfileDoor() {
             Your profile
           </h1>
           <p style={{ color: 'var(--ink-2)', fontSize: 14.5, margin: '0 0 22px' }}>
-            Every address has one. It shows the chains it owns, what they have earned, and
+            Every address has one. It shows the execution spaces it owns, what they have earned, and
             whatever name, picture and links the holder set.
           </p>
 

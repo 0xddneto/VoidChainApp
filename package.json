@@ -3,8 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "dependencies": {
-    "@openzeppelin/contracts": "^5.1.0"
+    "@openzeppelin/contracts": "5.1.0"
   },
-  "description": "1,111 NFTs, each one a blockchain its holder owns",
+  "description": "NFT-bound execution runtime on Robinhood Chain testnet",
   "license": "MIT"
 }

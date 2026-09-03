@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Acquire a deed and watch the chain answer to you — on testnet, for free.
+ * Claim a deed and activate its execution space — on testnet, for free.
  *
  * The page is entirely client-side because everything here depends on the
  * wallet of whoever is looking: the balance, what they own, what they can buy.
@@ -22,6 +22,7 @@ import {
   type Address,
 } from 'viem';
 import { ABI, DEPLOY, RH_TESTNET, chainIdForToken, fmt } from '@/lib/testnet';
+import { WalletProfileButton } from '../WalletProfileButton';
 import styles from './page.module.css';
 
 const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
@@ -180,7 +181,7 @@ export default function Mint() {
       return;
     }
     await tx('buy', T.VoidNftAmm as Address, ABI.amm, 'buyRandom',
-      [price], 'The deed is yours. The chain now answers to you.');
+      [price], 'The deed is yours. Its execution space now answers to you.');
   }
 
   const hasVoid = voidBal >= price;
@@ -192,18 +193,19 @@ export default function Mint() {
         <div className={styles.bar}>
           <div className={styles.logo}>Void<span>Scan</span></div>
           <a className={styles.back} href="/">← explorer</a>
+          <WalletProfileButton />
         </div>
       </header>
 
       <main className={styles.wrap}>
         <div className={styles.hero}>
           <div className={styles.testnet}>● Robinhood testnet · no real value</div>
-          <h1>Buy a deed. Own a blockchain.</h1>
+          <h1>Claim a deed. Open a space.</h1>
           <p>
-            The deed <em>is</em> the chain. You set what it costs to use, you collect
-            what it earns, and anyone can build on it without asking you. It starts
-            answering to you the moment the NFT lands in your wallet — no setup, no
-            handover, nothing to configure.
+            The deed binds an isolated execution space in the VOID runtime to your wallet.
+            You set its toll, collect what it earns, and anyone can publish an application
+            without asking you. This testnet release settles on Robinhood Chain; it is not
+            an independent L3 or RPC network yet.
           </p>
         </div>
 
@@ -230,10 +232,10 @@ export default function Mint() {
         </dl>
 
         <p className={styles.tollNote}>
-          The toll is what a chain charges for one call to an application running on
-          it. The owner sets it in dollars and it is paid in VOID, converted at the
+          The toll is what an execution space charges for one runtime call to an application.
+          The owner sets it in dollars and it is paid in VOID, converted at the
           moment of the call — so the price stays the same in real terms whatever
-          the token is doing. It goes to whoever owns that chain.
+          the token is doing. It goes to the current deed holder.
         </p>
 
         <div className={styles.steps}>
@@ -242,7 +244,7 @@ export default function Mint() {
             <div className={styles.stepBody}>
               <h2>Connect your wallet</h2>
               <p>
-                The network is registered automatically if you do not have it yet.
+                Robinhood Chain testnet is registered automatically if you do not have it yet.
                 The VOID on this page is free, but all three steps are transactions
                 sent by you: Robinhood charges gas for them in testnet ETH. A few
                 thousandths cover the whole flow.
@@ -264,8 +266,8 @@ export default function Mint() {
             <div className={styles.stepBody}>
               <h2>Get VOID</h2>
               <p>
-                VOID is the gas of the chainapps. Here it is free and unlimited, because
-                this is testnet. On mainnet it comes from the open market.
+                VOID is the metered currency for runtime calls. Here it is free and unlimited,
+                because this is testnet. Robinhood testnet ETH still pays the wallet transactions.
               </p>
               <button className={styles.btn} onClick={getVoid} disabled={!connected || busy !== null}>
                 {busy === 'faucet' ? 'Getting…' : `Get ${fmt(FAUCET_AMOUNT, 18, 0)} VOID`}
@@ -279,8 +281,8 @@ export default function Mint() {
               <h2>Buy a deed</h2>
               <p>
                 The pool hands over the next one in line — buying at random is cheaper
-                than picking. From the next block, that chain is yours: you set its toll
-                and you collect its revenue.
+                than picking. From the next block, its execution space is bound to your wallet:
+                you set its toll and collect its revenue.
               </p>
               <div className={styles.row}>
                 <button className={styles.btn} onClick={buy} disabled={!hasVoid || busy !== null || available === 0n}>
@@ -302,13 +304,13 @@ export default function Mint() {
 
         {deeds.length > 0 && (
           <section className={styles.owned}>
-            <h2>Your chains</h2>
-            <p>Each deed is a network with its own identifier and a separate economy.</p>
+            <h2>Your execution spaces</h2>
+            <p>Each deed has its own runtime identifier, application registry and accounting.</p>
             <div className={styles.deeds}>
               {deeds.map((d) => (
                 <article key={d.id} className={styles.deed}>
                   <p className={styles.deedId}>VOID #{d.id}</p>
-                  <p className={styles.deedChain}>chain {d.chainId}</p>
+                  <p className={styles.deedChain}>runtime {d.chainId}</p>
                   <div className={styles.deedRow}><span>State</span><b>{d.active ? 'active' : 'dormant'}</b></div>
                   <div className={styles.deedRow}><span>Toll</span><b>{fmt(d.feeVoid, 18, 2)} VOID</b></div>
                   <div className={styles.deedRow}><span>Calls</span><b>{d.calls.toString()}</b></div>
@@ -325,9 +327,9 @@ export default function Mint() {
             no deep VOID/ETH pool nor a Chainlink feed on this network.
           </p>
           <p>
-            Everything else is the real thing: <code>VoidChainDeed</code>,{' '}
+            The deployed test stack is real code: <code>VoidChainDeed</code>,{' '}
             <code>VoidChainAppRuntime</code>, <code>VoidChainTreasury</code> and{' '}
-            <code>VoidPaymaster</code> are the contracts that go to mainnet.
+            <code>VoidPaymaster</code>. It has not been audited or approved for mainnet use.
           </p>
         </div>
       </main>
