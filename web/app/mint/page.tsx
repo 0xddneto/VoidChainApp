@@ -27,7 +27,7 @@ import styles from './page.module.css';
 
 const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
 
-/** Enough VOID to buy two deeds and still pay tolls freely. */
+/** Enough VOID to buy two deeds and cover test transaction fees. */
 const FAUCET_AMOUNT = 2_500_000n * 10n ** 18n;
 
 type Deed = { id: number; chainId: number; feeVoid: bigint; calls: bigint; active: boolean };
@@ -219,7 +219,7 @@ export default function Mint() {
             <dd>{fmt(price, 18, 0)}<small> VOID</small></dd>
           </div>
           <div className={styles.fact}>
-            <dt>Toll per call</dt>
+            <dt>Transaction fee</dt>
             <dd>
               $0.001
               {tollVoid > 0n && <small> ≈ {fmt(tollVoid, 18, 3)} VOID</small>}
@@ -230,14 +230,6 @@ export default function Mint() {
             <dd>{fmt(voidBal, 18, 0)}<small> VOID</small></dd>
           </div>
         </dl>
-
-        <p className={styles.tollNote}>
-          The toll is what an execution space charges for one runtime call to an application.
-          The owner sets it in dollars and it is paid in VOID, converted at the
-          moment of the call — so the price stays the same in real terms whatever
-          the token is doing. The current deed holder receives 98%; the protocol
-          receives the remaining 2%.
-        </p>
 
         <div className={styles.steps}>
           <section className={styles.step} data-done={connected}>
@@ -267,7 +259,7 @@ export default function Mint() {
             <div className={styles.stepBody}>
               <h2>Get VOID</h2>
               <p>
-                VOID is the metered currency for runtime calls. Here it is free and unlimited,
+                VOID pays transaction fees in this test environment. Here it is free and unlimited,
                 because this is testnet. Robinhood testnet ETH still pays the wallet transactions.
               </p>
               <button className={styles.btn} onClick={getVoid} disabled={!connected || busy !== null}>
@@ -313,8 +305,8 @@ export default function Mint() {
                   <p className={styles.deedId}>VOID #{d.id}</p>
                   <p className={styles.deedChain}>runtime {d.chainId}</p>
                   <div className={styles.deedRow}><span>State</span><b>{d.active ? 'active' : 'dormant'}</b></div>
-                  <div className={styles.deedRow}><span>Toll</span><b>{fmt(d.feeVoid, 18, 2)} VOID</b></div>
-                  <div className={styles.deedRow}><span>Calls</span><b>{d.calls.toString()}</b></div>
+                  <div className={styles.deedRow}><span>Transaction fee</span><b>{fmt(d.feeVoid, 18, 2)} VOID</b></div>
+                  <div className={styles.deedRow}><span>Transactions</span><b>{d.calls.toString()}</b></div>
                 </article>
               ))}
             </div>

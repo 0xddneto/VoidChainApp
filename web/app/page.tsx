@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 const nf = new Intl.NumberFormat("en-US");
 
 // A chainapp has neither a node nor blocks of its own: either the runtime
-// accepts calls for it, or it does not. "Producing blocks" measured something
+// accepts transactions for it, or it does not. "Producing blocks" measured something
 // the L3 model had and this one does not.
 const STATUS_LABEL: Record<ChainStatus, string> = {
   live: "Active",
@@ -90,7 +90,7 @@ export default async function Home() {
               <span className={styles.signalLive}>LIVE</span>
             </div>
             <div className={styles.signalNumber}>{nf.format(totalCalls).padStart(4, "0")}</div>
-            <p>metered calls observed</p>
+            <p>paid transactions observed</p>
             <div className={styles.signalRule} />
             <div className={styles.signalFoot}>
               <span>Parent</span>
@@ -103,8 +103,8 @@ export default async function Home() {
 
         <div className={styles.summary}>
           <Stat label="Deeds in registry" value={nf.format(TOTAL_CHAINS)} unit="fixed supply" />
-          <Stat label="Live spaces" value={nf.format(counts.live)} unit="accepting calls" />
-          <Stat label="Metered calls" value={nf.format(totalCalls)} unit="successful runtime executions" />
+          <Stat label="Live spaces" value={nf.format(counts.live)} unit="accepting transactions" />
+          <Stat label="Transactions" value={nf.format(totalCalls)} unit="paid runtime transactions" />
           <Stat
             label="Activation cost"
             value={PROTOCOL.activationCost.toLocaleString("en-US", {

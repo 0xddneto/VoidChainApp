@@ -115,11 +115,6 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
         <Pager page={current} pages={pages} total={found.length} onChange={setPage} />
       </div>
 
-      <div className={styles.directoryGuide}>
-        <p><b>Calls</b> are successful, metered runtime executions to a space’s published apps — not blocks or every parent-chain transaction.</p>
-        <p><b>Toll per call</b> is the access price set in USD and paid in VOID at execution time: 98% goes to the deed holder and 2% to protocol. Robinhood testnet ETH gas is separate.</p>
-      </div>
-
       <div className={styles.scroller}>
         <table className={styles.table}>
           <thead>
@@ -128,9 +123,7 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
               <th>Runtime ID</th>
               <th>Owner</th>
               <th>State</th>
-              <th className={styles.numCell}>
-                <abbr title="Successful metered runtime executions, not blocks or all parent-chain transactions.">Calls</abbr>
-              </th>
+              <th className={styles.numCell}>Transactions</th>
               <th className={styles.numCell}>Apps</th>
               <th className={styles.numCell}>Addresses</th>
               <th className={styles.numCell}>Revenue</th>
@@ -225,7 +218,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
           <div><dt>Name</dt><dd>{chain.name ?? 'no name set'}</dd></div>
           <div><dt>Runtime ID</dt><dd><Copyable value={String(chain.chainId)} /></dd></div>
           <div><dt>Owner</dt><dd><Copyable value={chain.owner ?? ''} short /></dd></div>
-          <div><dt title="Successful metered runtime executions, not blocks or all parent-chain transactions.">Calls</dt><dd>{nf.format(chain.txCount)}</dd></div>
+          <div><dt>Transactions</dt><dd>{nf.format(chain.txCount)}</dd></div>
           <div><dt>Applications</dt><dd>{nf.format(chain.contractCount)}</dd></div>
           <div><dt>Addresses</dt><dd>{nf.format(chain.addressCount)}</dd></div>
           <div><dt title="Gross tolls paid to this space; the protocol split is accounted for separately.">Revenue</dt><dd>{voidAmount(chain.revenue)} VOID</dd></div>
@@ -255,9 +248,9 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
             </div>
 
             <div>
-              <h3>Calls</h3>
+              <h3>Transactions</h3>
               {detail.calls.length === 0 ? (
-                <p className={styles.noHits}>No calls charged yet.</p>
+                <p className={styles.noHits}>No paid transactions yet.</p>
               ) : (
                 <ul className={styles.detailList}>
                   {detail.calls.map((c) => (

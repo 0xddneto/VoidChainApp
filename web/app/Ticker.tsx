@@ -18,7 +18,7 @@ import styles from './page.module.css';
 function line(e: Event): string {
   switch (e.kind) {
     case 'call': {
-      // Only a call carries a number in `detail`. An app carries an address,
+      // Only a paid transaction carries a number in `detail`. An app carries an address,
       // and parsing it as a BigInt throws — which is why this conversion lives
       // inside the branch that knows what the field holds.
       const v = Number(BigInt(e.detail || '0') / 10n ** 15n) / 1000;
@@ -35,7 +35,7 @@ export function Ticker({ events }: { events: Event[] }) {
   if (events.length === 0) {
     return (
       <div className={styles.ticker}>
-        <span className={styles.tickerIdle}>waiting for the first call</span>
+        <span className={styles.tickerIdle}>waiting for the first transaction</span>
       </div>
     );
   }

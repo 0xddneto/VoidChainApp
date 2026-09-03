@@ -389,10 +389,6 @@
 .pillCreated { background: var(--created-soft); color: var(--created); }
 .pillReserved { background: var(--dormant-soft); color: var(--dormant); }
 .noHits { padding: 27px 16px; color: var(--ink-3); font-size: 12px; text-align: center; }
-.directoryGuide { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; border-bottom: 1px solid var(--line); background: var(--line); }
-.directoryGuide p { min-height: 54px; margin: 0; background: color-mix(in srgb, var(--surface-2) 72%, transparent); color: var(--ink-2); font: 10px/1.55 var(--mono); padding: 11px 17px; }
-.directoryGuide b { color: var(--ink); font-weight: 600; }
-.table abbr { border-bottom: 1px dotted var(--line-strong); cursor: help; text-decoration: none; }
 
 /* ---- opened chain ------------------------------------------------------ */
 .back { border: 0; background: transparent; color: var(--ink-3); cursor: pointer; font: 11px var(--mono); padding: 0; }
@@ -478,7 +474,6 @@
   .cardSearch { order: 3; margin-left: 0; width: 100%; }
   .cardSearch input { width: 100%; }
   .panelHead { flex-wrap: wrap; }
-  .directoryGuide { grid-template-columns: 1fr; }
   .daoFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .daoCompose { grid-template-columns: 1fr 1fr; }
   .daoCompose > :first-child { grid-column: 1 / -1; }

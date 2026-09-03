@@ -74,7 +74,7 @@ export default async function ProfileRoute({
 
           <dl className={own.numbers}>
             <div><dt>Spaces owned</dt><dd>{nf.format(chains.length)}</dd></div>
-            <div><dt>Calls charged</dt><dd>{nf.format(calls)}</dd></div>
+            <div><dt>Paid transactions</dt><dd>{nf.format(calls)}</dd></div>
             <div><dt>Revenue</dt><dd>{voidAmount(revenue)} <small>VOID</small></dd></div>
           </dl>
 
@@ -95,7 +95,7 @@ export default async function ProfileRoute({
                   <tr>
                     <th>NFT</th>
                     <th>Runtime ID</th>
-                    <th className={styles.numCell}>Calls</th>
+                    <th className={styles.numCell}>Transactions</th>
                     <th className={styles.numCell}>Apps</th>
                     <th className={styles.numCell}>Revenue</th>
                   </tr>

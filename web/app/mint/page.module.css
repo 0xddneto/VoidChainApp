@@ -167,13 +167,3 @@
 /* The zero-gas warning: it is what blocks the flow, so it must not slip by
    unnoticed among the explanatory paragraphs. */
 .noEth { color: #c0392b; }
-
-/* The line that explains what a toll is. It sits between the numbers and the
-   steps because that is where the question occurs to a reader. */
-.tollNote {
-  color: var(--ink-2);
-  font-size: 13.5px;
-  line-height: 1.6;
-  max-width: 66ch;
-  margin: 0 0 28px;
-}
