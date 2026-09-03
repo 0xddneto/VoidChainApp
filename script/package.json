@@ -5,6 +5,7 @@
   "scripts": {
     "build:contracts": "tsx compile-contracts.ts",
     "deploy:testnet": "tsx deploy-testnet.ts",
+    "deploy:testnet-v2": "tsx deploy-testnet-v2.ts",
     "deploy:chain1-dex": "tsx deploy-chain1-dex.ts",
     "deploy:chain1-dex-faucet": "tsx deploy-chain1-dex-faucet.ts",
     "load:chain1-dex": "tsx load-chain1-dex.ts",

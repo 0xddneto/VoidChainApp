@@ -1,0 +1,24 @@
+{
+  "network": {
+    "chainId": 46630,
+    "rpc": "https://robinhood-testnet.drpc.org"
+  },
+  "migration": {
+    "version": "v2-pending-holder-activation",
+    "legacyRuntime": "0x66833df7B5404E6c75F3e5126F7105F2fDceE4FD",
+    "legacyPaymaster": "0xe910C93915B8cf2C34F5beB2b0BE94D74a661aba",
+    "chainOneHolder": "0xA7a12A1D7000e40Ecc18a62Af456791b89cB2770",
+    "reserveMovedWei": "985281540000000"
+  },
+  "production": {
+    "VoidChainDeed": "0x7797e2b67c0cfe6c61e8b398951ea423aaad2dc1",
+    "VoidChainTreasury": "0x195a2e19fc2f6764641f198daa6f348bd433262e",
+    "VoidChainAppRuntime": "0xfd1cc55e21385e4eb7653041cfd51d884a684243",
+    "VoidPaymaster": "0x602a7a561a507c6b8f05b69d2b48443749347188",
+    "VoidChainDaoFactory": "0x82501dc8541c6f3d237114e4c826ae5aa339cf1a"
+  },
+  "chainOne": {
+    "tokenId": 1,
+    "dao": "0x3109EC6Fbca284a99857679EeeCf3edd99CfEb1c"
+  }
+}
