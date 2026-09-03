@@ -1,0 +1,94 @@
+import { NextResponse } from 'next/server';
+import { createPublicClient, createWalletClient, encodeFunctionData, getAddress, http, isAddress, parseAbi, toFunctionSelector, type Address, type Hex } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const RPC = 'https://robinhood-testnet.drpc.org';
+const RUNTIME = '0x424ec038baf1a9786a8eba1212954513ed31aa5d' as Address;
+const PAYMASTER = '0x79d1cdb8c7e5f49ef2f0ceee9ab478c651435fbb' as Address;
+const VOID = '0x2a64fa56c1de6f7c737b4a964b5b693ed3841ff4' as Address;
+const PAIRS = new Set([
+  '0xdEb696F2956bE3259aee83d7eb8479309841413e'.toLowerCase(),
+  '0xd8c47A16f6469E77d4327122DfbbFe0E71cdb262'.toLowerCase(),
+]);
+const FAUCET = '0x247d8b1d5d5fd8025ada3c37f2bebeb0ddf30fb9'.toLowerCase();
+const pairAbi = parseAbi(['function swap(bool,uint256,uint256)', 'function addLiquidity(uint256,uint256,uint256)', 'function removeLiquidity(uint256,uint256,uint256)']);
+const faucetAbi = parseAbi(['function claim()']);
+const selectors = new Set([
+  toFunctionSelector('swap(bool,uint256,uint256)'),
+  toFunctionSelector('addLiquidity(uint256,uint256,uint256)'),
+  toFunctionSelector('removeLiquidity(uint256,uint256,uint256)'),
+]);
+const faucetSelector = toFunctionSelector('claim()');
+const readAbi = parseAbi(['function nonces(address) view returns(uint256)', 'function feeOf(uint256) view returns(uint256)']);
+const paymasterAbi = parseAbi(['function sponsorWithAssetPermits((address user,uint256 tokenId,address target,bytes data,uint256 maxToll,uint256 maxGasVoid,uint256 callGasLimit,(address token,uint256 amount)[] spends,(address collection,uint256 tokenId)[] nftSpends,uint256 nonce,uint256 deadline),bytes,(address token,address spender,uint256 value,uint256 deadline,uint8 v,bytes32 r,bytes32 s)[]) returns(bool,bytes)']);
+const rpc = createPublicClient({ transport: http(RPC) });
+const MAX_GAS_VOID = 50_000_000_000_000_000_000n;
+const CALL_GAS_LIMIT = 700_000n;
+const MAX_DEADLINE_SECONDS = 630n;
+
+type Raw = Record<string, unknown>;
+const asAddress = (value: unknown): Address | null => typeof value === 'string' && isAddress(value) ? getAddress(value) : null;
+const asUint = (value: unknown): bigint | null => typeof value === 'string' && /^\d+$/.test(value) ? BigInt(value) : null;
+const asHex = (value: unknown): Hex | null => typeof value === 'string' && /^0x[0-9a-fA-F]*$/.test(value) ? value as Hex : null;
+const reject = (error: string, status = 400) => NextResponse.json({ error }, { status });
+
+/** Relays only a signed, bounded Chain #1 DEX action. */
+export async function POST(request: Request) {
+  const key = process.env.PAYMASTER_RELAYER_PRIVATE_KEY;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(key ?? '')) return reject('VOID relay is not configured.', 503);
+  let body: Raw;
+  try { body = await request.json() as Raw; } catch { return reject('Malformed relay request.'); }
+  const raw = body.request as Raw | undefined;
+  const rawPermits = body.permits;
+  const signature = asHex(body.signature);
+  if (!raw || !Array.isArray(rawPermits) || !signature || signature.length !== 132) return reject('Invalid signed request.');
+
+  const user = asAddress(raw.user); const target = asAddress(raw.target); const data = asHex(raw.data);
+  const tokenId = asUint(raw.tokenId); const maxToll = asUint(raw.maxToll); const maxGasVoid = asUint(raw.maxGasVoid);
+  const callGasLimit = asUint(raw.callGasLimit); const nonce = asUint(raw.nonce); const deadline = asUint(raw.deadline);
+  const spendsRaw = raw.spends;
+  if (!user || !target || !data || tokenId !== 1n || maxToll === null || maxGasVoid !== MAX_GAS_VOID || callGasLimit !== CALL_GAS_LIMIT || nonce === null || deadline === null || !Array.isArray(spendsRaw)) return reject('Invalid DEX limits.');
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  if (deadline <= now || deadline > now + MAX_DEADLINE_SECONDS) return reject('Signature expired.');
+  const selector = data.slice(0, 10) as Hex;
+  const isPair = PAIRS.has(target.toLowerCase());
+  if (!((isPair && selectors.has(selector)) || (target.toLowerCase() === FAUCET && selector === faucetSelector))) return reject('Only registered DEX methods can be relayed.');
+
+  const spends: Array<{ token: Address; amount: bigint }> = [];
+  for (const item of spendsRaw) {
+    const spend = item as Raw; const token = asAddress(spend.token); const amount = asUint(spend.amount);
+    if (!token || amount === null || amount === 0n || spends.some((known) => known.token === token)) return reject('Invalid app budget.');
+    spends.push({ token, amount });
+  }
+  if (spends.length > 2) return reject('Too many app token budgets.');
+
+  const permits = [] as Array<{ token: Address; spender: Address; value: bigint; deadline: bigint; v: number; r: Hex; s: Hex }>;
+  for (const item of rawPermits) {
+    const permit = item as Raw; const token = asAddress(permit.token); const spender = asAddress(permit.spender); const value = asUint(permit.value); const permitDeadline = asUint(permit.deadline); const r = asHex(permit.r); const s = asHex(permit.s); const v = permit.v;
+    if (!token || !spender || value === null || permitDeadline !== deadline || !r || !s || typeof v !== 'number' || (v !== 27 && v !== 28)) return reject('Invalid token permit.');
+    if (permits.some((known) => known.token === token && known.spender === spender)) return reject('Duplicate token permit.');
+    permits.push({ token, spender, value, deadline: permitDeadline, v, r: r as Hex, s: s as Hex });
+  }
+  const required = new Map<string, bigint>([[`${VOID}:${PAYMASTER}`.toLowerCase(), maxToll + maxGasVoid]]);
+  for (const spend of spends) required.set(`${spend.token}:${RUNTIME}`.toLowerCase(), spend.amount);
+  if (permits.length !== required.size || permits.some((permit) => permit.value !== required.get(`${permit.token}:${permit.spender}`.toLowerCase()))) return reject('Permit does not match the displayed VOID and app budgets.');
+
+  const [chainNonce, fee] = await Promise.all([
+    rpc.readContract({ address: PAYMASTER, abi: readAbi, functionName: 'nonces', args: [user] }),
+    rpc.readContract({ address: RUNTIME, abi: readAbi, functionName: 'feeOf', args: [1n] }),
+  ]);
+  if (nonce !== chainNonce || maxToll !== fee) return reject('Quote changed; sign again.', 409);
+
+  const sponsored = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends: [], nonce, deadline };
+  try {
+    const account = privateKeyToAccount(key as Hex);
+    const wallet = createWalletClient({ account, transport: http(RPC) });
+    const hash = await wallet.sendTransaction({ account, chain: null, to: PAYMASTER, data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }) });
+    return NextResponse.json({ hash });
+  } catch {
+    return reject('Relay refused the signed action. Sign a new request and try again.', 502);
+  }
+}

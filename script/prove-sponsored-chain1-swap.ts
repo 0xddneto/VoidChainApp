@@ -48,7 +48,7 @@ const runtimeAbi = parseAbi([
 const pairAbi = parseAbi(['function quote(bool,uint256) view returns(uint256)', 'function swap(bool,uint256,uint256) returns(uint256)']);
 const paymasterAbi = parseAbi([
   'function nonces(address) view returns(uint256)',
-  'function sponsorWithPermit((address user,uint256 tokenId,address target,bytes data,uint256 maxToll,uint256 maxGasVoid,uint256 callGasLimit,(address token,uint256 amount)[] spends,(address collection,uint256 tokenId)[] nftSpends,uint256 nonce,uint256 deadline),bytes,(address spender,uint256 value,uint256 deadline,uint8 v,bytes32 r,bytes32 s)[]) returns(bool,bytes)',
+  'function sponsorWithAssetPermits((address user,uint256 tokenId,address target,bytes data,uint256 maxToll,uint256 maxGasVoid,uint256 callGasLimit,(address token,uint256 amount)[] spends,(address collection,uint256 tokenId)[] nftSpends,uint256 nonce,uint256 deadline),bytes,(address token,address spender,uint256 value,uint256 deadline,uint8 v,bytes32 r,bytes32 s)[]) returns(bool,bytes)',
 ]);
 
 const typedDomain = (token: Address, name: string) => ({ name, version: '1', chainId: 46_630, verifyingContract: token });
@@ -112,10 +112,10 @@ const [paymasterPermit, runtimePermit, signedCall] = await Promise.all([
 const split = (signature: Hex) => ({ v: Number.parseInt(signature.slice(130, 132), 16), r: signature.slice(0, 66) as Hex, s: `0x${signature.slice(66, 130)}` as Hex });
 const p0 = split(paymasterPermit); const p1 = split(runtimePermit);
 const hash = await wallet.writeContract({
-  account: relayer, chain: null, address: paymaster, abi: paymasterAbi, functionName: 'sponsorWithPermit',
+  account: relayer, chain: null, address: paymaster, abi: paymasterAbi, functionName: 'sponsorWithAssetPermits',
   args: [request, signedCall, [
-    { spender: paymaster, value: fee + maxGasVoid, deadline, ...p0 },
-    { spender: runtime, value: amountIn, deadline, ...p1 },
+    { token: voidToken, spender: paymaster, value: fee + maxGasVoid, deadline, ...p0 },
+    { token: voidToken, spender: runtime, value: amountIn, deadline, ...p1 },
   ]], maxPriorityFeePerGas: 0n,
 } as never);
 await wait(hash);
