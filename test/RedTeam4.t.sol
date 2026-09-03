@@ -136,12 +136,10 @@ contract Handler is Test {
         try runtime.sweepProtocol() {} catch {}
     }
 
-    /// The protocol withdraws its accrued fee.
+    /// The protocol revenue is sent directly to its configured public address.
     function claimProtocol() public {
-        uint256 c = treasury.claimable(protocol);
-        if (c == 0) return;
-        vm.prank(protocol);
-        try treasury.claim() { totalClaimed += c; } catch {}
+        // Kept as a callable handler action to prove that no protocol signing
+        // step is necessary after a sweep.
     }
 
     /// The current owner reprices the chain (bounded to sane values).
@@ -233,7 +231,6 @@ contract RedTeam4 is Test {
     }
 
     function _sumClaimable() internal view returns (uint256 s) {
-        s = treasury.claimable(protocol);
         for (uint256 i; i < 4; ++i) s += treasury.claimable(actors[i]);
     }
 
@@ -271,7 +268,7 @@ contract RedTeam4 is Test {
         // The 2% is now split in execute and sits in `protocolAccrued` until the
         // sweep, so it enters the conservation check alongside the pending.
         uint256 accountedNow = _sumPending() + runtime.protocolAccrued() + _sumOwed()
-            + _sumClaimable() + handler.totalClaimed();
+            + _sumClaimable() + handler.totalClaimed() + voidToken.balanceOf(protocol);
         assertEq(handler.totalTolls(), accountedNow, "fee conservation broken: a wei leaked");
     }
 
@@ -319,13 +316,10 @@ contract RedTeam4 is Test {
             (,,, uint256 lifetime,) = runtime.statsOf(c);
             settledGross += lifetime;
         }
-        // Protocol's total accrual = current claimable(protocol) + whatever it withdrew.
-        // We cannot separate protocol's withdrawals from actors' in one ghost, so we
-        // bound only from below on the live claimable + require it never exceeds 2% ceil
-        // of settledGross. The exact-per-settle floor is proven in the fuzz test below.
-        // The protocol total = what is already in the treasury + the 2% not yet swept.
+        // Sweeps pay the protocol's public wallet directly. The exact-per-settle
+        // floor is proven in the fuzz test below.
         uint256 protoTotal =
-            treasury.claimable(protocol) + runtime.protocolAccrued() + runtime.owed(protocol);
+            voidToken.balanceOf(protocol) + runtime.protocolAccrued() + runtime.owed(protocol);
         // Ceiling: never above 2% of gross, with 1 wei of slack per chain (dust floor).
         assertLe(protoTotal, (settledGross * 200) / 10_000 + _totalCalls(), "protocol over 2%");
     }
@@ -371,7 +365,7 @@ contract RedTeam4 is Test {
         assertEq(treasury.claimable(A), net, "A got exactly what A generated");
         assertEq(treasury.claimable(B), net, "B got exactly what B generated");
         assertEq(treasury.claimable(C), net, "C got exactly what C generated");
-        assertEq(treasury.claimable(protocol), 3 * (FEE * 200 / 10_000), "protocol got 2% x3");
+        assertEq(voidToken.balanceOf(protocol), 3 * (FEE * 200 / 10_000), "protocol got 2% x3");
         // No pending orphaned.
         (,, uint256 pending,,) = runtime.statsOf(chain);
         assertEq(pending, 0, "no orphan pending");
@@ -509,10 +503,10 @@ contract RedTeam4 is Test {
 
         runtime.flush(chain);
         assertEq(treasury.claimable(owner), 48 * 5, "the owner only receives the 98% (48 per call)");
-        assertEq(treasury.claimable(protocol), 0, "protocolo so entra no cofre apos o sweep");
+        assertEq(voidToken.balanceOf(protocol), 0, "protocol receives nothing before sweep");
 
         runtime.sweepProtocol();
-        assertEq(treasury.claimable(protocol), 5, "the sweep takes the 2% to the treasury");
+        assertEq(voidToken.balanceOf(protocol), 5, "the sweep sends the 2% to the public treasury");
     }
 
     // --- helpers ---------------------------------------------------------

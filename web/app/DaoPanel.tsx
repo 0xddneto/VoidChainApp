@@ -7,8 +7,10 @@ import {
   custom,
   encodeFunctionData,
   http,
+  isAddress,
   parseUnits,
   type Address,
+  type Hex,
 } from 'viem';
 import { ABI, DEPLOY, RH_TESTNET, fmt } from '@/lib/testnet';
 import { Copyable } from './Copyable';
@@ -16,6 +18,7 @@ import styles from './page.module.css';
 
 const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
 const STATES = ['Pending', 'Active', 'Defeated', 'Succeeded', 'Executed'] as const;
+const GENERIC_DAO = Boolean((DEPLOY as { governance?: unknown }).governance);
 
 type WalletProvider = {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
@@ -25,7 +28,8 @@ type WalletProvider = {
 
 type Proposal = {
   id: number;
-  feeLimitUsd: bigint;
+  description: string;
+  actionCount: bigint;
   snapshotBlock: bigint;
   snapshotSupply: bigint;
   deadline: bigint;
@@ -43,6 +47,9 @@ type Governance = {
   proposals: Proposal[];
 };
 
+type ProposalKind = 'signal' | 'fee-limit' | 'fee' | 'apps' | 'custom';
+type DaoAction = { target: Address; data: Hex };
+
 const asAddress = (value: unknown): Address | null =>
   typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value) ? value as Address : null;
 
@@ -58,10 +65,6 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function usd(value: bigint): string {
-  return `$${fmt(value, 18, 4)}`;
-}
-
 function date(value: bigint): string {
   return new Intl.DateTimeFormat('en-US', {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -72,37 +75,62 @@ function days(value: bigint): string {
   return `${Number(value / 86_400n)} days`;
 }
 
+function countActions(value: bigint): string {
+  return value === 0n ? 'Signal only' : `${value.toString()} on-chain action${value === 1n ? '' : 's'}`;
+}
+
 export function DaoPanel({ tokenId }: { tokenId: number }) {
   const [account, setAccount] = useState<Address | null>(null);
   const [data, setData] = useState<Governance | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
-  const [feeLimit, setFeeLimit] = useState('0.001');
+  const [kind, setKind] = useState<ProposalKind>('signal');
+  const [description, setDescription] = useState('');
+  const [fee, setFee] = useState('0.001');
+  const [appAccess, setAppAccess] = useState<'open' | 'closed'>('open');
+  const [customTarget, setCustomTarget] = useState('');
+  const [customData, setCustomData] = useState('0x');
 
   const refresh = useCallback(async (who: Address | null) => {
     const factory = DEPLOY.production.VoidChainDaoFactory as Address;
     const dao = await rpc.readContract({
       address: factory, abi: ABI.daoFactory, functionName: 'daoOf', args: [BigInt(tokenId)],
     }) as Address;
+    const daoAbi = GENERIC_DAO ? ABI.dao : ABI.daoLegacy;
     const [count, quorumBps, votingPeriod] = await Promise.all([
-      rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'proposalCount' }) as Promise<bigint>,
-      rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'QUORUM_BPS' }) as Promise<bigint>,
-      rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'VOTING_PERIOD' }) as Promise<bigint>,
+      rpc.readContract({ address: dao, abi: daoAbi, functionName: 'proposalCount' }) as Promise<bigint>,
+      rpc.readContract({ address: dao, abi: daoAbi, functionName: 'QUORUM_BPS' }) as Promise<bigint>,
+      rpc.readContract({ address: dao, abi: daoAbi, functionName: 'VOTING_PERIOD' }) as Promise<bigint>,
     ]);
 
     const latest = Math.min(Number(count), 25);
     const ids = Array.from({ length: latest }, (_, i) => Number(count) - i);
     const proposals = await Promise.all(ids.map(async (id) => {
-      const [p, state, voted] = await Promise.all([
-        rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'proposals', args: [BigInt(id)] }) as Promise<readonly [bigint, bigint, bigint, bigint, bigint, bigint, boolean]>,
+      if (!GENERIC_DAO) {
+        const [p, state, voted] = await Promise.all([
+          rpc.readContract({ address: dao, abi: ABI.daoLegacy, functionName: 'proposals', args: [BigInt(id)] }) as Promise<readonly [bigint, bigint, bigint, bigint, bigint, bigint, boolean]>,
+          rpc.readContract({ address: dao, abi: ABI.daoLegacy, functionName: 'state', args: [BigInt(id)] }) as Promise<number>,
+          who
+            ? rpc.readContract({ address: dao, abi: ABI.daoLegacy, functionName: 'hasVoted', args: [BigInt(id), who] }) as Promise<boolean>
+            : Promise.resolve(false),
+        ]);
+        return {
+          id, description: `Set transaction fee limit to $${fmt(p[0], 18, 4)}`, actionCount: 1n,
+          snapshotBlock: p[1], snapshotSupply: p[2], deadline: p[3], forVotes: p[4], againstVotes: p[5], state, voted,
+        };
+      }
+
+      const [p, state, voted, proposalDescription] = await Promise.all([
+        rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'proposals', args: [BigInt(id)] }) as Promise<readonly [Hex, Hex, bigint, bigint, bigint, bigint, bigint, bigint, boolean]>,
         rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'state', args: [BigInt(id)] }) as Promise<number>,
         who
           ? rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'hasVoted', args: [BigInt(id), who] }) as Promise<boolean>
           : Promise.resolve(false),
+        rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'proposalDescription', args: [BigInt(id)] }) as Promise<string>,
       ]);
       return {
-        id, feeLimitUsd: p[0], snapshotBlock: p[1], snapshotSupply: p[2], deadline: p[3],
-        forVotes: p[4], againstVotes: p[5], state, voted,
+        id, description: proposalDescription || 'Untitled proposal', actionCount: p[7],
+        snapshotBlock: p[2], snapshotSupply: p[3], deadline: p[4], forVotes: p[5], againstVotes: p[6], state, voted,
       };
     }));
 
@@ -146,12 +174,12 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
     setNotice('Confirm the transaction in your wallet…');
     try {
       const { provider, account: sender } = await connectedWallet();
-      const client = createWalletClient({ account: sender, transport: custom(provider as any) });
+      const client = createWalletClient({ account: sender, transport: custom(provider as never) });
       const hash = await client.sendTransaction({
         account: sender,
         chain: null,
         to: data.dao,
-        data: encodeFunctionData({ abi: ABI.dao, functionName, args } as any),
+        data: encodeFunctionData({ abi: GENERIC_DAO ? ABI.dao : ABI.daoLegacy, functionName, args } as never),
       });
       setNotice('Sent. Waiting for Robinhood testnet confirmation…');
       const receipt = await rpc.waitForTransactionReceipt({ hash });
@@ -174,13 +202,44 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
     }
   }
 
+  function buildActions(): DaoAction[] | null {
+    if (kind === 'signal') return [];
+    if (kind === 'custom') {
+      if (!isAddress(customTarget)) {
+        setNotice('Enter a valid contract address.');
+        return null;
+      }
+      if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(customData)) {
+        setNotice('Contract data must be even-length hexadecimal starting with 0x.');
+        return null;
+      }
+      return [{ target: customTarget as Address, data: customData as Hex }];
+    }
+
+    const value = feeInUsd(fee);
+    if ((kind === 'fee-limit' || kind === 'fee') && value === null) {
+      setNotice('Enter a valid transaction fee in USD.');
+      return null;
+    }
+    const runtime = DEPLOY.production.VoidChainAppRuntime as Address;
+    if (kind === 'fee-limit') {
+      return [{ target: runtime, data: encodeFunctionData({ abi: ABI.runtime, functionName: 'setTollCeiling', args: [BigInt(tokenId), value!] }) }];
+    }
+    if (kind === 'fee') {
+      return [{ target: runtime, data: encodeFunctionData({ abi: ABI.runtime, functionName: 'setFee', args: [BigInt(tokenId), value!] }) }];
+    }
+    return [{ target: runtime, data: encodeFunctionData({ abi: ABI.runtime, functionName: 'setPermissionlessDeploy', args: [BigInt(tokenId), appAccess === 'open'] }) }];
+  }
+
   async function propose() {
-    const parsed = feeInUsd(feeLimit);
-    if (parsed === null) {
-      setNotice('Enter a valid fee limit in USD.');
+    const text = description.trim();
+    if (!text) {
+      setNotice('Write what the proposal is about.');
       return;
     }
-    await send('propose', 'propose', [parsed]);
+    const actions = buildActions();
+    if (!actions) return;
+    await send('propose', 'propose', [actions, text]);
   }
 
   if (!data) {
@@ -198,8 +257,7 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
       </div>
 
       <p className={styles.daoScope}>
-        The NFT holder creates proposals. VOID stays in your wallet. Your wallet balance at the
-        proposal snapshot is your voting power for the full five-day vote.
+        The NFT holder can propose any subject for this chain. VOID stays in your wallet: the balance at the proposal snapshot is your voting power for the full five-day vote.
       </p>
 
       <dl className={styles.daoFacts}>
@@ -209,19 +267,60 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
         <div><dt>Voting period</dt><dd>{days(data.votingPeriod)}</dd></div>
       </dl>
 
-      <div className={styles.daoCompose}>
-        <div>
-          <h4>Create fee-limit proposal</h4>
-          <p>Only the current NFT holder can create it. No VOID approval or token lock is needed.</p>
+      {GENERIC_DAO ? (
+        <div className={styles.daoCompose}>
+          <div>
+            <h4>Create proposal</h4>
+            <p>Only the current NFT holder creates it. Voting never locks or approves VOID.</p>
+          </div>
+          <label>
+            Proposal
+            <input value={description} maxLength={1024} onChange={(event) => setDescription(event.target.value)} placeholder="What should the DAO decide?" />
+          </label>
+          <label>
+            On-chain action
+            <select value={kind} onChange={(event) => setKind(event.target.value as ProposalKind)}>
+              <option value="signal">Signal only</option>
+              <option value="fee-limit">Set maximum transaction fee</option>
+              <option value="fee">Set transaction fee</option>
+              <option value="apps">Open or close new app deployment</option>
+              <option value="custom">Custom contract call</option>
+            </select>
+          </label>
+          {(kind === 'fee-limit' || kind === 'fee') && (
+            <label>
+              Transaction fee, USD
+              <input value={fee} inputMode="decimal" onChange={(event) => setFee(event.target.value)} placeholder="0.001" />
+            </label>
+          )}
+          {kind === 'apps' && (
+            <label>
+              New apps
+              <select value={appAccess} onChange={(event) => setAppAccess(event.target.value as 'open' | 'closed')}>
+                <option value="open">Open to anyone</option>
+                <option value="closed">Only the owner</option>
+              </select>
+            </label>
+          )}
+          {kind === 'custom' && (
+            <>
+              <label>
+                Contract address
+                <input value={customTarget} onChange={(event) => setCustomTarget(event.target.value)} placeholder="0x…" />
+              </label>
+              <label>
+                Contract data
+                <input value={customData} onChange={(event) => setCustomData(event.target.value)} placeholder="0x" />
+              </label>
+            </>
+          )}
+          <button type="button" className={styles.daoPrimary} disabled={busy !== null} onClick={propose}>
+            {busy === 'propose' ? 'Creating…' : account ? 'Create proposal' : 'Connect to create'}
+          </button>
         </div>
-        <label>
-          Fee limit, USD
-          <input value={feeLimit} inputMode="decimal" onChange={(event) => setFeeLimit(event.target.value)} placeholder="0.001" />
-        </label>
-        <button type="button" className={styles.daoPrimary} disabled={busy !== null} onClick={propose}>
-          {busy === 'propose' ? 'Creating…' : account ? 'Create proposal' : 'Connect to create'}
-        </button>
-      </div>
+      ) : (
+        <p className={styles.daoNotice}>This testnet deployment uses the previous fee-only DAO. The general proposal interface activates with the replacement testnet deployment.</p>
+      )}
 
       {notice && <p className={styles.daoNotice} role="status">{notice}</p>}
 
@@ -239,10 +338,11 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
           return (
             <article className={styles.proposal} key={proposal.id}>
               <div className={styles.proposalTop}>
-                <span>#{proposal.id} · fee limit {usd(proposal.feeLimitUsd)}</span>
+                <span>#{proposal.id} · {proposal.description}</span>
                 <span className={`${styles.proposalState} ${proposal.state === 1 ? styles.proposalActive : ''}`}>{state}</span>
               </div>
               <div className={styles.proposalMeta}>
+                <span>{countActions(proposal.actionCount)}</span>
                 <span>For {fmt(proposal.forVotes, 18, 2)} VOID</span>
                 <span>Against {fmt(proposal.againstVotes, 18, 2)} VOID</span>
                 <span>Snapshot #{proposal.snapshotBlock.toString()}</span>

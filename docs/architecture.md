@@ -41,13 +41,15 @@ oracle or common indexer can affect more than one deed. An owner cannot rewrite
 parent-chain history, seize a publisher's app balance through the runtime, or
 turn a published app into a private contract merely by transferring the deed.
 
-The per-deed DAO is deliberately narrow: it only votes on the transaction-fee
-limit the holder may set. The current deed holder creates a proposal. Each
-wallet votes with the VOID it held at the previous-block snapshot; the vote is
-open for five days and VOID never leaves the wallet. The snapshot prevents the
-same VOID from moving between wallets and voting twice. The DAO does not control
-withdrawals, arbitrary app transactions, the deed, the paymaster or the
-parent-chain contracts.
+The per-deed DAO accepts general proposals: the current deed holder supplies a
+description and up to eight zero-ETH contract calls. Each wallet votes with the
+VOID it held at the previous-block snapshot; the vote is open for five days and
+VOID never leaves the wallet. The snapshot prevents the same VOID from moving
+between wallets and voting twice. A passed proposal executes only as the DAO
+address of that one deed. Target contracts enforce their own authority, so the
+DAO can configure its own runtime but cannot alter another chain, seize a
+publisher's app balance, withdraw from the protocol treasury or control the
+shared paymaster.
 
 ## What a real independent chain would require
 

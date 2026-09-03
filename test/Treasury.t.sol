@@ -252,6 +252,19 @@ contract TreasuryTest is Test {
         );
     }
 
+    /// @notice The runtime's already-separated protocol share goes straight to
+    /// the configured public wallet. No treasury key is required to claim it.
+    function test_ProtocolCreditIsSentDirectlyToItsPublicWallet() public {
+        uint256 amount = 7 ether;
+        uint256 before = voidToken.balanceOf(protocolTreasury);
+
+        treasury.creditTo(protocolTreasury, amount);
+
+        assertEq(voidToken.balanceOf(protocolTreasury), before + amount);
+        assertEq(treasury.claimable(protocolTreasury), 0, "protocol revenue must not wait for a claim");
+        assertEq(voidToken.balanceOf(address(treasury)), 0, "the protocol share must not stay in the treasury");
+    }
+
     // -----------------------------------------------------------------------
     // Isolamento de falha
     // -----------------------------------------------------------------------

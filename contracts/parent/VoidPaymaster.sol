@@ -441,8 +441,8 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     ///         finish.
     ///
     ///         That is why the mainnet VOID token MUST implement 2612. The
-    ///         current test token does not, and with it the first `approve` still
-    ///         requires ETH.
+    ///         test token implements it too, so the sponsored runtime path needs
+    ///         only signatures from the user and no ETH from their wallet.
     function sponsorWithPermit(
         SponsoredCall calldata req,
         bytes calldata signature,

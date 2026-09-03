@@ -448,7 +448,11 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     }
 
     modifier onlyDeedHolder(uint256 tokenId) {
-        if (deed.ownerOf(tokenId) != msg.sender) revert NotDeedHolder(tokenId, msg.sender);
+        // A passed proposal acts through its OWN DAO address. The DAO mapping is
+        // keyed by tokenId, so a DAO from another deed never gains this power.
+        if (deed.ownerOf(tokenId) != msg.sender && daoOf[tokenId] != msg.sender) {
+            revert NotDeedHolder(tokenId, msg.sender);
+        }
         _;
     }
 
@@ -870,9 +874,8 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     ///         the caller chooses nothing — they only pay the gas for a transfer
     ///         already decided, just like `flush`. This is the tap of the
     ///         protocol's profit: the 2% was split off on every transaction into
-    ///         `protocolAccrued`, and here it leaves for the treasury, from which
-    ///         governance withdraws. The chain owners never touch that value at
-    ///         any point along the way.
+    ///         `protocolAccrued`, and here it is sent to that public recipient.
+    ///         The chain owners never touch that value at any point along the way.
     function sweepProtocol() external nonReentrant returns (uint256 amount) {
         amount = protocolAccrued;
         if (amount == 0) revert NothingToFlush();

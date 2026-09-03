@@ -227,7 +227,7 @@ contract ChainAppTest is Test {
 
         uint256 gross = FEE * 5;
         assertEq(treasury.claimable(alice), gross - (gross * 200) / 10_000, "98% da dona");
-        assertEq(treasury.claimable(protocolTreasury), (gross * 200) / 10_000, "2% do protocolo");
+        assertEq(voidToken.balanceOf(protocolTreasury), (gross * 200) / 10_000, "2% do protocolo");
         (,,, uint256 lifetime,) = runtime.statsOf(CHAIN1);
         assertEq(lifetime, gross, "bruto registrado no runtime");
     }

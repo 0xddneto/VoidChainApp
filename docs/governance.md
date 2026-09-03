@@ -8,8 +8,14 @@ is explicitly changed here.
 
 - Every deed has one DAO with its own address and state.
 - The current holder of that deed creates proposals for its DAO.
-- A proposal can only set that chain's transaction-fee limit. It cannot take
-  assets, remove applications, alter another chain, or change protocol roles.
+- A proposal contains a human-readable subject and zero to eight zero-ETH
+  on-chain actions. A proposal with no action is a signal vote.
+- The DAO does not impose a subject list. It can propose a transaction-fee
+  change, a fee limit, the rule for new app deployments, or another action that
+  a target contract expressly authorizes.
+- The target enforces authority. The runtime accepts configuration only from
+  the DAO registered for that same deed; a DAO cannot alter another chain,
+  remove a publisher's app, seize assets, or change protocol/paymaster roles.
 - Any wallet holding VOID at the proposal snapshot can vote for or against it.
 - VOID never enters the DAO: there is no staking, lock, approval, or withdrawal
   to participate in governance.
@@ -17,7 +23,8 @@ is explicitly changed here.
   the proposal. This prevents the same VOID from being transferred to another
   wallet and counted twice.
 - Each vote lasts exactly five days. A proposal needs 10% quorum and more votes
-  for than against. Anyone can execute a passed proposal.
+  for than against. Anyone can execute a passed proposal. Every action must
+  succeed or the proposal remains unexecuted.
 
 ## Token requirement
 

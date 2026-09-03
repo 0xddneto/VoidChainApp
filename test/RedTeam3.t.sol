@@ -632,7 +632,7 @@ contract RedTeam3 is Test {
         // Alice paid `gross`, got back `gross - fee`. Net = -fee. Never positive.
         assertEq(balAfter, balBefore - fee, "owner wash costs exactly the 2% fee");
         assertLt(balAfter, balBefore, "wash is never profitable");
-        assertEq(treasury.claimable(protocol), fee, "the 2% went to the protocol");
+        assertEq(voidToken.balanceOf(protocol), fee, "the 2% went to the protocol");
     }
 
     // --- helpers -------------------------------------------------------------

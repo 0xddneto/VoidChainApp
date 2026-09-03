@@ -29,6 +29,7 @@ import {
   createWalletClient,
   encodeDeployData,
   formatEther,
+  getAddress,
   http,
   parseAbi,
   parseEther,
@@ -63,6 +64,13 @@ if (!/^0x[0-9a-fA-F]{64}$/.test(deployerPrivateKey ?? '')) {
 const account = privateKeyToAccount(deployerPrivateKey as `0x${string}`);
 const parent = createPublicClient({ transport: http(PARENT_RPC) });
 const wallet = createWalletClient({ account, transport: http(PARENT_RPC) });
+
+// Revenue is sent directly to this public address. It is deliberately separate
+// from the deployer/paymaster governor, whose signing key stays in the local
+// deployment environment and is never written into the repository.
+const PROTOCOL_TREASURY = getAddress(
+  process.env.PROTOCOL_TREASURY ?? '0x892F840aF9CFE78D4FF91D8e6D0F783264388A78',
+);
 
 // ---------------------------------------------------------------------------
 // Parameters — the same ones mainnet would use, where that makes sense
@@ -173,6 +181,7 @@ async function bulk<T>(
 // ===========================================================================
 console.log('\n  VOIDS CHAINS — FULL STACK ON TESTNET\n');
 console.log(`  deployer  ${account.address}`);
+console.log(`  treasury ${PROTOCOL_TREASURY}`);
 const parentChainId = await parent.getChainId();
 if (parentChainId !== EXPECTED_PARENT_CHAIN_ID) {
   throw new Error(`Refusing to deploy: RPC returned chain ${parentChainId}, expected ${EXPECTED_PARENT_CHAIN_ID}.`);
@@ -196,11 +205,11 @@ const deed = await deploy('VoidChainDeed', [
 console.log('\n  [2/8] treasury, runtime and paymaster');
 
 const treasury = await deploy('VoidChainTreasury', [
-  deed, token, account.address, account.address,
+  deed, token, PROTOCOL_TREASURY, account.address,
 ]);
 const runtime = await deploy('VoidChainAppRuntime', [deed, token, treasury]);
 const paymaster = await deploy('VoidPaymaster', [
-  token, runtime, account.address, account.address, oracle,
+  token, runtime, account.address, PROTOCOL_TREASURY, oracle,
 ]);
 // Every chain ships with its own DAO. The factory is frozen into the runtime
 // before it creates deterministic clones, because the runtime accepts registry
@@ -345,6 +354,10 @@ const output = {
     VoidChainAppRuntime: runtime,
     VoidPaymaster: paymaster,
     VoidChainDaoFactory: daoFactory,
+  },
+  governance: {
+    paymasterGovernor: account.address,
+    protocolTreasury: PROTOCOL_TREASURY,
   },
   testnet: { VoidTestToken: token, VoidTestOracle: oracle, VoidNftAmm: amm },
   parameters: {

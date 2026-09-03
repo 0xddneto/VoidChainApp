@@ -45,12 +45,38 @@ export const ABI = {
   runtime: [
     { type: 'function', name: 'statsOf', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'bool' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }] },
     { type: 'function', name: 'feeOf', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }] },
+    { type: 'function', name: 'setTollCeiling', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
+    { type: 'function', name: 'setFee', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
+    { type: 'function', name: 'setPermissionlessDeploy', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'bool' }], outputs: [] },
     { type: 'function', name: 'execute', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'address' }, { type: 'bytes' }, { type: 'uint256' }], outputs: [{ type: 'bytes' }] },
   ],
   daoFactory: [
     { type: 'function', name: 'daoOf', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'address' }] },
   ],
   dao: [
+    { type: 'function', name: 'proposalCount', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+    { type: 'function', name: 'QUORUM_BPS', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+    { type: 'function', name: 'VOTING_PERIOD', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+    { type: 'function', name: 'proposals', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [
+      { name: 'actionsHash', type: 'bytes32' }, { name: 'descriptionHash', type: 'bytes32' },
+      { name: 'snapshotBlock', type: 'uint256' }, { name: 'snapshotSupply', type: 'uint256' },
+      { name: 'deadline', type: 'uint256' }, { name: 'forVotes', type: 'uint256' },
+      { name: 'againstVotes', type: 'uint256' }, { name: 'actionCount', type: 'uint256' },
+      { name: 'executed', type: 'bool' },
+    ] },
+    { type: 'function', name: 'proposalDescription', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'string' }] },
+    { type: 'function', name: 'proposalAction', stateMutability: 'view', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [{ name: 'target', type: 'address' }, { name: 'data', type: 'bytes' }] },
+    { type: 'function', name: 'state', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint8' }] },
+    { type: 'function', name: 'hasVoted', stateMutability: 'view', inputs: [{ type: 'uint256' }, { type: 'address' }], outputs: [{ type: 'bool' }] },
+    { type: 'function', name: 'propose', stateMutability: 'nonpayable', inputs: [
+      { name: 'actions', type: 'tuple[]', components: [{ name: 'target', type: 'address' }, { name: 'data', type: 'bytes' }] },
+      { name: 'description', type: 'string' },
+    ], outputs: [{ type: 'uint256' }] },
+    { type: 'function', name: 'castVote', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'bool' }], outputs: [] },
+    { type: 'function', name: 'execute', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }], outputs: [] },
+  ],
+  // Read-only compatibility for the test stack deployed before general DAO proposals.
+  daoLegacy: [
     { type: 'function', name: 'proposalCount', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
     { type: 'function', name: 'QUORUM_BPS', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
     { type: 'function', name: 'VOTING_PERIOD', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },

@@ -421,8 +421,8 @@
 .daoCompose h4, .daoProposalHead h4 { color: var(--ink); font-size: 12px; margin: 0 0 4px; }
 .daoCompose p { color: var(--ink-3); font: 10px/1.45 var(--mono); margin: 0; }
 .daoCompose label { color: var(--ink-3); display: grid; font: 9px var(--mono); gap: 5px; letter-spacing: .03em; }
-.daoCompose input, .proposalActions input { border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface); color: var(--ink); font: 11px var(--mono); height: 32px; min-width: 0; padding: 0 9px; }
-.daoCompose input:focus, .proposalActions input:focus { border-color: var(--created); outline: 2px solid color-mix(in srgb, var(--created) 15%, transparent); }
+.daoCompose input, .daoCompose select, .proposalActions input { border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface); color: var(--ink); font: 11px var(--mono); height: 32px; min-width: 0; padding: 0 9px; }
+.daoCompose input:focus, .daoCompose select:focus, .proposalActions input:focus { border-color: var(--created); outline: 2px solid color-mix(in srgb, var(--created) 15%, transparent); }
 .daoPrimary, .proposalActions button { border: 1px solid color-mix(in srgb, var(--created) 70%, var(--line)); border-radius: 5px; background: color-mix(in srgb, var(--created) 18%, var(--surface)); color: var(--ink); cursor: pointer; font: 10px var(--mono); min-height: 32px; padding: 0 10px; white-space: nowrap; }
 .daoPrimary:hover:not(:disabled), .proposalActions button:hover:not(:disabled) { border-color: var(--created); color: var(--created); }
 .daoPrimary:disabled, .proposalActions button:disabled { cursor: wait; opacity: .55; }
@@ -434,6 +434,7 @@
 .proposal { border-top: 1px solid color-mix(in srgb, var(--created) 16%, var(--line)); padding: 12px 17px; }
 .proposalTop, .proposalMeta, .proposalActions { align-items: center; display: flex; gap: 8px 15px; justify-content: space-between; }
 .proposalTop { color: var(--ink); font: 11px var(--mono); }
+.proposalTop > :first-child { overflow-wrap: anywhere; }
 .proposalState { border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink-3); font: 8px var(--mono); letter-spacing: .08em; padding: 3px 6px; text-transform: uppercase; }
 .proposalActive { border-color: color-mix(in srgb, var(--live) 55%, var(--line)); color: var(--live); }
 .proposalMeta { color: var(--ink-3); flex-wrap: wrap; font: 9px var(--mono); justify-content: flex-start; margin-top: 8px; }

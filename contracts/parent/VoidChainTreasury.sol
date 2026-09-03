@@ -136,6 +136,7 @@ contract VoidChainTreasury is ReentrancyGuard {
     event GovernanceTransferred(address previous, address next);
     event SettlerAuthorized(address settler, uint256 scope);
     event Credited(address indexed beneficiary, uint256 amount);
+    event ProtocolRevenueSent(address indexed recipient, uint256 amount);
 
     error NotGovernance(address caller);
     error NotAuthorizedSettler(address caller);
@@ -203,9 +204,12 @@ contract VoidChainTreasury is ReentrancyGuard {
     ///         transaction (the toll arrives already divided: 98% to the owner's
     ///         pending, 2% to the protocol's account). So by settlement time the
     ///         value is already net and the treasury must NOT split it again —
-    ///         only record it. This function is that pure credit: it books
-    ///         `claimable[beneficiary] += amount` with the caller's own VOID. It
-    ///         remains restricted to authorized settlers; since it uses the
+    ///         only record it. This function is that pure credit for a deed
+    ///         holder. The protocol recipient is the one exception: when the
+    ///         runtime sweeps its already-separated 2%, it is delivered directly
+    ///         to the configured public address. A treasury wallet therefore
+    ///         never needs a signing key merely to make its revenue arrive.
+    ///         It remains restricted to authorized settlers; since it uses the
     ///         caller's money, a hostile settler could only donate its own
     ///         balance, never divert anyone else's.
     ///
@@ -216,6 +220,11 @@ contract VoidChainTreasury is ReentrancyGuard {
         if (beneficiary == address(0)) revert ZeroAddress();
         if (amount == 0) revert NothingToSettle();
         if (!voidToken.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
+        if (beneficiary == protocolTreasury) {
+            if (!voidToken.transfer(protocolTreasury, amount)) revert TransferFailed();
+            emit ProtocolRevenueSent(protocolTreasury, amount);
+            return;
+        }
         claimable[beneficiary] += amount;
         emit Credited(beneficiary, amount);
     }

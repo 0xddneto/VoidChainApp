@@ -23,13 +23,24 @@ contract RuntimeSpy is IVoidChainAppRuntime {
     mapping(uint256 => bool) public wasSet;
     mapping(uint256 => address) public daoOf;
 
+    error NotThisChainsDao(uint256 tokenId, address caller);
+
     function setTollCeiling(uint256 tokenId, uint256 ceilingUsd) external {
+        if (msg.sender != daoOf[tokenId]) revert NotThisChainsDao(tokenId, msg.sender);
         ceilingOf[tokenId] = ceilingUsd;
         wasSet[tokenId] = true;
     }
 
     function registerDao(uint256 tokenId, address dao) external {
         daoOf[tokenId] = dao;
+    }
+}
+
+contract ProposalTarget {
+    uint256 public value;
+
+    function setValue(uint256 next) external {
+        value = next;
     }
 }
 
@@ -40,6 +51,7 @@ contract DaoTest is Test {
     RuntimeSpy runtime;
     VoidTestToken token;
     DeedSpy deed;
+    ProposalTarget target;
 
     address holder = address(0xD33D);
     address alice = address(0xA11CE);
@@ -55,6 +67,7 @@ contract DaoTest is Test {
         runtime = new RuntimeSpy();
         token = new VoidTestToken();
         deed = new DeedSpy();
+        target = new ProposalTarget();
         deed.setOwner(CHAIN, holder);
         token.mintTo(alice, ALICE);
         token.mintTo(bob, BOB);
@@ -67,9 +80,22 @@ contract DaoTest is Test {
         vm.warp(1_000_000);
     }
 
+    function _feeActions(uint256 chain, uint256 fee)
+        internal
+        view
+        returns (VoidChainDao.Action[] memory actions)
+    {
+        actions = new VoidChainDao.Action[](1);
+        actions[0] = VoidChainDao.Action({
+            target: address(runtime),
+            data: abi.encodeCall(IVoidChainAppRuntime.setTollCeiling, (chain, fee))
+        });
+    }
+
     function _propose() internal returns (uint256 id) {
+        VoidChainDao.Action[] memory actions = _feeActions(CHAIN, FEE_LIMIT);
         vm.prank(holder);
-        id = dao.propose(FEE_LIMIT);
+        id = dao.propose(actions, "Set a transaction fee limit");
     }
 
     function _vote(uint256 id, address voter, bool support) internal {
@@ -82,19 +108,20 @@ contract DaoTest is Test {
     }
 
     function test_OnlyTheDeedHolderCreatesAProposal() public {
+        VoidChainDao.Action[] memory actions = _feeActions(CHAIN, FEE_LIMIT);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(VoidChainDao.NotDeedHolder.selector, CHAIN, alice));
-        dao.propose(FEE_LIMIT);
+        dao.propose(actions, "Not allowed");
     }
 
     function test_ProposalOpensForExactlyFiveDays() public {
         uint256 id = _propose();
-        (, , , uint256 deadline, , , ) = dao.proposals(id);
+        (, , , , uint256 deadline, , , , ) = dao.proposals(id);
         assertEq(deadline, block.timestamp + 5 days);
         assertEq(uint256(dao.state(id)), uint256(VoidChainDao.State.Active));
     }
 
-    function test_VotingNeverLocksOrMovesVoid() public {
+    function test_WalletVotingNeverLocksOrMovesVoid() public {
         uint256 id = _propose();
         uint256 before = token.balanceOf(alice);
         _vote(id, alice, true);
@@ -105,9 +132,9 @@ contract DaoTest is Test {
 
     function test_WalletBalanceAtSnapshotIsTheVoteWeight() public {
         uint256 id = _propose();
-        (, uint256 snapshotBlock, , , , , ) = dao.proposals(id);
+        (, , uint256 snapshotBlock, , , , , , ) = dao.proposals(id);
         _vote(id, alice, true);
-        (, , , , uint256 forVotes, , ) = dao.proposals(id);
+        (, , , , , uint256 forVotes, , , ) = dao.proposals(id);
 
         assertEq(forVotes, ALICE);
         assertEq(token.getPastVotes(alice, snapshotBlock), ALICE);
@@ -144,7 +171,7 @@ contract DaoTest is Test {
         dao.castVote(id, true);
     }
 
-    function test_CarriedProposalSetsOnlyThisChainsFeeLimit() public {
+    function test_ApprovedProposalCanConfigureOnlyItsOwnChain() public {
         uint256 id = _propose();
         _vote(id, alice, true);
         _closeVoting();
@@ -152,6 +179,52 @@ contract DaoTest is Test {
 
         assertEq(runtime.ceilingOf(CHAIN), FEE_LIMIT);
         assertTrue(runtime.wasSet(CHAIN));
+        assertFalse(runtime.wasSet(CHAIN + 1));
+    }
+
+    function test_HolderCanProposeAnyOnChainAction() public {
+        VoidChainDao.Action[] memory actions = new VoidChainDao.Action[](1);
+        actions[0] = VoidChainDao.Action({
+            target: address(target), data: abi.encodeCall(ProposalTarget.setValue, (42))
+        });
+        vm.prank(holder);
+        uint256 id = dao.propose(actions, "Set the community target to 42");
+
+        assertEq(dao.proposalDescription(id), "Set the community target to 42");
+        (address actionTarget, bytes memory actionData) = dao.proposalAction(id, 0);
+        assertEq(actionTarget, address(target));
+        assertEq(actionData, abi.encodeCall(ProposalTarget.setValue, (42)));
+
+        _vote(id, alice, true);
+        _closeVoting();
+        dao.execute(id);
+        assertEq(target.value(), 42);
+    }
+
+    function test_HolderCanCreateASignalProposalWithoutActions() public {
+        VoidChainDao.Action[] memory actions = new VoidChainDao.Action[](0);
+        vm.prank(holder);
+        uint256 id = dao.propose(actions, "Should this chain fund a grants round?");
+
+        (, , , , , , , uint256 actionCount, ) = dao.proposals(id);
+        assertEq(actionCount, 0);
+        _vote(id, alice, true);
+        _closeVoting();
+        dao.execute(id);
+        assertEq(uint256(dao.state(id)), uint256(VoidChainDao.State.Executed));
+    }
+
+    function test_DaoCannotExecuteAnotherChainsRuntimeAction() public {
+        deed.setOwner(CHAIN + 1, holder);
+        factory.create(CHAIN + 1);
+        VoidChainDao.Action[] memory actions = _feeActions(CHAIN + 1, FEE_LIMIT);
+        vm.prank(holder);
+        uint256 id = dao.propose(actions, "Try to change another chain");
+        _vote(id, alice, true);
+        _closeVoting();
+
+        vm.expectRevert();
+        dao.execute(id);
         assertFalse(runtime.wasSet(CHAIN + 1));
     }
 

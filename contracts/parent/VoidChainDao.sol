@@ -24,6 +24,9 @@ contract VoidChainDao {
     uint256 public constant VOTING_PERIOD = 5 days;
     uint256 public constant QUORUM_BPS = 1_000; // 10%
     uint256 public constant BPS = 10_000;
+    uint256 public constant MAX_ACTIONS = 8;
+    uint256 public constant MAX_ACTION_DATA_BYTES = 8_192;
+    uint256 public constant MAX_DESCRIPTION_BYTES = 1_024;
 
     uint256 public tokenId;
     IVoidChainAppRuntime public runtime;
@@ -38,30 +41,44 @@ contract VoidChainDao {
         Executed
     }
 
+    /// @notice A zero-value call to be executed by this DAO after a successful vote.
+    /// @dev The target contract still decides whether this DAO has authority. The
+    ///      DAO for chain #7 is not automatically trusted by the runtime, the
+    ///      treasury, the paymaster or any other chain.
+    struct Action {
+        address target;
+        bytes data;
+    }
+
     struct Proposal {
-        uint256 feeLimitUsd;
+        bytes32 actionsHash;
+        bytes32 descriptionHash;
         uint256 snapshotBlock;
         uint256 snapshotSupply;
         uint256 deadline;
         uint256 forVotes;
         uint256 againstVotes;
+        uint256 actionCount;
         bool executed;
     }
 
     mapping(uint256 proposalId => Proposal) public proposals;
     mapping(uint256 proposalId => mapping(address voter => bool)) public hasVoted;
+    mapping(uint256 proposalId => string description) private _descriptions;
+    mapping(uint256 proposalId => Action[]) private _actions;
     uint256 public proposalCount;
 
     event ProposalCreated(
         uint256 indexed proposalId,
         address indexed proposer,
-        uint256 feeLimitUsd,
+        bytes32 indexed actionsHash,
+        uint256 actionCount,
         uint256 snapshotBlock,
-        uint256 snapshotSupply,
         uint256 deadline
     );
     event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 weight);
-    event Executed(uint256 indexed proposalId, uint256 feeLimitUsd);
+    event ActionExecuted(uint256 indexed proposalId, uint256 indexed actionIndex, address indexed target);
+    event Executed(uint256 indexed proposalId, bytes32 actionsHash);
 
     error AlreadyInitialised();
     error NotInitialised();
@@ -74,6 +91,11 @@ contract VoidChainDao {
     error NoVotingPower(uint256 proposalId, address voter);
     error NotSucceeded(uint256 proposalId, State state);
     error AlreadyExecuted(uint256 proposalId);
+    error TooManyActions(uint256 supplied, uint256 maximum);
+    error ActionDataTooLarge(uint256 actionIndex, uint256 supplied, uint256 maximum);
+    error DescriptionTooLarge(uint256 supplied, uint256 maximum);
+    error ZeroActionTarget(uint256 actionIndex);
+    error ActionFailed(uint256 actionIndex, bytes reason);
 
     /// @notice Binds a clone to exactly one deed, runtime and VOID vote token.
     function initialise(
@@ -93,12 +115,28 @@ contract VoidChainDao {
         deed = deed_;
     }
 
-    /// @notice The current deed holder creates a proposal for this chain's fee limit.
-    /// @dev The DAO can only constrain this one economic setting. It cannot take
-    ///      assets, remove apps or affect any other chain.
-    function propose(uint256 feeLimitUsd) external returns (uint256 proposalId) {
+    /// @notice The current deed holder may propose any zero-value, on-chain action.
+    /// @dev Empty actions make a signalling proposal. This DAO intentionally does
+    ///      not pre-screen subjects; authority is enforced by each target itself.
+    ///      For example, the runtime accepts a configuration call only from the
+    ///      DAO registered for the same `tokenId`, and protocol roles reject DAOs.
+    function propose(Action[] calldata actions, string calldata description)
+        external
+        returns (uint256 proposalId)
+    {
         if (tokenId == 0) revert NotInitialised();
         if (deed.ownerOf(tokenId) != msg.sender) revert NotDeedHolder(tokenId, msg.sender);
+        if (actions.length > MAX_ACTIONS) revert TooManyActions(actions.length, MAX_ACTIONS);
+        if (bytes(description).length > MAX_DESCRIPTION_BYTES) {
+            revert DescriptionTooLarge(bytes(description).length, MAX_DESCRIPTION_BYTES);
+        }
+
+        for (uint256 i; i < actions.length; ++i) {
+            if (actions[i].target == address(0)) revert ZeroActionTarget(i);
+            if (actions[i].data.length > MAX_ACTION_DATA_BYTES) {
+                revert ActionDataTooLarge(i, actions[i].data.length, MAX_ACTION_DATA_BYTES);
+            }
+        }
 
         uint256 snapshotBlock = block.number - 1;
         uint256 snapshotSupply = voidToken.getPastTotalSupply(snapshotBlock);
@@ -106,17 +144,30 @@ contract VoidChainDao {
 
         proposalId = ++proposalCount;
         uint256 deadline = block.timestamp + VOTING_PERIOD;
+        bytes32 actionsHash = keccak256(abi.encode(actions));
+        bytes32 descriptionHash = keccak256(bytes(description));
         proposals[proposalId] = Proposal({
-            feeLimitUsd: feeLimitUsd,
+            actionsHash: actionsHash,
+            descriptionHash: descriptionHash,
             snapshotBlock: snapshotBlock,
             snapshotSupply: snapshotSupply,
             deadline: deadline,
             forVotes: 0,
             againstVotes: 0,
+            actionCount: actions.length,
             executed: false
         });
+        _descriptions[proposalId] = description;
+        for (uint256 i; i < actions.length; ++i) _actions[proposalId].push(actions[i]);
 
-        emit ProposalCreated(proposalId, msg.sender, feeLimitUsd, snapshotBlock, snapshotSupply, deadline);
+        emit ProposalCreated(
+            proposalId,
+            msg.sender,
+            actionsHash,
+            actions.length,
+            snapshotBlock,
+            deadline
+        );
     }
 
     /// @notice Votes with the VOID the caller held in their wallet at the snapshot.
@@ -147,7 +198,9 @@ contract VoidChainDao {
         return p.forVotes > p.againstVotes ? State.Succeeded : State.Defeated;
     }
 
-    /// @notice Anyone may apply a proposal that passed after the five-day vote.
+    /// @notice Anyone may execute every approved action after the five-day vote.
+    /// @dev All calls carry zero ETH. Marking first makes execution one-shot even
+    ///      if an approved target attempts to re-enter this DAO.
     function execute(uint256 proposalId) external {
         Proposal storage p = proposals[proposalId];
         if (p.executed) revert AlreadyExecuted(proposalId);
@@ -156,8 +209,28 @@ contract VoidChainDao {
         if (current != State.Succeeded) revert NotSucceeded(proposalId, current);
 
         p.executed = true;
-        runtime.setTollCeiling(tokenId, p.feeLimitUsd);
-        emit Executed(proposalId, p.feeLimitUsd);
+        for (uint256 i; i < p.actionCount; ++i) {
+            Action storage action = _actions[proposalId][i];
+            (bool ok, bytes memory reason) = action.target.call(action.data);
+            if (!ok) revert ActionFailed(i, reason);
+            emit ActionExecuted(proposalId, i, action.target);
+        }
+        emit Executed(proposalId, p.actionsHash);
+    }
+
+    function proposalDescription(uint256 proposalId) external view returns (string memory) {
+        if (proposals[proposalId].deadline == 0) revert NoSuchProposal(proposalId);
+        return _descriptions[proposalId];
+    }
+
+    function proposalAction(uint256 proposalId, uint256 actionIndex)
+        external
+        view
+        returns (address target, bytes memory data)
+    {
+        if (actionIndex >= proposals[proposalId].actionCount) revert NoSuchProposal(proposalId);
+        Action storage action = _actions[proposalId][actionIndex];
+        return (action.target, action.data);
     }
 
     function _portionCeil(uint256 amount, uint256 bps) private pure returns (uint256) {

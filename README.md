@@ -18,23 +18,26 @@ to a shared contract.
 Each of the 1,111 `VoidChainDeed` NFTs binds its current holder to one isolated
 execution space in the runtime.
 
-- The holder can activate or pause its space and configure its transaction fee within the
-  governance-approved ceiling.
+- The holder configures its own space. Its DAO can pass proposals for that
+  same space without reaching other deeds or protocol roles.
 - Transactions only reach applications registered for the supplied `tokenId`; the
   runtime accounts for fees and revenue per deed.
 - Anyone may publish an application to an open space. The holder can close new
   publication, but cannot seize a publisher's contract or its withdrawal right.
 - Ownership is read from `ownerOf()` at execution time, so a deed transfer moves
   the allowed configuration authority without a migration step.
-- Each deed has a deterministic DAO clone. The NFT holder creates a proposal;
-  every wallet votes with the VOID it held at the previous-block snapshot. VOID
-  stays in the wallet, the vote lasts five days, and the DAO can only set that
-  deed's transaction-fee limit.
+- Each deed has a deterministic DAO clone. The NFT holder creates a proposal
+  with a description and optional zero-ETH actions; every wallet votes with the
+  VOID it held at the previous-block snapshot. VOID stays in the wallet and the
+  vote lasts five days. Each target contract keeps the DAO scoped to that deed.
 
-VOID pays runtime transaction fees. Robinhood testnet ETH remains
-the native asset used by a wallet transaction. `VoidPaymaster` can sponsor a
-call and charge the signed VOID budget, but it does not make the parent chain's
-native gas disappear.
+VOID pays runtime transaction fees. Robinhood testnet ETH remains the native
+asset used by a parent-chain transaction. `VoidPaymaster` sponsors a signed
+runtime transaction, charges the signer in VOID, and lets a relayer pay that
+ETH. The protocol's 2% share is sent directly to its configured public treasury
+address; the deed holder's 98% remains individually claimable. The current
+public mint/AMM test flow is still a direct wallet transaction and therefore
+needs test ETH; it is not the paymaster path.
 
 Read the precise boundary and the requirements for a future rollup in
 [docs/architecture.md](docs/architecture.md). Operational gates live in
@@ -48,7 +51,7 @@ documented in [docs/repository-map.md](docs/repository-map.md).
 | --- | --- |
 | `contracts/parent/VoidChainDeed.sol` | The fixed 1,111-deed ERC-721 collection and holder authority. |
 | `contracts/parent/VoidChainAppRuntime.sol` | Token-scoped app registry, execution boundary, fee collection and revenue accounting. |
-| `contracts/parent/VoidChainDao*.sol` | Deterministic per-deed DAO factory and fee-limit governance. |
+| `contracts/parent/VoidChainDao*.sol` | Deterministic per-deed DAO factory and general, deed-scoped governance. |
 | `contracts/parent/VoidPaymaster.sol` | Signed, budgeted sponsorship of runtime transactions. |
 | `contracts/apps/` | Example permissionless apps (swap, market and launchpad). |
 | `indexer/` | Robinhood event indexer and Postgres projection. |
