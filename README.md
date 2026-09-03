@@ -35,9 +35,14 @@ VOID pays runtime transaction fees. Robinhood testnet ETH remains the native
 asset used by a parent-chain transaction. `VoidPaymaster` sponsors a signed
 runtime transaction, charges the signer in VOID, and lets a relayer pay that
 ETH. The protocol's 2% share is sent directly to its configured public treasury
-address; the deed holder's 98% remains individually claimable. The current
-public mint/AMM test flow is still a direct wallet transaction and therefore
-needs test ETH; it is not the paymaster path.
+address; the deed holder's 98% remains individually claimable.
+
+The test collection market is itself a registered app: a buyer signs the exact
+VOID price and one-use permissions, while the Paymaster submits the parent-chain
+transaction. The market route is intentionally closed to arbitrary targets and
+permits. A chain can also vote to require its DAO before fee, activation or
+new-app-policy changes; the holder keeps proposal rights but cannot bypass that
+vote.
 
 Read the precise boundary and the requirements for a future rollup in
 [docs/architecture.md](docs/architecture.md). Operational gates live in

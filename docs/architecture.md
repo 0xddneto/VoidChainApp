@@ -51,6 +51,22 @@ DAO can configure its own runtime but cannot alter another chain, seize a
 publisher's app balance, withdraw from the protocol treasury or control the
 shared paymaster.
 
+A chain can additionally opt into DAO-controlled configuration. In that mode,
+the current NFT holder cannot directly activate the chain, alter its
+transaction fee or close/open new-app publishing; only the DAO of that same
+deed can do so after a passed five-day vote. Identity metadata remains holder
+managed, since changing a label or social link does not rewrite execution
+rules or custody.
+
+The collection market is a registered runtime application, not an exception to
+the runtime boundary. A buyer signs the exact pool price, the exact chain fee
+and two one-use EIP-2612 permissions. `VoidMarketApp` can pull only that signed
+VOID budget, gives the fixed AMM an exact temporary allowance, and transfers
+only the deed returned by that AMM to the authenticated runtime caller.
+`VoidPaymaster` pays the parent-chain ETH through a relayer; it accepts permits
+only for itself and the runtime, and its signed request cannot name an
+arbitrary market target.
+
 ## What a real independent chain would require
 
 Promotion from this runtime to a rollup is a new protocol project. At minimum it

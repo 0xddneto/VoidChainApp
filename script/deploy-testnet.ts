@@ -102,6 +102,9 @@ const VOID_PER_ETH = parseEther('2411000');
  */
 const SEED_INTO_POOL = 100;
 
+/** The chain that hosts the collection market application. */
+const MARKET_CHAIN_ID = 1111n;
+
 const BATCH = 20;
 const DAO_BATCH = 20;
 
@@ -193,7 +196,7 @@ const firstBlock = await parent.getBlockNumber();
 console.log(`  balance   ${formatEther(balanceBefore)} ETH\n`);
 
 // ---------------------------------------------------------------------------
-console.log('  [1/8] token, oracle and deed');
+console.log('  [1/9] token, oracle and deed');
 
 const token = await deploy('VoidTestToken', []);
 const oracle = await deploy('VoidTestOracle', [account.address, VOID_PER_ETH, VOID_USD]);
@@ -202,7 +205,7 @@ const deed = await deploy('VoidChainDeed', [
 ]);
 
 // ---------------------------------------------------------------------------
-console.log('\n  [2/8] treasury, runtime and paymaster');
+console.log('\n  [2/9] treasury, runtime and paymaster');
 
 const treasury = await deploy('VoidChainTreasury', [
   deed, token, PROTOCOL_TREASURY, account.address,
@@ -241,7 +244,7 @@ await parent.waitForTransactionReceipt({
 console.log(`  ✓ paymaster reserve: ${formatEther(RESERVE)} ETH`);
 
 // ---------------------------------------------------------------------------
-console.log(`\n  [3/8] creating the ${NFTS} chain DAOs`);
+console.log(`\n  [3/9] creating the ${NFTS} chain DAOs`);
 
 const factoryAbi = artifact('VoidChainDaoFactory').abi;
 const daoRanges: [bigint, bigint][] = [];
@@ -257,7 +260,7 @@ const createdDaoRanges = await bulk(daoRanges, ([from, to], nonce, maxFeePerGas)
 if (createdDaoRanges !== daoRanges.length) throw new Error('One or more DAO creation batches failed.');
 
 // ---------------------------------------------------------------------------
-console.log(`\n  [4/8] minting the ${NFTS} deeds`);
+console.log(`\n  [4/9] minting the ${NFTS} deeds`);
 
 const deedAbi = artifact('VoidChainDeed').abi;
 const mintBatches: bigint[][] = [];
@@ -275,7 +278,7 @@ const mintedBatches = await bulk(mintBatches, (ids, nonce, maxFeePerGas) =>
 if (mintedBatches !== mintBatches.length) throw new Error('One or more deed mint batches failed.');
 
 // ---------------------------------------------------------------------------
-console.log(`\n  [5/8] switching on the ${NFTS} chains (toll $0.001)`);
+console.log(`\n  [5/9] switching on the ${NFTS} chains (toll $0.001)`);
 
 const everyId: number[] = [];
 for (let i = 1; i <= NFTS; i++) everyId.push(i);
@@ -288,7 +291,7 @@ const activated = await bulk(everyId, (id, nonce, maxFeePerGas) =>
 if (activated !== everyId.length) throw new Error('One or more activation calls failed.');
 
 // ---------------------------------------------------------------------------
-console.log('\n  [6/8] the pool');
+console.log('\n  [6/9] the pool');
 
 const amm = await deploy('VoidNftAmm', [
   token, deed, TOKENS_PER_NFT, RANDOM_FEE_BPS, SPECIFIC_FEE_BPS,
@@ -302,7 +305,7 @@ await send(deed, deedAbi, 'setApprovalForAll', [amm, true]);
 console.log(`  ✓ pool funded, ${TOKENS_PER_NFT / 10n ** 18n} VOID per deed`);
 
 // ---------------------------------------------------------------------------
-console.log(`\n  [7/8] filling the pool's stock with ${SEED_INTO_POOL} deeds`);
+console.log(`\n  [7/9] filling the pool's stock with ${SEED_INTO_POOL} deeds`);
 
 const ammAbi = artifact('VoidNftAmm').abi;
 // From #1 upwards, so the first deed bought is the first deed of the collection.
@@ -317,7 +320,7 @@ await bulk(forPool, (id, nonce) =>
   }), 'depositing');
 
 // ---------------------------------------------------------------------------
-console.log("\n  [8/8] a demo application on the pool's first 10");
+console.log("\n  [8/9] demo applications on the pool's first 10");
 
 const demoApps: Record<string, Address> = {};
 for (let i = 0; i < 10; i++) {
@@ -326,6 +329,16 @@ for (let i = 0; i < 10; i++) {
   await send(runtime, rtAbi, 'registerApp', [id, app]);
   demoApps[id.toString()] = app;
 }
+
+// ---------------------------------------------------------------------------
+console.log("\n  [9/9] market application in chain #1111");
+
+// This is the market path for wallets with no test ETH: the user signs a
+// bounded VOID budget and the paymaster relays the call. The AMM itself never
+// receives a user approval.
+const marketApp = await deploy('VoidMarketApp', [runtime, MARKET_CHAIN_ID, token, amm, deed]);
+await send(runtime, rtAbi, 'registerApp', [MARKET_CHAIN_ID, marketApp]);
+console.log(`  ✓ market app on chain #${MARKET_CHAIN_ID}`);
 
 // ---------------------------------------------------------------------------
 const balanceAfter = await parent.getBalance({ address: account.address });
@@ -359,7 +372,13 @@ const output = {
     paymasterGovernor: account.address,
     protocolTreasury: PROTOCOL_TREASURY,
   },
-  testnet: { VoidTestToken: token, VoidTestOracle: oracle, VoidNftAmm: amm },
+  testnet: {
+    VoidTestToken: token,
+    VoidTestOracle: oracle,
+    VoidNftAmm: amm,
+    VoidMarketApp: marketApp,
+    marketChainId: Number(MARKET_CHAIN_ID),
+  },
   parameters: {
     nfts: NFTS,
     tokensPerNFT: TOKENS_PER_NFT.toString(),

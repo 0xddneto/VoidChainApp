@@ -189,6 +189,13 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     ///      everyone's bill by a hundred.
     uint256 public constant MAX_RATE_STEP_BPS = 20_000;
 
+    /// @dev There are only two valid EIP-2612 spenders in a sponsored VOID
+    ///      call: this contract collects the network fee and gas, and the
+    ///      runtime releases the per-call app budget. Accepting a third party
+    ///      here would turn this convenience function into a generic permit
+    ///      delivery service and make the signing screen needlessly dangerous.
+    uint256 public constant MAX_PERMITS_PER_CALL = 2;
+
     struct SponsoredCall {
         address user;
         uint256 tokenId;
@@ -368,6 +375,10 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     error BlockBudgetExceeded(uint256 wanted, uint256 budget);
     error RateStepTooLarge(uint256 given, uint256 min, uint256 max);
     error SwapRouteNotSet();
+    error UnexpectedPermitSpender(address spender);
+    error DuplicatePermitSpender(address spender);
+    error TooManyPermits(uint256 given, uint256 max);
+    error AllowanceTooLow(address user, address spender, uint256 available, uint256 needed);
 
     constructor(
         IERC20 voidToken_,
@@ -449,15 +460,35 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         Permit[] calldata permissions
     ) external nonReentrant returns (bool executed, bytes memory result) {
         uint256 gasStart = gasleft();
+        if (permissions.length > MAX_PERMITS_PER_CALL) {
+            revert TooManyPermits(permissions.length, MAX_PERMITS_PER_CALL);
+        }
+
+        bool sawPaymaster;
+        bool sawRuntime;
+        uint256 runtimeBudget = _voidSpendLimit(req.spends);
         for (uint256 i; i < permissions.length; ++i) {
-            // The minimum required depends on who the spender is: the paymaster
-            // has to cover toll and gas; the runtime, whatever the applications
-            // will pull.
-            uint256 atLeast = permissions[i].spender == address(this)
-                ? req.maxToll + req.maxGasVoid
-                : 1;
+            address spender = permissions[i].spender;
+            uint256 atLeast;
+            if (spender == address(this)) {
+                if (sawPaymaster) revert DuplicatePermitSpender(spender);
+                sawPaymaster = true;
+                atLeast = req.maxToll + req.maxGasVoid;
+            } else if (spender == address(runtime)) {
+                if (sawRuntime) revert DuplicatePermitSpender(spender);
+                sawRuntime = true;
+                atLeast = runtimeBudget;
+            } else {
+                revert UnexpectedPermitSpender(spender);
+            }
             _applyPermit(req.user, permissions[i], atLeast);
         }
+
+        // A permit may already have been submitted before the relayer sees it,
+        // or the user may be using the `sponsor` path with an existing approval.
+        // Check the actual allowances, rather than requiring a permit object.
+        _requireAllowance(req.user, address(this), req.maxToll + req.maxGasVoid);
+        if (runtimeBudget > 0) _requireAllowance(req.user, address(runtime), runtimeBudget);
         return _sponsor(gasStart, req, signature);
     }
 
@@ -512,6 +543,9 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         // nothing that happens from here on prevents payment.
         // =================================================================
         uint256 prefund = req.maxToll + req.maxGasVoid;
+        _requireAllowance(req.user, address(this), prefund);
+        uint256 runtimeBudget = _voidSpendLimit(req.spends);
+        if (runtimeBudget > 0) _requireAllowance(req.user, address(runtime), runtimeBudget);
         _pull(req.user, prefund);
 
         if (req.maxToll > 0) {
@@ -757,6 +791,21 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
 
     function _pull(address from, uint256 amount) private {
         if (!voidToken.transferFrom(from, address(this), amount)) revert TransferFailed();
+    }
+
+    /// @dev Adds the signed VOID budgets so the runtime permit is checked
+    ///      against the amount an app may actually pull, before any gas is
+    ///      spent on the app call. Non-VOID budgets use their own approval path
+    ///      and are deliberately outside the paymaster's permit scope.
+    function _voidSpendLimit(Spend[] calldata spends) private view returns (uint256 total) {
+        for (uint256 i; i < spends.length; ++i) {
+            if (spends[i].token == address(voidToken)) total += spends[i].amount;
+        }
+    }
+
+    function _requireAllowance(address user, address spender, uint256 needed) private view {
+        uint256 available = voidToken.allowance(user, spender);
+        if (available < needed) revert AllowanceTooLow(user, spender, available, needed);
     }
 
     // ---------------------------------------------------------------------
