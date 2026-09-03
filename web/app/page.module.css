@@ -527,7 +527,7 @@
 }
 .search input,
 .cardSearch input {
-  border-radius: 3px;
+  border-radius: 0;
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
 }
 .search input:focus {
@@ -535,7 +535,7 @@
 }
 .btn,
 .walletButton {
-  border-radius: 3px;
+  border-radius: 0;
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
   font-family: var(--mono);
   font-size: 11px;
@@ -545,12 +545,12 @@
 .walletButton:hover:not(:disabled) { transform: none; }
 .btnPrimary { box-shadow: inset 0 1px 0 color-mix(in srgb, white 18%, transparent); }
 .walletMark { border-radius: 1px; box-shadow: none; }
-.walletAvatar { border-radius: 3px; }
-.walletMessage { border-radius: 3px; }
+.walletAvatar { border-radius: 0; }
+.walletMessage { border-radius: 0; }
 
 .signalCard {
   border-color: var(--line-strong);
-  border-radius: 3px;
+  border-radius: 0;
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
 }
@@ -561,7 +561,7 @@
 .pulse { border-radius: 1px; box-shadow: none; }
 
 .summary,
-.panel { border-radius: 3px; box-shadow: none; }
+.panel { border-radius: 0; box-shadow: none; }
 .panel { background: color-mix(in srgb, var(--surface) 95%, transparent); }
 .panelHead { min-height: 56px; }
 .panelHead h2 { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0; }
@@ -569,21 +569,21 @@
 .stat::after { width: 16px; height: 1px; }
 .statLabel { letter-spacing: 0.1em; }
 
-.constellation { border-radius: 3px; background: var(--surface-2); }
+.constellation { border-radius: 0; background: var(--surface-2); }
 .cell { border-radius: 1px; }
 .cellLive { box-shadow: none; }
 .cell:hover { box-shadow: 0 0 9px color-mix(in srgb, var(--live) 55%, transparent); }
 .swatch, .swatchReserved { border-radius: 1px; }
-.ticker { border-radius: 3px; mask-image: none; }
+.ticker { border-radius: 0; mask-image: none; }
 .ticker::before { font-size: 10px; }
-.pager button { border-radius: 2px; }
+.pager button { border-radius: 0; }
 
 .table th { background: color-mix(in srgb, var(--surface-2) 48%, transparent); }
 .table td { padding-top: 12px; padding-bottom: 12px; }
 .rowLink:hover { background: color-mix(in srgb, var(--accent) 4%, var(--surface)); }
 .pill,
 .proposalState,
-.l3State { border-radius: 2px; }
+.l3State { border-radius: 0; }
 .pill { border: 1px solid currentColor; padding: 3px 6px; }
 .pill::before { border-radius: 1px; }
 .pillLive, .pillCreated, .pillReserved { background: transparent; }
@@ -592,7 +592,7 @@
 .chainNameEditor,
 .activationEditor,
 .l3Panel,
-.daoPanel { border-radius: 3px; }
+.daoPanel { border-radius: 0; }
 .chainNameEditor,
 .activationEditor { background: var(--surface-2); }
 .l3Panel,
@@ -601,7 +601,36 @@
 .editorButton, .editorCancel,
 .l3Primary, .daoPrimary, .proposalActions button,
 .factEdit input, .editorForm input, .activationFee input,
-.daoCompose input, .daoCompose select, .proposalActions input { border-radius: 2px; }
+.daoCompose input, .daoCompose select, .proposalActions input { border-radius: 0; }
+
+/* Make the operational character legible without changing the page's map.
+   The headline now behaves like a system readout instead of editorial display
+   type; panels and controls share the same squared hardware language. */
+.hero h1 {
+  font-family: var(--mono);
+  font-size: clamp(39px, 5.2vw, 65px);
+  font-weight: 500;
+  letter-spacing: -0.06em;
+  line-height: 1.02;
+}
+.hero h1 em {
+  font-family: inherit;
+  font-style: normal;
+  font-weight: inherit;
+  letter-spacing: inherit;
+}
+.heroText {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.75;
+}
+.panelHead,
+.signalTop {
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+}
+.stat,
+.fact,
+.numbers > div { background: color-mix(in srgb, var(--surface) 97%, var(--ground)); }
 
 /* Legacy empty/feed rules remain available to chains that need a compact state. */
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
