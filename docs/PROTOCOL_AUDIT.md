@@ -19,10 +19,10 @@ It is an internal engineering review, not an independent security audit.
 
 Evidence collected after the changes:
 
-- 287 Foundry tests pass, including fuzz, invariant, red-team and scale suites.
+- 291 Foundry tests pass, including fuzz, invariant, red-team and scale suites.
 - VoidScan and VoidDEX production builds pass; script and indexer typechecks pass.
-- The read-only V7 live audit reconciles 1,111 DAOs, 22 paid executions, runtime
-  custody and the 98%/2% revenue split.
+- The read-only V8 live audit reconciles 1,111 DAOs, migrated Deeds, runtime
+  custody, registered applications and the 98%/2% revenue split.
 - Two consecutive swaps through the production HTTP relay succeeded. The setup
   call supplied two missing token permits; the repeat call supplied zero permits
   and used only its fresh, bounded SponsoredCall signature.
@@ -44,6 +44,8 @@ Evidence collected after the changes:
 | Medium | VoidScan shipped obsolete V2/V3/V4 pending manifests, a V4 activation screen and an unused old market resolver. | Pending manifests and resolver were removed; `/migrate` is a harmless redirect and no longer imports retired contracts. |
 | Medium | README, architecture, Paymaster operations and release steps described the pre-genesis VOID mint flow and obsolete deploy command. | Documentation now describes V7 ETH genesis, the NFT/VOID market, five-minute testnet TWAP, owner claim and the canonical V7 deployment/audit flow. |
 | Low | VoidDEX let Next.js guess the monorepo root and emitted a multiple-lockfile warning. | Its Turbopack root is now explicit. |
+| High | Concurrent HTTP submissions could relay the same signed user nonce from separate serverless instances before either transaction mined. | Both public relays now reserve `(surface, user, nonce)` atomically in Postgres, rate-limit by wallet and hashed client identifier, and fail closed when admission control is unavailable. |
+| Medium | The explorer indexed the parent-chain tip immediately and had no explicit confirmation policy. | Both indexer implementations now hold back 20 parent blocks by default; the depth is configurable with `INDEXER_CONFIRMATIONS`. |
 
 ## Wallet prompt invariant
 
@@ -54,7 +56,7 @@ call.
 
 EIP-2612 permissions belong to token contracts, each with its own signing
 domain. They cannot be cryptographically collapsed into the Paymaster signature
-without a new token/Permit2 or smart-account architecture. V7 therefore treats
+without a new token/Permit2 or smart-account architecture. V8 therefore treats
 them as one-time setup: only a missing allowance asks for its token permit. A
 fresh wallet may see setup prompts on its first operation; repeating the same
 operation must show only the action signature. NFT sales still require a
@@ -90,16 +92,17 @@ These are not presented as solved:
 2. The contracts have no external audit. Mainnet deployment remains blocked.
 3. Testnet governance is a single test wallet. Production needs a multisig,
    timelock policy, rotation procedure and public role inventory.
-4. The public RPC, Vercel relayer and single database are availability
-   dependencies. Production needs independent providers, rate limiting,
-   monitoring, backups and incident response.
+4. The public RPC, Vercel relayer and single database remain availability
+   dependencies. RPC fallback, persistent relayer rate limiting and incident
+   response now exist; production still needs independent monitoring and
+   tested automated database backups.
 5. The testnet's five-minute TWAP and shallow valueless liquidity do not prove
    manipulation resistance under real capital.
 6. The indexer mirrors parent-chain events and does not itself prove L3 state.
    Production indexing needs a reviewed confirmation/reorg policy.
 7. A universal first-use single prompt for arbitrary ERC-20 and ERC-721 assets
    requires a separately audited Permit2, account-abstraction or native
-   intent-token design. V7 safely reduces repeated prompts; it does not pretend
+   intent-token design. V8 safely reduces repeated prompts; it does not pretend
    different token signature domains are one signature.
 
 ## Release decision
@@ -108,4 +111,4 @@ Suitable for continued public **testnet** testing after deployment of this
 frontend revision. Not approved for mainnet or for marketing as independent
 blockchains. Any Solidity change requires a new deployment, bytecode
 verification and full live acceptance run; this pass intentionally does not
-silently replace the proven V7 contracts.
+silently replace the proven V8 contracts.

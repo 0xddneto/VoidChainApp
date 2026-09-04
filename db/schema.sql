@@ -259,3 +259,28 @@ CREATE TABLE chain_expenses (
 );
 
 CREATE INDEX expenses_by_chain ON chain_expenses (chain_id, period_start DESC);
+
+-- ---------------------------------------------------------------------------
+-- Public relayer admission control
+-- ---------------------------------------------------------------------------
+
+-- Shared by VoidScan and VoidDEX. A nonce may have only one in-flight relay
+-- submission across a serverless fleet; network identifiers are hashed rather
+-- than stored as raw visitor addresses.
+CREATE TABLE relay_requests (
+    surface         TEXT NOT NULL,
+    user_address    BYTEA NOT NULL,
+    user_nonce      NUMERIC(78, 0) NOT NULL,
+    client_hash     BYTEA NOT NULL,
+    request_hash    BYTEA NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'submitted', 'failed')),
+    tx_hash         BYTEA,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at      TIMESTAMPTZ NOT NULL DEFAULT now() + interval '10 minutes',
+    PRIMARY KEY (surface, user_address, user_nonce)
+);
+
+CREATE INDEX relay_requests_user_recent ON relay_requests (user_address, created_at DESC);
+CREATE INDEX relay_requests_client_recent ON relay_requests (client_hash, created_at DESC);

@@ -15,7 +15,7 @@
 import 'dotenv/config';
 import { createPublicClient, fallback, http, parseAbiItem, type Log, type PublicClient } from 'viem';
 import {
-  CHAIN_ID_BASE, DEED, MAX_BLOCKS_PER_PASS,
+  CHAIN_ID_BASE, CONFIRMATIONS, DEED, MAX_BLOCKS_PER_PASS,
   PARENT_RPC, POLL_INTERVAL_MS, RUNTIME,
 } from './config.js';
 import { alignDeployment, cursor, pool, seedChains, writePass, type BlockInfo, type CallRow, type StatusRow } from './db.js';
@@ -69,7 +69,10 @@ async function blocks(logs: Log[]): Promise<Map<bigint, BlockInfo>> {
  * again immediately (it was behind) or wait out the interval (it was current).
  */
 async function scan(): Promise<number> {
-  const head = await client.getBlockNumber();
+  const tip = await client.getBlockNumber();
+  const confirmationDepth = BigInt(CONFIRMATIONS);
+  if (tip < confirmationDepth) return 0;
+  const head = tip - confirmationDepth;
   const from = (await cursor()) + 1n;
   if (from > head) return 0;
 
@@ -149,6 +152,7 @@ async function main(): Promise<void> {
   console.log(`  runtime  ${RUNTIME}`);
   console.log(`  deed     ${DEED}`);
   console.log(`  rpc      ${PARENT_RPC}`);
+  console.log(`  finality ${CONFIRMATIONS} confirmations`);
 
   if (await alignDeployment(RUNTIME, DEED)) {
     console.log('  deployment changed; rebuilt the local chain mirror');
