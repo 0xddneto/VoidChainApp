@@ -13,6 +13,7 @@
     "verify:testnet-v8": "tsx verify-testnet-v8.ts",
     "finalize:testnet-v8": "tsx finalize-testnet-v8.ts",
     "audit:testnet-v8": "tsx audit-testnet-v8.ts",
+    "monitor:testnet-v8": "tsx monitor-public-v8.ts",
     "audit:testnet-v7": "tsx audit-v7.ts",
     "prove:testnet-v7-market": "tsx prove-v7-market.ts",
     "prove:testnet-v7-mint": "tsx prove-v7-mint.ts",

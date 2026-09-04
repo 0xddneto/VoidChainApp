@@ -131,6 +131,11 @@ that admission control is unavailable. VoidScan publishes events only after a
 configurable parent-chain confirmation depth (`INDEXER_CONFIRMATIONS`, default
 20), rather than treating the current tip as settled history.
 
+`.github/workflows/testnet-monitor.yml` independently checks the public sites,
+JSON APIs, security headers, parent-chain ID, deployed bytecode, TWAP,
+timelock delay and Paymaster ETH reserve every 30 minutes. It is read-only and
+uses no project wallet.
+
 ## Documentation
 
 - [Architecture boundary](docs/architecture.md)
