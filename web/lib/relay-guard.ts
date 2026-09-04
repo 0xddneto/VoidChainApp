@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Address, Hex } from 'viem';
 
-import { pool } from './db';
+import { pool, sessionPool } from './db';
 
 const REQUESTS_PER_MINUTE = 20;
 
@@ -114,7 +114,7 @@ export async function submitWithRelayerLock(
   surface: string,
   submit: () => Promise<Hex>,
 ): Promise<RelayerSubmission> {
-  const client = await pool.connect().catch(() => null);
+  const client = await sessionPool.connect().catch(() => null);
   if (!client) throw new RelayAdmissionError('Relayer coordination is unavailable.', 503);
   const lockName = `void-relayer:${relayer.toLowerCase()}`;
   try {
@@ -136,6 +136,6 @@ export async function submitWithRelayerLock(
     };
   } finally {
     await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [lockName]).catch(() => undefined);
-    client.release();
+    client.release(true);
   }
 }

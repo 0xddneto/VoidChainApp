@@ -17,6 +17,17 @@
 
 ## Source changes requiring contract deployment
 
+Session-level advisory locks now use direct Postgres connections. For Neon,
+the known `-pooler` hostname suffix is removed; other pooler providers must set
+`DATABASE_URL_UNPOOLED` to their direct endpoint. Production currently uses a
+direct endpoint; a two-session read-only lock exclusion check passed. Sessions
+are destroyed after release so a failed unlock cannot leak a reusable lock.
+See [Neon connection pooling](https://neon.com/docs/connect/connection-pooling).
+
+The fresh block-pinned inventory at block 113118929 reconciled all 1 billion
+VOID and six minted Deeds. It is an inventory, not a complete migration bundle:
+LP shares, app custody, staking and proposal payloads still require adapters.
+
 The published manifest still identifies V10. V11 Runtime emergency roles,
 1% circulating-supply DAO quorum, Treasury `claimFor`, the claim aggregator,
 emission vault and L3 registry are source changes awaiting deployment and live

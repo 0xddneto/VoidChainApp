@@ -2,7 +2,7 @@ import pg from 'pg';
 import { createPublicClient, fallback, http, parseAbi, parseAbiItem, type Address, type Log, type PublicClient } from 'viem';
 
 import deployment from './deployment.json';
-import { pool } from './db';
+import { pool, sessionPool } from './db';
 
 const TOTAL_CHAINS = 1_111;
 const MAX_BLOCKS_PER_PASS = 10_000n;
@@ -366,7 +366,7 @@ async function writePass(args: {
 
 /** One bounded, idempotent index pass. Vercel Cron calls this once per minute. */
 export async function indexOnePass(): Promise<IndexerResult> {
-  const lock = await pool.connect();
+  const lock = await sessionPool.connect();
   try {
     const acquired = (await lock.query<{ locked: boolean }>('SELECT pg_try_advisory_lock($1) AS locked', [INDEXER_LOCK])).rows[0].locked;
     if (!acquired) return { status: 'busy' };
@@ -442,6 +442,6 @@ export async function indexOnePass(): Promise<IndexerResult> {
     return { status: all.length === 0 ? 'caught-up' : 'indexed', from: from.toString(), to: to.toString(), events: all.length };
   } finally {
     await lock.query('SELECT pg_advisory_unlock($1)', [INDEXER_LOCK]).catch(() => undefined);
-    lock.release();
+    lock.release(true);
   }
 }

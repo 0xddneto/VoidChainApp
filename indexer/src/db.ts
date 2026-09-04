@@ -16,6 +16,10 @@ export const toHex = (bytes: Buffer | null): `0x${string}` | null =>
 
 export const pool = new pg.Pool({ connectionString: DATABASE_URL, max: 8 });
 
+const sessionUrl = new URL(process.env.DATABASE_URL_UNPOOLED ?? DATABASE_URL);
+if (sessionUrl.hostname.endsWith('.neon.tech')) sessionUrl.hostname = sessionUrl.hostname.replace('-pooler.', '.');
+export const sessionPool = new pg.Pool({ connectionString: sessionUrl.toString(), max: 1, connectionTimeoutMillis: 5_000 });
+
 export const TOTAL_CHAINS = 1_111;
 
 /** Clears only chain-derived projections. User profiles, declared expenses and

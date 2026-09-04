@@ -18,7 +18,7 @@ import {
   CHAIN_ID_BASE, CONFIRMATIONS, DEED, MAX_BLOCKS_PER_PASS,
   PARENT_RPC, POLL_INTERVAL_MS, RUNTIME, TREASURY, PAYMASTER,
 } from './config.js';
-import { alignDeployment, cursor, pool, resetProjection, seedChains, writePass, type BlockInfo, type CallRow, type StatusRow } from './db.js';
+import { alignDeployment, cursor, pool, sessionPool, resetProjection, seedChains, writePass, type BlockInfo, type CallRow, type StatusRow } from './db.js';
 
 const EVENTS = {
   activated: parseAbiItem('event ChainAppActivated(uint256 indexed tokenId, address activator)'),
@@ -230,10 +230,10 @@ async function tick(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const lock = await pool.connect();
+  const lock = await sessionPool.connect();
   const acquired = (await lock.query<{ locked: boolean }>('SELECT pg_try_advisory_lock($1) AS locked', [INDEXER_LOCK])).rows[0].locked;
   if (!acquired) {
-    lock.release();
+    lock.release(true);
     throw new Error('Another VoidScan indexer already owns this database cursor.');
   }
   try {
@@ -262,7 +262,7 @@ async function main(): Promise<void> {
   }
   } finally {
     await lock.query('SELECT pg_advisory_unlock($1)', [INDEXER_LOCK]).catch(() => undefined);
-    lock.release();
+    lock.release(true);
   }
 }
 
@@ -270,7 +270,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     console.log('\n  shutting down...');
     running = false;
-    void pool.end().then(() => process.exit(0));
+    void Promise.all([pool.end(), sessionPool.end()]).then(() => process.exit(0));
   });
 }
 
