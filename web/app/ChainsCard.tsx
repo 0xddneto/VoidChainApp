@@ -234,7 +234,11 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
   const [displayName, setDisplayName] = useState(chain.name ?? '');
   const [status, setStatus] = useState<ChainStatus>(chain.status);
   const nameChanged = useCallback((next: string) => setDisplayName(next), []);
-  const dexApps = new Set([chainOneDex.factory, ...chainOneDex.pools.map((pool) => pool.address)].map((address) => address.toLowerCase()));
+  const dexApps = new Map<string, string>([
+    [chainOneDex.factory.toLowerCase(), 'VoidDEX Factory'],
+    ...chainOneDex.pools.map((pool) => [pool.address.toLowerCase(), `${pool.label} Pool`] as [string, string]),
+    [chainOneDex.faucet.toLowerCase(), 'Test Token Faucet'],
+  ]);
   const nftMarket = genesis.contracts.nftAmm.toLowerCase();
 
   useEffect(() => setDisplayName(chain.name ?? ''), [chain]);
@@ -296,7 +300,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
                   {detail.apps.map((a) => (
                     <li key={a.address}>
                       <span className={styles.appIdentity}>
-                        <strong>{a.address.toLowerCase() === nftMarket ? 'NFT / VOID Market' : dexApps.has(a.address.toLowerCase()) ? 'VoidDEX' : 'Published app'}</strong>
+                        <strong>{a.address.toLowerCase() === nftMarket ? 'NFT / VOID Market' : dexApps.get(a.address.toLowerCase()) ?? 'Published app'}</strong>
                         <Copyable value={a.address} short />
                       </span>
                       {a.address.toLowerCase() === nftMarket && <a className={styles.chainLink} href="/market">Open market ↗</a>}
