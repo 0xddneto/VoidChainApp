@@ -96,10 +96,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: script/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            script/package-lock.json
+            web/package-lock.json
       - run: npm ci
       - run: npm ci
         working-directory: script
+      - run: npm ci
+        working-directory: web
       - run: npm run typecheck
         working-directory: script
       - run: npm run build:contracts
