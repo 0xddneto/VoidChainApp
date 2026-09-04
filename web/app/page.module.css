@@ -313,23 +313,25 @@
 .sectionIndex { color: var(--accent); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.08em; }
 .note { color: var(--ink-3); font-family: var(--mono); font-size: 10px; letter-spacing: -0.015em; }
 .panelBody { padding: 21px; }
+.registryBody { align-items: center; display: flex; gap: 22px; padding: 14px 18px; }
 
 /* ---- atlas ------------------------------------------------------------- */
 .constellation {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9px, 1fr));
-  gap: 3px;
-  padding: 12px;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(53, 6px);
+  gap: 2px;
+  padding: 8px;
   border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
   border-radius: 10px;
   background: linear-gradient(135deg, color-mix(in srgb, var(--surface-2) 66%, transparent), transparent);
 }
-.cell { aspect-ratio: 1; border-radius: 2px; background: var(--dormant-soft); transition: transform 100ms ease, box-shadow 100ms ease; }
+.cell { height: 6px; width: 6px; border-radius: 2px; background: var(--dormant-soft); transition: transform 100ms ease, box-shadow 100ms ease; }
 .cell:hover { position: relative; z-index: 1; box-shadow: 0 0 14px var(--live); transform: scale(1.6); }
 .cellCreated { background: var(--created); }
 .cellLive { background: var(--live); box-shadow: 0 0 7px color-mix(in srgb, var(--live) 42%, transparent); }
 .cellPaused { background: var(--dormant); }
-.legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 15px; padding: 2px 3px 0; }
+.legend { display: grid; gap: 8px; margin: 0; padding: 0; }
 .legendItem { display: flex; align-items: center; gap: 7px; color: var(--ink-2); font: 10px var(--mono); }
 .swatch { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .swatchReserved { border: 1px solid var(--line-strong); background: transparent; }
@@ -368,6 +370,9 @@
   padding: 0 12px;
 }
 .cardSearch input:focus-visible { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 18%, transparent); outline-offset: 1px; }
+.sortControl { align-items: center; display: flex; gap: 7px; color: var(--ink-3); font: 9px var(--mono); text-transform: uppercase; }
+.sortControl select { height: 31px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: 10px var(--mono); padding: 0 24px 0 8px; }
+.sortControl select:focus-visible { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 18%, transparent); outline-offset: 1px; }
 .pager { display: flex; align-items: center; gap: 7px; }
 .pager button { width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--ink-2); cursor: pointer; font: 15px/1 var(--mono); }
 .pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
@@ -416,6 +421,10 @@
 .factEdit input { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; color: var(--ink); font: 11px var(--mono); min-height: 28px; min-width: 0; padding: 0 7px; width: 100%; }
 .factNotice { color: var(--ink-3); display: block; font: 9px var(--mono); line-height: 1.4; margin-top: 7px; }
 .nameEditButton { align-items: center; background: transparent; border: 0; color: var(--accent); font-size: 16px; justify-content: center; line-height: 1; min-width: 18px; padding: 0; }
+.editableFact { align-items: center; background: var(--surface-2); border: 1px solid var(--line); display: flex; gap: 14px; justify-content: space-between; margin: -10px 0 23px; min-height: 48px; padding: 9px 12px; }
+.factLabel { color: var(--ink-3); font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.appIdentity { display: grid; gap: 3px; min-width: 160px; }
+.appIdentity strong { color: var(--ink); font: 11px var(--mono); }
 
 /* The first activation writes the initial economic rule on chain. It must be
    visually separate from a routine pause/resume control. */
@@ -683,6 +692,7 @@
   .summary { grid-template-columns: repeat(2, 1fr); }
   .cardSearch { order: 3; margin-left: 0; width: 100%; }
   .cardSearch input { width: 100%; }
+  .sortControl { margin-left: auto; }
   .panelHead { flex-wrap: wrap; }
   .daoFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .l3Facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -703,6 +713,7 @@
   .stat { min-height: 96px; padding: 16px; }
   .statValue { font-size: 21px; }
   .panelBody { padding: 12px; }
+  .registryBody { align-items: flex-start; display: grid; overflow-x: auto; }
   .constellation { gap: 2px; padding: 8px; }
   .legend { gap: 10px; }
   .note { font-size: 9px; }

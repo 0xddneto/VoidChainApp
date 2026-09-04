@@ -1,0 +1,11 @@
+.header { border-bottom: 1px solid var(--line); }
+.bar { align-items: center; display: flex; gap: 18px; height: 64px; margin: auto; max-width: 1180px; width: calc(100% - 32px); }
+.bar > a { color: var(--ink-2); font: 11px var(--mono); margin-left: auto; text-decoration: none; }
+.logo { color: var(--ink); font: 700 13px var(--mono); }.logo span { color: var(--accent); }
+.wrap { margin: auto; max-width: 1180px; padding: 52px 0 70px; width: calc(100% - 32px); }
+.hero { max-width: 760px; }.hero > p,.tag { color: var(--accent); font: 10px var(--mono); letter-spacing: .11em; }.hero h1 { font-size: clamp(34px,6vw,68px); letter-spacing: -.055em; margin: 10px 0 14px; }.hero > span { color: var(--ink-2); line-height: 1.6; }
+.stats { border: 1px solid var(--line); display: grid; grid-template-columns: repeat(4,1fr); margin: 36px 0 20px; }.stats > div { border-right: 1px solid var(--line); display: grid; gap: 8px; padding: 15px; }.stats > div:last-child { border: 0; }.stats small { color: var(--ink-3); font: 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; }.stats strong { font: 13px var(--mono); }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(3,1fr); margin-top: 20px; }.card { border: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; min-height: 300px; padding: 22px; }.card h2 { font-size: 20px; margin: 0; }.card p { color: var(--ink-2); font-size: 13px; line-height: 1.5; margin: 0; min-height: 58px; }.card strong { font: 16px var(--mono); margin-top: auto; }.card input { background: var(--surface-2); border: 1px solid var(--line-strong); color: var(--ink); font: 13px var(--mono); height: 38px; padding: 0 10px; }
+.primary { background: var(--accent); border: 1px solid var(--accent); color: var(--on-accent); cursor: pointer; font: 11px var(--mono); min-height: 38px; padding: 0 14px; }.primary:disabled { cursor: not-allowed; opacity: .38; }
+.message { border: 1px solid var(--line); color: var(--ink-2); font: 11px/1.5 var(--mono); margin-top: 16px; overflow-wrap: anywhere; padding: 12px; }.foot { color: var(--ink-3); font: 10px/1.6 var(--mono); margin-top: 18px; }
+@media(max-width:800px){.stats{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.bar{gap:10px}.wrap{padding-top:34px}}

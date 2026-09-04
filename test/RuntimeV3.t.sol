@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {MockOracle} from "./MockOracle.sol";
 import {
+    VoidChainAppRuntime,
     IVoidChainDeed,
     IERC20,
     IVoidChainTreasury,
@@ -66,7 +67,8 @@ contract RuntimeV3Test is Test {
         deed.setOwner(CHAIN, HOLDER);
         vm.prank(HOLDER); runtime.activate(CHAIN, FEE);
         app = new V3Recorder(IVoidChainAppRuntime(address(runtime)), CHAIN);
-        runtime.registerApp(CHAIN, address(app));
+        runtime.setAppFactoryOnce(address(this));
+        runtime.registerFromFactory(CHAIN, address(app), address(this));
 
         token.mint(FORWARDER, FEE);
         vm.prank(FORWARDER); token.approve(address(runtime), FEE);
@@ -84,7 +86,7 @@ contract RuntimeV3Test is Test {
         uint256[] memory limits = new uint256[](0);
         address[] memory collections = new address[](0);
         uint256[] memory nftIds = new uint256[](0);
-        VoidChainAppRuntimeV3.SpendAuth memory auth = VoidChainAppRuntimeV3.SpendAuth(tokens, limits, collections, nftIds);
+        VoidChainAppRuntime.SpendAuth memory auth = VoidChainAppRuntime.SpendAuth(tokens, limits, collections, nftIds);
         vm.prank(USER);
         (bool budgetOk, bytes memory budgetReason) = address(runtime).call(
             abi.encodeCall(runtime.executeWithBudget, (CHAIN, address(app), abi.encodeCall(V3Recorder.ping, ()), FEE, auth))
@@ -95,7 +97,7 @@ contract RuntimeV3Test is Test {
 
     function test_onlyFrozenForwarderCanExecuteForAUser() public {
         vm.prank(USER);
-        vm.expectRevert(abi.encodeWithSelector(VoidChainAppRuntimeV3.NotTheForwarder.selector, USER));
+        vm.expectRevert(abi.encodeWithSelector(VoidChainAppRuntime.NotTheForwarder.selector, USER));
         runtime.executeFor(USER, CHAIN, address(app), abi.encodeCall(V3Recorder.ping, ()), FEE);
 
         vm.prank(FORWARDER);

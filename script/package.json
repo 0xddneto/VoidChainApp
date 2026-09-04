@@ -12,6 +12,7 @@
     "deploy:testnet-v6": "tsx deploy-testnet-v6.ts",
     "prove:v6-first-mint": "tsx prove-v6-first-mint.ts",
     "prove:v6-twap": "tsx prove-v6-twap.ts",
+    "update:v6-twap": "tsx update-v6-twap.ts",
     "prove:v6-sponsored-nft-sale": "tsx prove-v6-sponsored-nft-sale.ts",
     "harden:v6-twap": "tsx harden-v6-twap.ts",
     "deploy:chain1-dex": "tsx deploy-chain1-dex.ts",

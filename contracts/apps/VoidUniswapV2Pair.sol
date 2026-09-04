@@ -147,7 +147,7 @@ contract VoidUniswapV2Pair is ChainAppBase {
         external onlyFromMyChain lock returns (uint256 amountOut)
     {
         if (amountIn == 0 || reserve0 == 0 || reserve1 == 0) revert InsufficientLiquidity();
-        (uint256 reserveIn, uint256 reserveOut) = zeroForOne ? (reserve0, reserve1) : (reserve1, reserve0);
+        uint256 reserveOut = zeroForOne ? reserve1 : reserve0;
         amountOut = quote(zeroForOne, amountIn);
         if (amountOut == 0 || amountOut < minAmountOut || amountOut >= reserveOut) revert InsufficientOutput();
 

@@ -1,6 +1,8 @@
 # Proposed VOID genesis parameters
 
-Status: recommended economic design for the replacement launch. Not deployed.
+Status: design record. A V6 testnet launch now exists; this document is not
+proof that all requirements were implemented. See [V6 validation](TESTNET_V6_VALIDATION.md)
+for deployed behavior, tests and the blocking NFT AMM migration issue.
 
 This is an Anvil-inspired global-token design, not a claim that the Anvil
 factory itself is used. VOID must serve all VoidChains, so it needs explicit

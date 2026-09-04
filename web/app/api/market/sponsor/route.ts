@@ -1,136 +1,134 @@
 import { NextResponse } from 'next/server';
 import {
-  createPublicClient,
-  createWalletClient,
-  encodeFunctionData,
-  getAddress,
-  http,
-  isAddress,
-  parseAbi,
-  type Address,
-  type Hex,
+  createPublicClient, createWalletClient, decodeFunctionData, decodeFunctionResult,
+  encodeFunctionData, getAddress, http, isAddress, parseAbi,
+  type Address, type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { DEPLOY, RH_TESTNET } from '@/lib/testnet';
-import {
-  MARKET_CALL_GAS_LIMIT,
-  MARKET_MAX_GAS_VOID,
-  MARKET_SIGNATURE_LIFETIME_SECONDS,
-  marketDeployment,
-} from '@/lib/market';
 
-const publicClient = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-const AMM_ABI = parseAbi([
-  'function priceToBuy(bool specific) view returns (uint256)',
+const MARKET = getAddress(DEPLOY.testnet.VoidGenesisNftAmmV6);
+const VOID = getAddress(DEPLOY.testnet.VoidTestToken);
+const DEED = getAddress(DEPLOY.production.VoidChainDeed);
+const RUNTIME = getAddress(DEPLOY.production.VoidChainAppRuntime);
+const PAYMASTER = getAddress(DEPLOY.production.VoidPaymaster);
+const MAX_GAS_VOID = 10_000n * 10n ** 18n;
+const CALL_GAS_LIMIT = 1_500_000n;
+const MAX_DEADLINE_SECONDS = 630n;
+const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
+
+const marketAbi = parseAbi([
+  'function randomBuyQuote() view returns(uint256)',
+  'function specificBuyQuote() view returns(uint256)',
+  'function buyRandom(uint256) returns(uint256)',
+  'function buySpecific(uint256,uint256)',
+  'function sellWithPermit(uint256,uint256,uint8,bytes32,bytes32)',
 ]);
-const PAYMASTER_ABI = parseAbi([
-  'function nonces(address user) view returns (uint256)',
-  'function sponsorMarketPrepaid((address user,address market,address paymentToken,string paymentSymbol,string purchaseLabel,uint256 appSpend,uint256 maxGasVoid,uint256 callGasLimit,uint256 nonce,uint256 deadline) request,bytes signature) returns (bool executed,bytes result)',
+const readAbi = parseAbi(['function nonces(address) view returns(uint256)', 'function feeOf(uint256) view returns(uint256)']);
+const paymasterAbi = parseAbi([
+  'function sponsorWithAssetPermits((address user,uint256 tokenId,address target,bytes data,uint256 maxToll,uint256 maxGasVoid,uint256 callGasLimit,(address token,uint256 amount)[] spends,(address collection,uint256 tokenId)[] nftSpends,uint256 nonce,uint256 deadline),bytes,(address token,address spender,uint256 value,uint256 deadline,uint8 v,bytes32 r,bytes32 s)[]) returns(bool,bytes)',
 ]);
+const gatewayAbi = parseAbi(['function query(bytes) view returns(bytes)']);
 
-type RawRequest = {
-  user?: unknown; market?: unknown;
-  paymentToken?: unknown; paymentSymbol?: unknown; purchaseLabel?: unknown; appSpend?: unknown; maxGasVoid?: unknown; callGasLimit?: unknown;
-  nonce?: unknown; deadline?: unknown;
-};
+type Raw = Record<string, unknown>;
+const reject = (error: string, status = 400) => NextResponse.json({ error }, { status });
+const asAddress = (value: unknown): Address | null => typeof value === 'string' && isAddress(value) ? getAddress(value) : null;
+const asUint = (value: unknown): bigint | null => typeof value === 'string' && /^\d+$/.test(value) ? BigInt(value) : null;
+const asHex = (value: unknown): Hex | null => typeof value === 'string' && /^0x[0-9a-fA-F]*$/.test(value) ? value as Hex : null;
 
-const recentUsers = new Map<string, number>();
-const RATE_WINDOW_MS = 15_000;
-
-function numberValue(value: unknown): bigint | null {
-  if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
-  try { return BigInt(value); } catch { return null; }
+async function quote(functionName: 'randomBuyQuote' | 'specificBuyQuote') {
+  const call = encodeFunctionData({ abi: marketAbi, functionName });
+  const raw = await rpc.readContract({ address: MARKET, abi: gatewayAbi, functionName: 'query', args: [call] });
+  return decodeFunctionResult({ abi: marketAbi, functionName, data: raw }) as bigint;
 }
 
-function addressValue(value: unknown): Address | null {
-  return typeof value === 'string' && isAddress(value) ? getAddress(value) : null;
-}
+/** Relays only the three published V6 NFT/VOID market actions. */
+export async function POST(request: Request) {
+  const key = process.env.PAYMASTER_RELAYER_PRIVATE_KEY;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(key ?? '')) return reject('VOID relay is not configured.', 503);
 
-function reject(error: string, status = 400) {
-  return NextResponse.json({ error }, { status });
-}
+  let body: Raw;
+  try { body = await request.json() as Raw; } catch { return reject('Malformed relay request.'); }
+  const raw = body.request as Raw | undefined;
+  const signature = asHex(body.signature);
+  const rawPermits = body.permits;
+  if (!raw || !signature || signature.length !== 132 || !Array.isArray(rawPermits)) return reject('Invalid signed request.');
 
-/**
- * Submits only a fully bounded collection-market purchase. The browser never
- * receives the relayer key, and this route never forwards an arbitrary call.
- */
-export async function POST(httpRequest: Request) {
-  const deployment = marketDeployment();
-  if (!deployment) return reject('Sponsored market is not deployed on this testnet yet.', 503);
-
-  const relayerKey = process.env.PAYMASTER_RELAYER_PRIVATE_KEY;
-  if (!/^0x[0-9a-fA-F]{64}$/.test(relayerKey ?? '')) {
-    return reject('Sponsored market relayer is not configured.', 503);
-  }
-
-  let body: { request?: RawRequest; signature?: unknown };
-  try { body = await httpRequest.json(); } catch { return reject('Malformed request body.'); }
-  const raw = body.request;
-  if (!raw) {
-    return reject('Invalid sponsored request.');
-  }
-
-  const user = addressValue(raw.user);
-  const market = addressValue(raw.market);
-  const paymentToken = addressValue(raw.paymentToken);
-  const paymentSymbol = raw.paymentSymbol;
-  const purchaseLabel = raw.purchaseLabel;
-  const appSpend = numberValue(raw.appSpend);
-  const maxGasVoid = numberValue(raw.maxGasVoid);
-  const callGasLimit = numberValue(raw.callGasLimit);
-  const nonce = numberValue(raw.nonce);
-  const deadline = numberValue(raw.deadline);
-  const signature = typeof body.signature === 'string' && /^0x[0-9a-fA-F]{130}$/.test(body.signature)
-    ? body.signature as Hex
-    : null;
-  if (!user || !market || !paymentToken || paymentSymbol !== 'VOID' || purchaseLabel !== 'VOID deed mint' || appSpend === null || maxGasVoid === null || callGasLimit === null || nonce === null || deadline === null || !signature) {
-    return reject('Invalid signed fields.');
-  }
-
+  const user = asAddress(raw.user); const target = asAddress(raw.target); const data = asHex(raw.data);
+  const tokenId = asUint(raw.tokenId); const maxToll = asUint(raw.maxToll); const maxGasVoid = asUint(raw.maxGasVoid);
+  const callGasLimit = asUint(raw.callGasLimit); const nonce = asUint(raw.nonce); const deadline = asUint(raw.deadline);
+  if (!user || target !== MARKET || !data || tokenId !== 1n || maxToll === null || maxGasVoid !== MAX_GAS_VOID || callGasLimit !== CALL_GAS_LIMIT || nonce === null || deadline === null) return reject('Invalid market limits.');
   const now = BigInt(Math.floor(Date.now() / 1000));
-  if (deadline <= now || deadline > now + MARKET_SIGNATURE_LIFETIME_SECONDS + 30n) {
-    return reject('Signature expired; request a new quote.');
+  if (deadline <= now || deadline > now + MAX_DEADLINE_SECONDS) return reject('Signature expired.');
+
+  const spends = [] as Array<{ token: Address; amount: bigint }>;
+  for (const item of Array.isArray(raw.spends) ? raw.spends : []) {
+    const value = item as Raw; const token = asAddress(value.token); const amount = asUint(value.amount);
+    if (!token || amount === null || amount === 0n || spends.length >= 1) return reject('Invalid VOID budget.');
+    spends.push({ token, amount });
   }
-  const previous = recentUsers.get(user.toLowerCase()) ?? 0;
-  if (Date.now() - previous < RATE_WINDOW_MS) return reject('Please wait before relaying another purchase.', 429);
-
-  if (market !== getAddress(deployment.market) || maxGasVoid !== MARKET_MAX_GAS_VOID || callGasLimit !== MARKET_CALL_GAS_LIMIT) {
-    return reject('This route accepts only the bounded collection-market call.');
+  const nftSpends = [] as Array<{ collection: Address; tokenId: bigint }>;
+  for (const item of Array.isArray(raw.nftSpends) ? raw.nftSpends : []) {
+    const value = item as Raw; const collection = asAddress(value.collection); const id = asUint(value.tokenId);
+    if (!collection || id === null || nftSpends.length >= 1) return reject('Invalid Deed budget.');
+    nftSpends.push({ collection, tokenId: id });
   }
-  const voidToken = getAddress(DEPLOY.testnet.VoidTestToken);
-  if (paymentToken !== voidToken) return reject('The market can be paid only in VOID.');
 
-  const mintPaymaster = DEPLOY.production.VoidCollectionMintPaymaster;
-  if (!mintPaymaster) return reject('Collection Mint Paymaster is not deployed on this testnet yet.', 503);
-  const paymaster = getAddress(mintPaymaster);
+  let decoded: ReturnType<typeof decodeFunctionData<typeof marketAbi>>;
+  try { decoded = decodeFunctionData({ abi: marketAbi, data }); } catch { return reject('Unknown market action.'); }
+  if (decoded.functionName === 'buyRandom' || decoded.functionName === 'buySpecific') {
+    const expected = await quote(decoded.functionName === 'buyRandom' ? 'randomBuyQuote' : 'specificBuyQuote');
+    const maximum = decoded.args?.[decoded.functionName === 'buyRandom' ? 0 : 1] as bigint;
+    if (maximum !== expected || spends.length !== 1 || spends[0].token !== VOID || spends[0].amount !== expected || nftSpends.length !== 0) return reject('Buy budget does not match the current VOID quote.', 409);
+  } else if (decoded.functionName === 'sellWithPermit') {
+    const deedId = decoded.args?.[0] as bigint;
+    const permitDeadline = decoded.args?.[1] as bigint;
+    if (spends.length !== 0 || nftSpends.length !== 1 || nftSpends[0].collection !== DEED || nftSpends[0].tokenId !== deedId || permitDeadline !== deadline) return reject('Sale does not match the signed Deed budget.');
+    const alreadyReleased = await rpc.readContract({
+      address: getAddress(DEPLOY.testnet.VoidGenesisEscrowV6),
+      abi: parseAbi(['function deedReleased(uint256) view returns(bool)']),
+      functionName: 'deedReleased', args: [deedId],
+    });
+    if (alreadyReleased) return reject('Repeat deposits are unavailable in the current testnet AMM. No transaction was sent.', 409);
+  } else return reject('Unknown market action.');
 
-  const [chainNonce, currentPrice] = await Promise.all([
-    publicClient.readContract({ address: paymaster, abi: PAYMASTER_ABI, functionName: 'nonces', args: [user] }),
-    publicClient.readContract({ address: getAddress(DEPLOY.testnet.VoidGenesisNftAmmV6), abi: AMM_ABI, functionName: 'priceToBuy', args: [false] }),
+  const permits = [] as Array<{ token: Address; spender: Address; value: bigint; deadline: bigint; v: number; r: Hex; s: Hex }>;
+  for (const item of rawPermits) {
+    const value = item as Raw; const token = asAddress(value.token); const spender = asAddress(value.spender);
+    const amount = asUint(value.value); const permitDeadline = asUint(value.deadline);
+    const r = asHex(value.r); const s = asHex(value.s); const v = value.v;
+    if (!token || !spender || amount === null || permitDeadline !== deadline || !r || !s || typeof v !== 'number' || (v !== 27 && v !== 28)) return reject('Invalid token permit.');
+    if (permits.some((known) => known.token === token && known.spender === spender)) return reject('Duplicate token permit.');
+    permits.push({ token, spender, value: amount, deadline: permitDeadline, v, r, s });
+  }
+  const required = new Map<string, bigint>([[`${VOID}:${PAYMASTER}`.toLowerCase(), maxToll + maxGasVoid]]);
+  for (const spend of spends) required.set(`${spend.token}:${RUNTIME}`.toLowerCase(), spend.amount);
+  if (permits.length !== required.size || permits.some((permit) => permit.value !== required.get(`${permit.token}:${permit.spender}`.toLowerCase()))) return reject('Permits do not match the displayed VOID budgets.');
+
+  const [currentNonce, fee] = await Promise.all([
+    rpc.readContract({ address: PAYMASTER, abi: readAbi, functionName: 'nonces', args: [user] }),
+    rpc.readContract({ address: RUNTIME, abi: readAbi, functionName: 'feeOf', args: [1n] }),
   ]);
-  if (nonce !== chainNonce || appSpend !== currentPrice) {
-    return reject('Quote changed or was already used; sign a new one.');
-  }
-
-  const request = {
-    user, market, paymentToken: voidToken, paymentSymbol, purchaseLabel, appSpend,
-    maxGasVoid, callGasLimit, nonce, deadline,
-  };
-  const encoded = encodeFunctionData({
-    abi: PAYMASTER_ABI,
-    functionName: 'sponsorMarketPrepaid',
-    args: [request, signature],
-  });
+  if (nonce !== currentNonce || maxToll !== fee) return reject('Quote changed; sign again.', 409);
 
   try {
-    recentUsers.set(user.toLowerCase(), Date.now());
-    const account = privateKeyToAccount(relayerKey as Hex);
+    const account = privateKeyToAccount(key as Hex);
     const wallet = createWalletClient({ account, transport: http(RH_TESTNET.rpcUrls[0]) });
-    const hash = await wallet.sendTransaction({ account, chain: null, to: paymaster, data: encoded });
+    const sponsored = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
+    // The Paymaster catches app reverts. Estimating transaction gas alone
+    // therefore cannot establish that the requested trade will execute.
+    const simulation = await rpc.simulateContract({
+      account, address: PAYMASTER, abi: paymasterAbi,
+      functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits],
+    });
+    if (!simulation.result[0]) return reject('The market operation would fail. No transaction was sent.', 409);
+    const hash = await wallet.sendTransaction({ account, chain: null, to: PAYMASTER, data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }) });
     return NextResponse.json({ hash });
-  } catch {
-    recentUsers.delete(user.toLowerCase());
-    return reject('The relay did not accept this request. Sign a fresh quote and try again.', 502);
+  } catch (error) {
+    console.error('V6 market relay failed', error);
+    return reject('Relay refused the signed market action.', 502);
   }
 }

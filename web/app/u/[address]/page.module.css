@@ -37,6 +37,8 @@
 
 .who { min-width: 0; }
 .who h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.02em; }
+.nameRow { align-items: center; display: flex; flex-wrap: wrap; gap: 2px 5px; }
+.nameRow h1 { margin: 0; }
 
 .bio { color: var(--ink-2); font-size: 14px; margin: 10px 0 0; max-width: 62ch; }
 

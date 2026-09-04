@@ -80,6 +80,7 @@ export default async function Home() {
             </p>
             <div className={styles.heroLinks}>
               <a className={`${styles.btn} ${styles.btnPrimary}`} href="/mint">Mint VOID Deed <span>↗</span></a>
+              <a className={styles.heroLink} href="/market">NFT / VOID market <span>↗</span></a>
               <a className={styles.heroLink} href="#chain-directory">Browse the registry <span>↓</span></a>
             </div>
           </div>
@@ -123,7 +124,7 @@ export default async function Home() {
               {nf.format(TOTAL_CHAINS)} deed-bound execution spaces · {PROTOCOL.parentChainName} {PROTOCOL.parentChainId}
             </span>
           </div>
-          <div className={styles.panelBody}>
+          <div className={`${styles.panelBody} ${styles.registryBody}`}>
             <div
               className={styles.constellation}
               role="img"

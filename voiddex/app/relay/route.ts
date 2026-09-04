@@ -1,19 +1,17 @@
 import { NextResponse } from 'next/server';
 import { createPublicClient, createWalletClient, encodeFunctionData, getAddress, http, isAddress, parseAbi, toFunctionSelector, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { DEX, MAX_GAS_VOID, CALL_GAS_LIMIT } from '../dex-config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const RPC = 'https://robinhood-testnet.drpc.org';
-const RUNTIME = '0x424ec038baf1a9786a8eba1212954513ed31aa5d' as Address;
-const PAYMASTER = '0x79d1cdb8c7e5f49ef2f0ceee9ab478c651435fbb' as Address;
-const VOID = '0x2a64fa56c1de6f7c737b4a964b5b693ed3841ff4' as Address;
-const PAIRS = new Set([
-  '0xdEb696F2956bE3259aee83d7eb8479309841413e'.toLowerCase(),
-  '0xd8c47A16f6469E77d4327122DfbbFe0E71cdb262'.toLowerCase(),
-]);
-const FAUCET = '0x247d8b1d5d5fd8025ada3c37f2bebeb0ddf30fb9'.toLowerCase();
+const RUNTIME = DEX.runtime;
+const PAYMASTER = DEX.paymaster;
+const VOID = DEX.voidToken;
+const PAIRS = new Set(DEX.pools.map(pool => pool.address.toLowerCase()));
+const FAUCET = DEX.faucet.toLowerCase();
 const pairAbi = parseAbi(['function swap(bool,uint256,uint256)', 'function addLiquidity(uint256,uint256,uint256)', 'function removeLiquidity(uint256,uint256,uint256)']);
 const faucetAbi = parseAbi(['function claim()']);
 const selectors = new Set([
@@ -25,8 +23,6 @@ const faucetSelector = toFunctionSelector('claim()');
 const readAbi = parseAbi(['function nonces(address) view returns(uint256)', 'function feeOf(uint256) view returns(uint256)']);
 const paymasterAbi = parseAbi(['function sponsorWithAssetPermits((address user,uint256 tokenId,address target,bytes data,uint256 maxToll,uint256 maxGasVoid,uint256 callGasLimit,(address token,uint256 amount)[] spends,(address collection,uint256 tokenId)[] nftSpends,uint256 nonce,uint256 deadline),bytes,(address token,address spender,uint256 value,uint256 deadline,uint8 v,bytes32 r,bytes32 s)[]) returns(bool,bytes)']);
 const rpc = createPublicClient({ transport: http(RPC) });
-const MAX_GAS_VOID = 50_000_000_000_000_000_000n;
-const CALL_GAS_LIMIT = 700_000n;
 const MAX_DEADLINE_SECONDS = 630n;
 
 type Raw = Record<string, unknown>;
@@ -86,6 +82,8 @@ export async function POST(request: Request) {
   try {
     const account = privateKeyToAccount(key as Hex);
     const wallet = createWalletClient({ account, transport: http(RPC) });
+    const simulation = await rpc.simulateContract({ account, address: PAYMASTER, abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] });
+    if (!simulation.result[0]) return reject('The DEX action would fail. No transaction was sent.', 409);
     const hash = await wallet.sendTransaction({ account, chain: null, to: PAYMASTER, data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }) });
     return NextResponse.json({ hash });
   } catch {

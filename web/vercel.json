@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/indexer",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/twap",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

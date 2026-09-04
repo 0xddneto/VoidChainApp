@@ -1,25 +1,26 @@
 {
-  "version": "v4",
+  "version": "v6",
   "chainTokenId": 1,
-  "runtime": "0x3ba040ac9a971737dda330fc39999c45af84ccb8",
-  "paymaster": "0xd72e36792f3f26201ee677e165ee19da3aa58201",
-  "appFactory": "0xc9f67b8b59b4b05212359ed4e54d7df19b29d2ae",
-  "factory": "0x80ad9cedd34586be2ac8877a7d09e54638919439",
-  "baseToken": "0x2a64fa56c1de6f7c737b4a964b5b693ed3841ff4",
+  "runtime": "0x6675d410253745483612f5254289338f90255257",
+  "paymaster": "0x2978620017152eefcc6befde5490b5776dd995a2",
+  "appFactory": "0x990273400533229c03726ce7097f1de66c6a54f6",
+  "factory": "0xB559041a8D9e5EE50Ba6d107b16FBD8056579010",
+  "baseToken": "0x359958d13e830ddb7f9c2864c7da8cc282026a07",
   "pools": [
     {
-      "address": "0xb63b890113f49c00f830ec9328739f3273691723",
+      "address": "0x746Bb0b641bC2601137C3d2D81586f779285e293",
       "label": "VOID / tUSD",
-      "asset": "0x70db8af53329dde92c7809000622b1fd838a7460",
-      "token0": "0x2A64Fa56C1DE6F7C737B4a964B5b693ed3841fF4",
-      "token1": "0x70db8AF53329Dde92C7809000622b1fD838A7460"
+      "asset": "0xe89d1b7217191a3abe1e041ef4382901feb3f654",
+      "token0": "0x359958d13E830DDb7F9c2864C7Da8cC282026a07",
+      "token1": "0xE89d1b7217191A3AbE1E041Ef4382901FeB3f654"
     },
     {
-      "address": "0xfd64be3f4f96f473fc049e66a42d8a9868add8b3",
+      "address": "0xf1c8D8dCCBf3A3c01Fc840531d46373e2F0D3b78",
       "label": "VOID / tLINK",
-      "asset": "0x6b364149805d9f496301d675ff41889296286836",
-      "token0": "0x2A64Fa56C1DE6F7C737B4a964B5b693ed3841fF4",
-      "token1": "0x6b364149805D9f496301d675fF41889296286836"
+      "asset": "0x37dbe5eb888e7a039410d53b46f92cf6f5e49b7f",
+      "token0": "0x359958d13E830DDb7F9c2864C7Da8cC282026a07",
+      "token1": "0x37dBe5EB888e7a039410D53b46f92CF6f5E49b7F"
     }
-  ]
+  ],
+  "faucet": "0x54f98A1665FBE9cbB2A9E14Cd3836453eE3F6D81"
 }

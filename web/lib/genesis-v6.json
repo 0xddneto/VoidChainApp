@@ -11,6 +11,7 @@
     "mint": "0x2b409eed516ca9b18d0aa4328ea9c0e3febfb60b",
     "pool": "0xc69ed96ebc755e9a156e4a60e607261adb432b27",
     "oracle": "0x3108f7a4fd5d81e021914fb47c04e6fe7dc3cb2f",
+    "twapSource": "0x66e043fd4ce7733ea8935a1d69fb0567e6c0c8ed",
     "paymaster": "0x2978620017152eefcc6befde5490b5776dd995a2",
     "nftAmm": "0x5bd7d98038625a155ac9a4bd1ede208e32c0722c"
   },

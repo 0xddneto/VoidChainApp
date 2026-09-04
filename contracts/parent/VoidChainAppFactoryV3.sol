@@ -53,6 +53,10 @@ contract VoidChainAppGateway {
         }
     }
 
+    receive() external payable {
+        if (msg.sender != runtime) revert NotRuntime(msg.sender);
+    }
+
     /// @notice Executes a view selector against this gateway's state.
     /// @dev Calling self with STATICCALL preserves delegatecall storage layout
     /// while making every attempted write fail. This keeps app state readable

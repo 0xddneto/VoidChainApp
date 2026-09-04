@@ -6,6 +6,7 @@ import {ChainAppBase, IVoidChainAppRuntime} from "../apps/ChainAppBase.sol";
 
 interface IVoidGenesisEscrowV6 {
     function releaseNftValue(uint256 deedId, address to) external;
+    function deedReleased(uint256 deedId) external view returns (bool);
 }
 
 interface IVoidGenesisTokenV6 {
@@ -119,9 +120,12 @@ contract VoidGenesisNftAmmV6 is ChainAppBase, ReentrancyGuard {
         spendNft(address(deed), address(this), deedId);
         _add(deedId);
 
-        // The escrow is the only issuer of a Deed's backing. It will reject a
-        // duplicate release, so a Deed cannot be used as collateral twice.
-        escrow.releaseNftValue(deedId, address(this));
+        // Release backing once. Later buyers return principal to this vault,
+        // and that existing liquidity pays subsequent sellers. Never request
+        // a second escrow release for a Deed that has already circulated.
+        if (!escrow.deedReleased(deedId)) {
+            escrow.releaseNftValue(deedId, address(this));
+        }
 
         uint256 protocolCut = _fee(VOID_PER_DEED, PROTOCOL_CUT_BPS);
         uint256 payout = sellQuote();

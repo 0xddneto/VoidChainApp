@@ -96,37 +96,37 @@ export function ChainActivationEditor({ tokenId, onActiveChanged }: { tokenId: n
     }
   }
 
-  const status = active === true ? 'Ativa' : active === false ? 'Desativada' : 'Carregando…';
+  const status = active === true ? 'Active' : active === false ? 'Inactive' : 'Loading…';
   if (holder && active === false && !configured && settingFee) {
     return (
       <div className={styles.activationCritical}>
         <div>
-          <p className={styles.criticalKicker}>⚠ ATENÇÃO · CONFIGURAÇÃO ON-CHAIN</p>
-          <h3>Defina a taxa inicial da sua chain</h3>
-          <p>Esta taxa entra no contrato ao ativar a chain. Nenhum dono poderá alterá-la diretamente depois: qualquer mudança futura precisará passar pela DAO da própria chain.</p>
+          <p className={styles.criticalKicker}>⚠ CRITICAL · ON-CHAIN CONFIGURATION</p>
+          <h3>Set the chain&apos;s initial transaction fee</h3>
+          <p>This fee is written on-chain when you activate the chain. No current or future owner can change it directly; every later change must pass the chain DAO.</p>
         </div>
 
         <label className={styles.criticalFee}>
-          <span>Taxa por transação · USD</span>
+          <span>Transaction fee · USD</span>
           <input
             value={fee}
             inputMode="decimal"
             onChange={(event) => { setFee(event.target.value); setAcknowledged(false); }}
             aria-label="Initial transaction fee in USD"
           />
-          <small>Será a taxa inicial de cada transação realizada pelos apps desta chain.</small>
+          <small>This is the initial fee charged for every app transaction on this chain.</small>
         </label>
 
         <label className={styles.criticalCheck}>
           <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
-          <span>Entendo que, após ativar, esta taxa só poderá ser alterada por votação na DAO.</span>
+          <span>I understand that after activation this fee can only change through a DAO vote.</span>
         </label>
 
         <div className={styles.criticalActions}>
           <button type="button" className={styles.criticalActivate} disabled={busy || !acknowledged} onClick={() => void changeState(true)}>
-            {busy ? 'Ativando…' : 'Confirmar taxa e ativar'}
+            {busy ? 'Activating…' : 'Confirm fee and activate'}
           </button>
-          <button type="button" className={styles.factCancel} disabled={busy} onClick={() => { setSettingFee(false); setAcknowledged(false); setNotice(null); }}>Cancelar</button>
+          <button type="button" className={styles.factCancel} disabled={busy} onClick={() => { setSettingFee(false); setAcknowledged(false); setNotice(null); }}>Cancel</button>
         </div>
         {notice && <small className={styles.criticalNotice} role="status">{notice}</small>}
       </div>
@@ -135,13 +135,13 @@ export function ChainActivationEditor({ tokenId, onActiveChanged }: { tokenId: n
 
   return (
     <div className={styles.editableFact}>
-      <dt>Status da chain</dt>
-      <dd className={styles.factValueWithAction}>
+      <span className={styles.factLabel}>Chain status</span>
+      <span className={styles.factValueWithAction}>
         <span>{status}</span>
-        {holder && active === true && <button type="button" className={styles.factButton} disabled={busy} onClick={() => void changeState(false)}>Desativar</button>}
-        {holder && active === false && configured && <button type="button" className={styles.factButton} disabled={busy} onClick={() => void changeState(true)}>Ativar</button>}
-        {holder && active === false && !configured && !settingFee && <button type="button" className={styles.factButton} onClick={() => { setSettingFee(true); setAcknowledged(false); setNotice(null); }}>Ativar</button>}
-      </dd>
+        {holder && active === true && <button type="button" className={styles.factButton} disabled={busy} onClick={() => void changeState(false)}>Deactivate</button>}
+        {holder && active === false && configured && <button type="button" className={styles.factButton} disabled={busy} onClick={() => void changeState(true)}>Activate</button>}
+        {holder && active === false && !configured && !settingFee && <button type="button" className={styles.factButton} onClick={() => { setSettingFee(true); setAcknowledged(false); setNotice(null); }}>Activate</button>}
+      </span>
       {notice && <small className={styles.factNotice} role="status">{notice}</small>}
     </div>
   );

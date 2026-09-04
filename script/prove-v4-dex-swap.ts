@@ -20,7 +20,7 @@ const paymaster = deploy.production.VoidPaymaster as Address;
 const voidToken = deploy.testnet.VoidTestToken as Address;
 const pool = dex.pools[0].address as Address;
 const asset = dex.pools[0].asset as Address;
-const CHAIN = 1n; const amountIn = parseEther('100'); const maxGasVoid = parseEther('50');
+const CHAIN = 1n; const amountIn = parseEther('100'); const maxGasVoid = parseEther('10000');
 const pairAbi = parseAbi(['function reserve0() view returns(uint112)','function reserve1() view returns(uint112)','function quote(bool,uint256) view returns(uint256)','function swap(bool,uint256,uint256) returns(uint256)']);
 const gatewayAbi = parseAbi(['function query(bytes) view returns(bytes)']);
 const tokenAbi = parseAbi(['function mintTo(address,uint256)','function transfer(address,uint256) returns(bool)','function nonces(address) view returns(uint256)']);
@@ -32,7 +32,7 @@ const split=(s:Hex)=>({v:Number.parseInt(s.slice(130,132),16),r:s.slice(0,66) as
 async function gas(){return (await rpc.getGasPrice())*3n} async function wait(hash:Hex){const r=await rpc.waitForTransactionReceipt({hash});if(r.status!=='success')throw Error(`reverted ${hash}`);return r}
 async function query(functionName:string,args:readonly unknown[]=[]){const data=encodeFunctionData({abi:pairAbi,functionName:functionName as never,args:args as never});const raw=await rpc.readContract({address:pool,abi:gatewayAbi,functionName:'query',args:[data]}) as Hex;return decodeFunctionResult({abi:pairAbi,functionName:functionName as never,data:raw})}
 if(await rpc.getChainId()!==46630)throw Error('wrong network'); if(await rpc.getBalance({address:user.address})!==0n)throw Error('test user unexpectedly funded');
-await wait(await wallet.writeContract({account:project,chain:null,address:voidToken,abi:tokenAbi,functionName:'mintTo',args:[user.address,parseEther('500')],maxFeePerGas:await gas(),maxPriorityFeePerGas:0n}));
+await wait(await wallet.writeContract({account:project,chain:null,address:voidToken,abi:tokenAbi,functionName:'transfer',args:[user.address,parseEther('11000')],maxFeePerGas:await gas(),maxPriorityFeePerGas:0n}));
 await wait(await wallet.writeContract({account:project,chain:null,address:asset,abi:tokenAbi,functionName:'transfer',args:[user.address,amountIn],maxFeePerGas:await gas(),maxPriorityFeePerGas:0n}));
 const [fee,requestNonce,beforeStats,quoted]=await Promise.all([rpc.readContract({address:runtime,abi:runtimeAbi,functionName:'feeOf',args:[CHAIN]}) as Promise<bigint>,rpc.readContract({address:paymaster,abi:paymasterAbi,functionName:'nonces',args:[user.address]}) as Promise<bigint>,rpc.readContract({address:runtime,abi:runtimeAbi,functionName:'statsOf',args:[CHAIN]}) as Promise<readonly[boolean,bigint,bigint,bigint,bigint]>,query('quote',[false,amountIn]) as Promise<bigint>]);
 if(quoted===0n)throw Error('pool has no quote'); const deadline=BigInt(Math.floor(Date.now()/1000)+600);const data=encodeFunctionData({abi:pairAbi,functionName:'swap',args:[false,amountIn,quoted*9950n/10000n]});const request={user:user.address,tokenId:CHAIN,target:pool,data,maxToll:fee,maxGasVoid,callGasLimit:700000n,spends:[{token:asset,amount:amountIn}],nftSpends:[],nonce:requestNonce,deadline};

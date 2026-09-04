@@ -124,13 +124,13 @@ export function ChainNameEditor({
       {!editing ? (
         <div className={styles.factValueWithAction}>
           <span className={styles.chainNameValue}>{name || `VOID Chain #${tokenId}`}</span>
-          {holder && <button type="button" className={`${styles.factButton} ${styles.nameEditButton}`} onClick={() => { setDraft(name); setEditing(true); setNotice(null); }} aria-label="Mudar nome da chain" title="Mudar nome">✎</button>}
+          {holder && <button type="button" className={`${styles.factButton} ${styles.nameEditButton}`} onClick={() => { setDraft(name); setEditing(true); setNotice(null); }} aria-label="Edit chain name" title="Edit chain name">✎</button>}
         </div>
       ) : (
         <div className={styles.factEdit}>
           <input value={draft} maxLength={32} onChange={(event) => setDraft(event.target.value)} aria-label="Chain name" />
-          <button type="button" className={styles.factButton} disabled={busy} onClick={save}>{busy ? 'Salvando…' : 'Salvar'}</button>
-          <button type="button" className={styles.factCancel} disabled={busy} onClick={() => { setEditing(false); setDraft(name); setNotice(null); }}>Cancelar</button>
+          <button type="button" className={styles.factButton} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+          <button type="button" className={styles.factCancel} disabled={busy} onClick={() => { setEditing(false); setDraft(name); setNotice(null); }}>Cancel</button>
         </div>
       )}
       {notice && <small className={styles.factNotice} role="status">{notice}</small>}

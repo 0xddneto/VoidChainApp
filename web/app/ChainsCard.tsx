@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChainDetail, ChainRow, ChainStatus } from '@/lib/chains';
 import { DEPLOY } from '@/lib/testnet';
 import chainOneDex from '@/lib/dex-chain1.json';
+import genesis from '@/lib/genesis-v6.json';
 import { Copyable } from './Copyable';
 import { ChainActivationEditor } from './ChainActivationEditor';
 import { ChainL3Migration } from './ChainL3Migration';
@@ -24,6 +25,8 @@ import { DaoPanel } from './DaoPanel';
 import styles from './page.module.css';
 
 const PER_PAGE = 50;
+type SortKey = 'state' | 'transactions' | 'apps' | 'revenue';
+const STATUS_ORDER: Record<ChainStatus, number> = { live: 0, created: 1, paused: 2, reserved: 3 };
 
 const STATUS_LABEL: Record<ChainStatus, string> = {
   live: 'Active',
@@ -61,6 +64,7 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
   const [open, setOpen] = useState<ChainRow | null>(null);
+  const [sort, setSort] = useState<SortKey>('state');
 
   const found = useMemo(() => {
     const raw = query.trim().toLowerCase();
@@ -88,6 +92,19 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
     );
   }, [chains, query]);
 
+  const ordered = useMemo(() => [...found].sort((a, b) => {
+    let difference = 0;
+    if (sort === 'state') difference = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+    if (sort === 'transactions') difference = b.txCount - a.txCount;
+    if (sort === 'apps') difference = b.contractCount - a.contractCount;
+    if (sort === 'revenue') {
+      const revenueA = BigInt(a.revenue || '0');
+      const revenueB = BigInt(b.revenue || '0');
+      difference = revenueA === revenueB ? 0 : revenueA > revenueB ? -1 : 1;
+    }
+    return difference || a.id - b.id;
+  }), [found, sort]);
+
   // A search that lands on page 9 of the old result shows an empty card. The
   // page belongs to the result, not to the session.
   useEffect(() => setPage(0), [query]);
@@ -107,9 +124,9 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
     if (chain) setOpen(chain);
   }, [chains]);
 
-  const pages = Math.max(1, Math.ceil(found.length / PER_PAGE));
+  const pages = Math.max(1, Math.ceil(ordered.length / PER_PAGE));
   const current = Math.min(page, pages - 1);
-  const shown = found.slice(current * PER_PAGE, current * PER_PAGE + PER_PAGE);
+  const shown = ordered.slice(current * PER_PAGE, current * PER_PAGE + PER_PAGE);
 
   if (open) return <Detail chain={open} onBack={() => setOpen(null)} />;
 
@@ -126,6 +143,15 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
             aria-label="Search execution spaces by name, runtime ID or wallet"
           />
         </div>
+        <label className={styles.sortControl}>
+          <span>Order by</span>
+          <select value={sort} onChange={(event) => { setSort(event.target.value as SortKey); setPage(0); }}>
+            <option value="state">State</option>
+            <option value="transactions">Transactions</option>
+            <option value="apps">Apps</option>
+            <option value="revenue">Revenue</option>
+          </select>
+        </label>
         <Pager page={current} pages={pages} total={found.length} onChange={setPage} />
       </div>
 
@@ -140,7 +166,7 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
               <th className={styles.numCell}>Transactions</th>
               <th className={styles.numCell}>Apps</th>
               <th className={styles.numCell}>Addresses</th>
-              <th className={styles.numCell}>Holder earnings</th>
+              <th className={styles.numCell}>Revenue</th>
             </tr>
           </thead>
           <tbody>
@@ -162,7 +188,7 @@ export function ChainsCard({ chains }: { chains: ChainRow[] }) {
                 <td className={styles.numCell}>{nf.format(c.txCount)}</td>
                 <td className={styles.numCell}>{nf.format(c.contractCount)}</td>
                 <td className={styles.numCell}>{nf.format(c.addressCount)}</td>
-                <td className={styles.numCell}>{voidAmount(c.revenue)}</td>
+                <td className={styles.numCell}>{voidAmount(c.revenue)} VOID</td>
               </tr>
             ))}
             {shown.length === 0 && (
@@ -209,6 +235,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
   const [status, setStatus] = useState<ChainStatus>(chain.status);
   const nameChanged = useCallback((next: string) => setDisplayName(next), []);
   const dexApps = new Set([chainOneDex.factory, ...chainOneDex.pools.map((pool) => pool.address)].map((address) => address.toLowerCase()));
+  const nftMarket = genesis.contracts.nftAmm.toLowerCase();
 
   useEffect(() => setDisplayName(chain.name ?? ''), [chain]);
   useEffect(() => setStatus(chain.status), [chain]);
@@ -247,9 +274,10 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
           <div><dt>Transactions</dt><dd>{nf.format(chain.txCount)}</dd></div>
           <div><dt>Apps</dt><dd>{nf.format(chain.contractCount)}</dd></div>
           <div><dt>Addresses</dt><dd>{nf.format(chain.addressCount)}</dd></div>
-          <div><dt title="The holder's 98% share of all chain fees. The protocol receives the other 2%.">Holder earnings</dt><dd>{voidAmount(chain.revenue)} VOID</dd></div>
-          <ChainActivationEditor tokenId={chain.id} onActiveChanged={(next) => setStatus(next ? 'live' : 'paused')} />
+          <div><dt title="The chain owner's 98% share of all transaction fees. The protocol receives the other 2%.">Revenue</dt><dd>{voidAmount(chain.revenue)} VOID</dd></div>
         </dl>
+
+        <ChainActivationEditor tokenId={chain.id} onActiveChanged={(next) => setStatus(next ? 'live' : 'paused')} />
 
         <ChainL3Migration tokenId={chain.id} runtimeId={chain.chainId} />
         <DaoPanel tokenId={chain.id} />
@@ -267,7 +295,11 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
                 <ul className={styles.detailList}>
                   {detail.apps.map((a) => (
                     <li key={a.address}>
-                      <Copyable value={a.address} short />
+                      <span className={styles.appIdentity}>
+                        <strong>{a.address.toLowerCase() === nftMarket ? 'NFT / VOID Market' : dexApps.has(a.address.toLowerCase()) ? 'VoidDEX' : 'Published app'}</strong>
+                        <Copyable value={a.address} short />
+                      </span>
+                      {a.address.toLowerCase() === nftMarket && <a className={styles.chainLink} href="/market">Open market ↗</a>}
                       {chain.id === chainOneDex.chainTokenId && dexApps.has(a.address.toLowerCase()) && <a className={styles.chainLink} href="https://voiddex-alpha.vercel.app" target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Open DEX ↗</a>}
                       <span className={styles.note}>by <Copyable value={a.publisher} short /></span>
                     </li>

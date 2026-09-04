@@ -27,7 +27,7 @@ const rpc = createPublicClient({ transport: http(rpcUrl) });
 const account = privateKeyToAccount(key as Hex);
 const wallet = createWalletClient({ account, transport: http(rpcUrl) });
 const CHAIN = 1n;
-const GAS_VOID = parseEther('300');
+const GAS_VOID = parseEther('20000');
 // Pool publication creates a pair implementation and its guarded gateway in
 // one runtime call. It needs materially more gas than a swap.
 const GAS_LIMIT = 3_000_000n;
@@ -67,7 +67,7 @@ const paymasterAbi = parseAbi([
   'function sponsorWithAssetPermits((address user,uint256 tokenId,address target,bytes data,uint256 maxToll,uint256 maxGasVoid,uint256 callGasLimit,(address token,uint256 amount)[] spends,(address collection,uint256 tokenId)[] nftSpends,uint256 nonce,uint256 deadline),bytes,(address token,address spender,uint256 value,uint256 deadline,uint8 v,bytes32 r,bytes32 s)[]) returns(bool,bytes)',
 ]);
 const paymasterEvents = parseAbi(['event ExecutionFailed(address indexed user,uint256 indexed tokenId,address target,bytes reason)']);
-const tokenAbi = parseAbi(['function mintTo(address,uint256)', 'function nonces(address) view returns(uint256)', 'function name() view returns(string)']);
+const tokenAbi = parseAbi(['function balanceOf(address) view returns(uint256)', 'function mintTo(address,uint256)', 'function nonces(address) view returns(uint256)', 'function name() view returns(string)']);
 const permitTypes = { Permit: [
   { name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }, { name: 'value', type: 'uint256' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' },
 ] } as const;
@@ -141,16 +141,23 @@ const stats = await rpc.readContract({ address: runtime, abi: runtimeAbi, functi
 if (!stats[0]) throw new Error('VOID Chain #1 is not active on V4.');
 
 console.log('\nVOIDDEX — V4 UNISWAP V2 TESTNET DEPLOYMENT\n');
-const liquidity = parseEther('200000');
+const liquidity = parseEther('10000');
 const supply = parseEther('5000000');
 let tUsd: Address;
 let tLink: Address;
 let dex: Address;
 let poolUsd: Address;
 let poolLink: Address;
-if (resumeDex && resumeUsd && resumeLink && resumePoolUsd && resumePoolLink) {
+if (resumeDex && resumeUsd && resumeLink) {
   console.log('[1/5] Resuming published V4 pools');
-  ({ tUsd, tLink, dex, poolUsd, poolLink } = { tUsd: resumeUsd, tLink: resumeLink, dex: resumeDex, poolUsd: resumePoolUsd, poolLink: resumePoolLink });
+  tUsd = resumeUsd; tLink = resumeLink; dex = resumeDex;
+  const names = new Map([[voidToken.toLowerCase(), 'VOID'], [tUsd.toLowerCase(), 'Void Test Dollar'], [tLink.toLowerCase(), 'Void Test Link']]);
+  for (const asset of [tUsd, tLink]) {
+    const existing = await query(dex, factoryArt.abi, 'poolFor', [voidToken, asset]) as Address;
+    if (/^0x0{40}$/i.test(existing)) await sponsored(dex, encodeFunctionData({ abi: factoryArt.abi, functionName: 'createPool', args: [voidToken, asset] }), [], names);
+  }
+  poolUsd = await query(dex, factoryArt.abi, 'poolFor', [voidToken, tUsd]) as Address;
+  poolLink = await query(dex, factoryArt.abi, 'poolFor', [voidToken, tLink]) as Address;
 } else {
   console.log('[1/5] Deploying test assets and DEX implementation');
   tUsd = await deploy('tUSD', tokenArt, ['Void Test Dollar', 'tUSD', supply]);
@@ -165,7 +172,25 @@ if (resumeDex && resumeUsd && resumeLink && resumePoolUsd && resumePoolLink) {
   if (event.eventName !== 'AppPublished') throw new Error('Unexpected app factory event.');
   dex = (event.args as unknown as { app: Address }).app;
   console.log('[3/5] Funding the liquidity provider and creating pools through VOID');
-  await wait(await wallet.writeContract({ account, chain: null, address: voidToken, abi: tokenAbi, functionName: 'mintTo', args: [account.address, liquidity * 4n + parseEther('500')], maxFeePerGas: await gas(), maxPriorityFeePerGas: 0n }));
+  if (deployment.version.startsWith('v6')) {
+    const balance = await rpc.readContract({ address: voidToken, abi: tokenAbi, functionName: 'balanceOf', args: [account.address] });
+    if (balance < liquidity * 2n + GAS_VOID * 4n) {
+      // V6 VOID is fixed supply. Acquire test liquidity through its real pool;
+      // never invoke a legacy token faucet or mint function.
+      const poolAbi = parseAbi(['function reserveVoid() view returns(uint112)', 'function reserveEth() view returns(uint112)', 'function swapEthForVoid(uint256) payable returns(uint256)']);
+      const pool = deployment.testnet.VoidEthPoolV6 as Address;
+      const [rv, re] = await Promise.all([
+        rpc.readContract({ address: pool, abi: poolAbi, functionName: 'reserveVoid' }),
+        rpc.readContract({ address: pool, abi: poolAbi, functionName: 'reserveEth' }),
+      ]);
+      const ethIn = parseEther('0.0002');
+      const effective = ethIn * 9970n / 10000n;
+      const minimum = effective * rv / (re + effective) * 99n / 100n;
+      await wait(await wallet.writeContract({ account, chain: null, address: pool, abi: poolAbi, functionName: 'swapEthForVoid', args: [minimum], value: ethIn, maxFeePerGas: await gas(), maxPriorityFeePerGas: 0n }));
+    }
+  } else {
+    throw new Error('This liquidity deployment now requires the fixed-supply V6 stack.');
+  }
   const namesForCreation = new Map<string, string>([[voidToken.toLowerCase(), 'VOID'], [tUsd.toLowerCase(), 'Void Test Dollar'], [tLink.toLowerCase(), 'Void Test Link']]);
   for (const asset of [tUsd, tLink]) {
     await sponsored(dex, encodeFunctionData({ abi: factoryArt.abi, functionName: 'createPool', args: [voidToken, asset] }), [], namesForCreation);
@@ -178,6 +203,7 @@ const names = new Map<string, string>([[voidToken.toLowerCase(), 'VOID'], [tUsd.
 
 console.log('[4/5] Seeding liquidity through signed VOID requests');
 for (const pool of [poolUsd, poolLink]) {
+  if ((await query(pool, pairArt.abi, 'totalSupply') as bigint) > 0n) continue;
   const [token0, token1] = await Promise.all([
     query(pool, pairArt.abi, 'token0') as Promise<Address>,
     query(pool, pairArt.abi, 'token1') as Promise<Address>,
@@ -189,6 +215,6 @@ console.log('[5/5] Writing VoidDEX configuration');
 const pools = await Promise.all([
   [poolUsd, 'VOID / tUSD', tUsd], [poolLink, 'VOID / tLINK', tLink],
 ].map(async ([address, label, asset]) => ({ address, label, asset, token0: await query(address as Address, pairArt.abi, 'token0') as Address, token1: await query(address as Address, pairArt.abi, 'token1') as Address })));
-writeFileSync(configPath, `${JSON.stringify({ version: 'v4', chainTokenId: 1, runtime, paymaster, appFactory, factory: dex, baseToken: voidToken, pools }, null, 2)}\n`);
+writeFileSync(configPath, `${JSON.stringify({ version: 'v6', chainTokenId: 1, runtime, paymaster, appFactory, factory: dex, baseToken: voidToken, pools }, null, 2)}\n`);
 console.log(`✓ V4 DEX factory: ${dex}`);
 console.log(`✓ pools: ${poolUsd}, ${poolLink}`);

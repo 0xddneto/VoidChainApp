@@ -52,7 +52,10 @@ export default async function ProfileRoute({
             <ProfileAvatarEditor address={profile.address} profile={profile} />
 
             <div className={own.who}>
-              <h1>{profile.displayName ?? 'Unnamed holder'}</h1>
+              <div className={own.nameRow}>
+                <h1>{profile.displayName ?? 'Unnamed holder'}</h1>
+                <ProfileEditor address={profile.address} profile={profile} />
+              </div>
               <Copyable value={profile.address} />
               {profile.bio && <p className={own.bio}>{profile.bio}</p>}
               {profile.socials.length > 0 && (
@@ -71,10 +74,9 @@ export default async function ProfileRoute({
           <dl className={own.numbers}>
             <div><dt>Spaces owned</dt><dd>{nf.format(chains.length)}</dd></div>
             <div><dt>Paid transactions</dt><dd>{nf.format(calls)}</dd></div>
-            <div><dt>Holder earnings</dt><dd>{voidAmount(revenue)} <small>VOID</small></dd></div>
+            <div><dt>Revenue</dt><dd>{voidAmount(revenue)} <small>VOID</small></dd></div>
           </dl>
 
-          <ProfileEditor address={profile.address} profile={profile} />
         </section>
 
         <section className={styles.panel}>
@@ -93,7 +95,7 @@ export default async function ProfileRoute({
                     <th>Runtime ID</th>
                     <th className={styles.numCell}>Transactions</th>
                     <th className={styles.numCell}>Apps</th>
-                    <th className={styles.numCell}>Holder earnings</th>
+                    <th className={styles.numCell}>Revenue</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -110,7 +112,7 @@ export default async function ProfileRoute({
                       </td>
                       <td className={styles.numCell}>{nf.format(c.txCount)}</td>
                       <td className={styles.numCell}>{nf.format(c.contractCount)}</td>
-                      <td className={styles.numCell}>{voidAmount(c.revenue)}</td>
+                      <td className={styles.numCell}>{voidAmount(c.revenue)} VOID</td>
                     </tr>
                   ))}
                 </tbody>

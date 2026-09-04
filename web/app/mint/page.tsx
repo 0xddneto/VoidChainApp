@@ -35,7 +35,7 @@ export default function MintPage() {
   const [chainOk, setChainOk] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<Message>(null);
-  const [minted, setMinted] = useState(0n);
+  const [minted, setMinted] = useState<bigint | null>(null);
   const [hasMinted, setHasMinted] = useState(false);
   const [mintPrice, setMintPrice] = useState(BigInt(P.mintPriceWei));
   const [ethBalance, setEthBalance] = useState(0n);
@@ -45,14 +45,21 @@ export default function MintPage() {
   const [twapRate, setTwapRate] = useState(0n);
 
   const refresh = useCallback(async (wallet: Address | null) => {
-    const [supply, price, voidReserve, ethReserve, rate] = await Promise.all([
+    const [supply, price, voidReserve, ethReserve] = await Promise.all([
       rpc.readContract({ address: C.mint, abi: mintAbi, functionName: 'totalMinted' }),
       rpc.readContract({ address: C.mint, abi: mintAbi, functionName: 'mintPriceWei' }),
       rpc.readContract({ address: C.pool, abi: poolAbi, functionName: 'reserveVoid' }),
       rpc.readContract({ address: C.pool, abi: poolAbi, functionName: 'reserveEth' }),
-      rpc.readContract({ address: C.oracle, abi: oracleAbi, functionName: 'voidPerEth' }),
     ]);
-    setMinted(supply); setMintPrice(price); setReserveVoid(voidReserve); setReserveEth(ethReserve); setTwapRate(rate);
+    setMinted(supply); setMintPrice(price); setReserveVoid(voidReserve); setReserveEth(ethReserve);
+    try {
+      const rate = await rpc.readContract({ address: C.oracle, abi: oracleAbi, functionName: 'voidPerEth' });
+      setTwapRate(rate);
+    } catch {
+      // A stale price pauses sponsorship, but it must never hide mint supply,
+      // wallet balances, or the locked pool from the user.
+      setTwapRate(0n);
+    }
     if (!wallet) { setHasMinted(false); setEthBalance(0n); setVoidBalance(0n); return; }
     const [already, eth, token] = await Promise.all([
       rpc.readContract({ address: C.mint, abi: mintAbi, functionName: 'hasMinted', args: [wallet] }),
@@ -64,6 +71,15 @@ export default function MintPage() {
   useEffect(() => { void refresh(account).catch(() => setMessage({ kind: 'err', text: 'Could not read the testnet. Try again shortly.' })); }, [account, refresh]);
 
   const provider = () => typeof window === 'undefined' ? undefined : (window as any).ethereum;
+  useEffect(() => {
+    const eth = provider(); if (!eth) return;
+    const accountsChanged = (accounts: Address[]) => setAccount(accounts[0] ?? null);
+    const chainChanged = (chain: string) => setChainOk(chain.toLowerCase() === RH_TESTNET.chainIdHex);
+    void eth.request({ method: 'eth_accounts' }).then(accountsChanged).catch(() => undefined);
+    void eth.request({ method: 'eth_chainId' }).then(chainChanged).catch(() => undefined);
+    eth.on?.('accountsChanged', accountsChanged); eth.on?.('chainChanged', chainChanged);
+    return () => { eth.removeListener?.('accountsChanged', accountsChanged); eth.removeListener?.('chainChanged', chainChanged); };
+  }, []);
   async function connect() {
     const eth = provider();
     if (!eth) { setMessage({ kind: 'err', text: 'No wallet found. Install a compatible wallet and reload.' }); return; }
@@ -83,6 +99,8 @@ export default function MintPage() {
     const eth = provider(); if (!eth || !account) return;
     setBusy(label); setMessage({ kind: 'info', text: 'Confirm the exact ETH amount in your wallet…' });
     try {
+      const current = await eth.request({ method: 'eth_chainId' });
+      if (current.toLowerCase() !== RH_TESTNET.chainIdHex) throw new Error('Switch your wallet to Robinhood Chain Testnet.');
       const wallet = createWalletClient({ account, transport: custom(eth) });
       const hash = await wallet.sendTransaction({ account, chain: null, to, data, value });
       const receipt = await rpc.waitForTransactionReceipt({ hash });
@@ -103,17 +121,17 @@ export default function MintPage() {
       'VOID acquired from the locked genesis pool. Future app actions use signed VOID through the Paymaster.');
   };
   const connected = Boolean(account && chainOk); const twapReady = twapRate > 0n;
-  const soldOut = minted >= BigInt(P.maxSupply); const canMint = connected && !hasMinted && !soldOut && ethBalance >= mintPrice && busy === null;
+  const soldOut = minted !== null && minted >= BigInt(P.maxSupply); const canMint = minted !== null && connected && !hasMinted && !soldOut && ethBalance >= mintPrice && busy === null;
 
   return <>
     <header className={styles.header}><div className={styles.bar}><div className={styles.logo}>Void<span>Scan</span></div><a className={styles.back} href="/">← explorer</a><WalletProfileButton /></div></header>
     <main className={styles.wrap}>
       <div className={styles.hero}><div className={styles.testnet}>● Robinhood testnet · V6 genesis</div><h1>Mint a VOID Deed with ETH.</h1><p>The genesis purchase is the only normal ETH entry: it mints one Deed, locks matching VOID/ETH liquidity and funds the Paymaster reserve atomically. After genesis, apps use signed VOID transactions.</p></div>
       <dl className={styles.facts}>
-        <div className={styles.fact}><dt>Minted</dt><dd>{minted.toString()}<small> / {P.maxSupply}</small></dd></div>
+        <div className={styles.fact}><dt>Minted</dt><dd>{minted?.toString() ?? '—'}<small> / {P.maxSupply}</small></dd></div>
         <div className={styles.fact}><dt>Mint price</dt><dd>{ethText(mintPrice, 4)}<small> ETH</small></dd></div>
         <div className={styles.fact}><dt>Locked pool</dt><dd>{voidText(reserveVoid)}<small> VOID</small></dd></div>
-        <div className={styles.fact}><dt>TWAP</dt><dd>{twapReady ? 'ready' : 'warming'}<small>{twapReady ? ' · Paymaster active' : ' · sponsorship paused'}</small></dd></div>
+        <div className={styles.fact}><dt>TWAP</dt><dd>{twapReady ? 'ready' : 'unavailable'}<small>{twapReady ? ' · price available' : ' · sponsorship paused'}</small></dd></div>
       </dl>
       <div className={styles.steps}>
         <section className={styles.step} data-done={connected}><div className={styles.num}>{connected ? '✓' : '1'}</div><div className={styles.stepBody}><h2>Connect wallet</h2><p>Use Robinhood Chain testnet. Connecting never spends anything.</p><button className={styles.btn} onClick={connect} disabled={busy !== null || connected}>{connected ? `${account!.slice(0, 6)}…${account!.slice(-4)}` : 'Connect wallet'}</button></div></section>
