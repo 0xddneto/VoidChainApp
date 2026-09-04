@@ -1,0 +1,46 @@
+name: database-restore-drill
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: voidscan_source
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v6
+      - name: Seed source database
+        run: psql -h 127.0.0.1 -U postgres -d voidscan_source -v ON_ERROR_STOP=1 -f db/schema.sql
+      - name: Create fixture and backup
+        run: |
+          psql -h 127.0.0.1 -U postgres -d voidscan_source -v ON_ERROR_STOP=1 -c "INSERT INTO chains(id,chain_id,status) VALUES (1,46630000,'reserved')"
+          docker exec ${{ job.services.postgres.id }} pg_dump -U postgres -d voidscan_source --format=custom --no-owner --no-privileges --file=/tmp/voidscan.dump
+          docker cp ${{ job.services.postgres.id }}:/tmp/voidscan.dump /tmp/voidscan.dump
+          sha256sum /tmp/voidscan.dump > /tmp/voidscan.dump.sha256
+      - name: Restore into a clean database
+        run: |
+          cd /tmp
+          sha256sum --check voidscan.dump.sha256
+          createdb -h 127.0.0.1 -U postgres voidscan_restore
+          docker exec ${{ job.services.postgres.id }} pg_restore -U postgres -d voidscan_restore --single-transaction --no-owner --no-privileges --exit-on-error /tmp/voidscan.dump
+          test "$(psql -h 127.0.0.1 -U postgres -d voidscan_restore -Atc 'SELECT count(*) FROM chains WHERE id=1 AND chain_id=46630000')" = "1"

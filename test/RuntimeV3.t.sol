@@ -51,6 +51,8 @@ contract RuntimeV3Test is Test {
     address private constant HOLDER = address(0xA11CE);
     address private constant USER = address(0xB0B);
     address private constant FORWARDER = address(0xF0A4);
+    address private constant GUARDIAN = address(0x600D);
+    address private constant RECOVERY = address(0x5AFE);
 
     V3Deed private deed;
     V3Void private token;
@@ -62,6 +64,7 @@ contract RuntimeV3Test is Test {
         runtime = new VoidChainAppRuntimeV3(deed, token, new V3Treasury());
         runtime.setOracle(IVoidPriceOracle(address(new MockOracle())));
         runtime.setForwarderOnce(FORWARDER);
+        runtime.setEmergencyRolesOnce(GUARDIAN, RECOVERY);
         runtime.setDaoFactoryOnce(address(this));
         runtime.registerDao(CHAIN, address(this));
         deed.setOwner(CHAIN, HOLDER);
@@ -103,5 +106,30 @@ contract RuntimeV3Test is Test {
         vm.prank(FORWARDER);
         runtime.executeFor(USER, CHAIN, address(app), abi.encodeCall(V3Recorder.ping, ()), FEE);
         assertEq(app.lastCaller(), USER);
+    }
+
+    function test_guardianCanOnlyPauseAndRecoveryCanOnlyResume() public {
+        vm.prank(GUARDIAN);
+        runtime.emergencyPauseProtocol();
+        vm.prank(FORWARDER);
+        vm.expectRevert(VoidChainAppRuntime.ProtocolPaused.selector);
+        runtime.executeFor(USER, CHAIN, address(app), abi.encodeCall(V3Recorder.ping, ()), FEE);
+
+        vm.prank(GUARDIAN);
+        vm.expectRevert(abi.encodeWithSelector(VoidChainAppRuntime.NotRecoveryGovernor.selector, GUARDIAN));
+        runtime.resumeProtocol();
+        vm.prank(RECOVERY);
+        runtime.resumeProtocol();
+    }
+
+    function test_guardianPausesOneAppButOnlyItsDaoRestoresIt() public {
+        vm.prank(GUARDIAN);
+        runtime.emergencyPauseApp(CHAIN, address(app));
+        vm.prank(FORWARDER);
+        vm.expectRevert(abi.encodeWithSelector(VoidChainAppRuntime.AppPaused.selector, CHAIN, address(app)));
+        runtime.executeFor(USER, CHAIN, address(app), abi.encodeCall(V3Recorder.ping, ()), FEE);
+        runtime.resumeApp(CHAIN, address(app));
+        vm.prank(FORWARDER);
+        runtime.executeFor(USER, CHAIN, address(app), abi.encodeCall(V3Recorder.ping, ()), FEE);
     }
 }

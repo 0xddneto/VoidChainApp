@@ -518,9 +518,12 @@ contract PaymasterTest is Test {
 
         paymaster.burnSurplus();
 
+        uint256 burned = margin / 2;
+        uint256 runwayAmount = margin - burned;
         assertEq(
-            voidToken.balanceOf(paymaster.BURN_ADDRESS()), margin, "only the margin should burn"
+            voidToken.balanceOf(paymaster.BURN_ADDRESS()), burned, "half the margin should burn"
         );
+        assertEq(voidToken.balanceOf(paymaster.runwayTreasury()), runwayAmount, "half funds runway");
         assertEq(paymaster.surplusVoid(), 0, "a margem foi destinada");
         assertEq(paymaster.reimbursableVoid(), cost, "the cost must NOT be burnable");
     }
@@ -652,6 +655,30 @@ contract PaymasterTest is Test {
             abi.encodeWithSelector(VoidPaymaster.NotGovernor.selector, address(this))
         );
         paymaster.setMargin(500);
+    }
+
+    function test_limiteDiarioDaChainFalhaFechado() public {
+        vm.expectRevert(VoidPaymaster.ChainDailyLimitNotSet.selector);
+        vm.prank(governor);
+        paymaster.setDailyChainEthLimit(0);
+        assertGt(paymaster.dailyChainEthLimit(), 0);
+    }
+
+    function test_umaChainNaoConsomeMaisQueSeuOrcamentoDiario() public {
+        vm.prank(governor);
+        paymaster.setDailyChainEthLimit(0.001 ether);
+
+        VoidPaymaster.SponsoredCall memory req = _call(user);
+        bytes memory sig = _sign(req);
+        vm.txGasPrice(1 gwei);
+        vm.expectRevert(abi.encodeWithSelector(
+            VoidPaymaster.ChainDailyBudgetExceeded.selector,
+            CHAIN,
+            2_060_000_000_000_000,
+            0.001 ether
+        ));
+        vm.prank(relayer);
+        paymaster.sponsor(req, sig);
     }
 }
 

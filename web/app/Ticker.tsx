@@ -27,6 +27,10 @@ function line(e: Event): string {
     }
     case 'app':
       return `#${e.chainId} published an application`;
+    case 'failed': {
+      const v = Number(BigInt(e.detail || '0') / 10n ** 15n) / 1000;
+      return `#${e.chainId} app action failed · ${v.toLocaleString('en-US', { maximumFractionDigits: 3 })} VOID gas`;
+    }
     case 'activated':
       return `#${e.chainId} went active`;
   }

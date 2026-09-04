@@ -15,6 +15,9 @@ export const pool =
     connectionString:
       process.env.DATABASE_URL ?? 'postgres://voidscan:voidscan@localhost:5433/voidscan',
     max: 5,
+    connectionTimeoutMillis: 5_000,
+    idleTimeoutMillis: 30_000,
+    statement_timeout: 15_000,
   });
 
 if (process.env.NODE_ENV !== 'production') globalForDb.voidscanPool = pool;

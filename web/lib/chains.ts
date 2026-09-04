@@ -231,7 +231,7 @@ export async function allChains(): Promise<ChainRow[]> {
             COALESCE(s.total_contracts, 0) AS contracts,
             COALESCE(s.total_addresses, 0) AS addresses,
             COALESCE((SELECT holder_revenue FROM chain_migration_baseline b WHERE b.chain_id = c.id), 0)
-              + COALESCE((SELECT sum(holder_share) FROM chain_revenue r WHERE r.chain_id = c.id), 0) AS revenue
+              + COALESCE((SELECT sum(toll - floor(toll * 200 / 10000)) FROM transactions t WHERE t.chain_id = c.id), 0) AS revenue
        FROM chains c
        LEFT JOIN chain_summary s ON s.chain_id = c.id
       ORDER BY c.id`,
@@ -331,7 +331,7 @@ export async function chainDetail(id: number): Promise<ChainDetail> {
 // ---------------------------------------------------------------------------
 
 export interface Event {
-  kind: 'call' | 'app' | 'activated';
+  kind: 'call' | 'failed' | 'app' | 'activated';
   chainId: number;
   detail: string;
   at: Date;
@@ -354,6 +354,9 @@ export async function recentEvents(limit = 30): Promise<Event[]> {
      UNION ALL
      (SELECT 'activated' AS kind, id AS chain_id, '' AS detail, activated_at AS at
         FROM chains WHERE activated_at IS NOT NULL ORDER BY activated_at DESC LIMIT $1)
+     UNION ALL
+     (SELECT 'failed' AS kind, chain_id, gas_void::text AS detail, timestamp AS at
+        FROM sponsored_transactions WHERE success = FALSE ORDER BY timestamp DESC LIMIT $1)
      ORDER BY at DESC
      LIMIT $1`,
     [limit],

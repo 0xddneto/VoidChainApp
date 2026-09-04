@@ -26,11 +26,15 @@
   to the 48-hour protocol timelock before changing either public manifest.
 - [ ] Confirm both public origins return CSP, frame-denial, MIME-sniffing and
   referrer-policy headers and both RPC endpoints pass read-only health checks.
-- [ ] Apply all migrations through `005-v10-history-baseline.sql` to the shared database, set the
+- [ ] Apply all migrations through `007-sponsored-receipts.sql` to the shared database, set the
   same `DATABASE_URL` on VoidScan and VoidDEX, then prove duplicate nonce and
   per-minute rate-limit rejection from separate processes.
 - [ ] Set and record `INDEXER_CONFIRMATIONS`; verify that the newest indexed
   block remains at least that many blocks behind the parent tip.
+- [ ] Confirm each relayer uses a different key, its ETH balance alert is live,
+  and the Paymaster per-chain daily ETH limit is calibrated below the funded reserve.
+- [ ] Enable provider point-in-time recovery, create an encrypted off-provider
+  backup and complete a restore drill using `docs/database-backups.md`.
 
 ## Mainnet gate
 
@@ -53,3 +57,7 @@
   multisig; test schedule, cancellation, delayed execution and key loss.
 - [ ] If claiming independent per-NFT networks, complete the rollup requirements
   in `architecture.md`; do not ship the shared runtime under that claim.
+- [ ] Deploy and verify `VoidL3MigrationRegistry`; treat its `Live` status as a
+  holder attestation, not proof that the external L3 or bridge is safe.
+- [ ] Open a public bug bounty only after the independent audit scope and exact
+  deployed bytecode have been frozen.

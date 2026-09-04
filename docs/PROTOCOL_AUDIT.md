@@ -1,8 +1,8 @@
 # Protocol review — 2026-09-04
 
-## V10 exact-ledger migration
+## V10 deployment and V11 source hardening
 
-The current public candidate supersedes the earlier V8 testnet control plane.
+The current public deployment supersedes the earlier V8 testnet control plane.
 V10 makes the Runtime oracle one-time and immutable,
 places Paymaster and Treasury administration behind a public 48-hour timelock,
 preserves the block-pinned Deed owners and the exact one-billion-token ledger,
@@ -18,7 +18,7 @@ It is an internal engineering review, not an independent security audit.
 
 Evidence collected after the changes:
 
-- 307 Foundry tests pass, including fuzz, invariant, red-team and scale suites.
+- Foundry validation includes fuzz, invariant, red-team and scale suites; the V11 validation record tracks the current run.
 - VoidScan and VoidDEX production builds pass; script and indexer typechecks pass.
 - The V10 migration tests reconcile the exact token ledger, migrated Deeds,
   resumed VOID/ETH pool and non-duplicated escrow liabilities.
@@ -43,8 +43,17 @@ Evidence collected after the changes:
 | Medium | VoidScan shipped obsolete V2/V3/V4 pending manifests, a V4 activation screen and an unused old market resolver. | Pending manifests and resolver were removed; `/migrate` is a harmless redirect and no longer imports retired contracts. |
 | Medium | README, architecture, Paymaster operations and release steps described the pre-genesis VOID mint flow and obsolete deploy command. | Documentation now describes V7 ETH genesis, the NFT/VOID market, five-minute testnet TWAP, owner claim and the canonical V7 deployment/audit flow. |
 | Low | VoidDEX let Next.js guess the monorepo root and emitted a multiple-lockfile warning. | Its Turbopack root is now explicit. |
-| High | Concurrent HTTP submissions could relay the same signed user nonce from separate serverless instances before either transaction mined. | Both public relays now reserve `(surface, user, nonce)` atomically in Postgres, rate-limit by wallet and hashed client identifier, and fail closed when admission control is unavailable. |
+| High | Concurrent HTTP submissions could relay the same signed user nonce from separate serverless instances before either transaction mined. | Both public relays now reserve `(paymaster, user, nonce)` atomically across products, serialize each relayer EOA nonce with a database advisory lock, record broadcast outcomes, rate-limit by wallet and hashed client identifier, and fail closed when admission control is unavailable. |
 | Medium | The explorer indexed the parent-chain tip immediately and had no explicit confirmation policy. | Both indexer implementations now hold back 20 parent blocks by default; the depth is configurable with `INDEXER_CONFIRMATIONS`. |
+| High | One compromised or abusive ChainApp could consume the shared ETH reserve while staying inside per-call limits. | The V11 Paymaster source adds a governance-bounded 24-hour ETH budget per Deed in addition to the existing per-block, gas-price and signed user caps. A zero policy fails closed. |
+| High | The DEX pair trusted requested token amounts and could mint phantom LP or corrupt reserves with fee-on-transfer tokens. | V4 measures balance deltas on deposits and swaps, checks actual output deltas, updates from canonical balances and explicitly rejects fee-on-transfer assets. |
+| High | Runtime incident response depended on ordinary governance paths. | A one-time pause-only guardian can halt the protocol or an app; only the recovery governor resumes the protocol and only the affected chain DAO resumes that app. The guardian cannot resume or change policy. |
+| Medium | Successful execution events hid failed inner app calls and gas cost. | Both indexers now correlate Paymaster `Sponsored` and `ExecutionFailed` events and persist success, toll, gas VOID, margin, ETH reimbursement and failure bytes. |
+| Medium | Reorg/deployment resets used destructive cascades that could erase wallet profiles. | Projection resets now delete only derived chain data and preserve wallet-authored profile records. |
+| Medium | The 10% DAO quorum used total supply and was unreachable while most VOID remained in escrow. | Governance supply excludes constructor-fixed reserves and each chain uses 1% of eligible circulating supply; voting remains wallet balance with no token lock and lasts five days. |
+| Medium | Emission inventory had no rolling release ceiling. | `VoidEmissionVaultV11` enforces both a timelock and immutable per-epoch cap. |
+| Medium | An L3 handoff was only a downloaded checklist. | `VoidL3MigrationRegistry` records a holder-controlled, collision-free EIP-155 reservation and hashes of the audited configuration, RPC and explorer. It explicitly does not attest external safety. |
+| Medium | Profile upload size relied on a declared header and accepted content by label alone. | The API measures the actual request and decoded image bytes, verifies PNG/JPEG/WebP magic, rate-limits through the shared server path and verifies EOA or ERC-1271 signatures. |
 
 ## Wallet prompt invariant
 
@@ -89,10 +98,10 @@ These are not presented as solved:
 2. The contracts have no external audit. Mainnet deployment remains blocked.
 3. Testnet governance is a single test wallet. Production needs a multisig,
    timelock policy, rotation procedure and public role inventory.
-4. The public RPC, Vercel relayer and single database remain availability
-   dependencies. RPC fallback, persistent relayer rate limiting and incident
-   response now exist; production still needs independent monitoring and
-   tested automated database backups.
+4. The public RPC, Vercel relayers and single database remain availability
+   dependencies. RPC fallback, persistent relayer coordination, independent
+   service keys, monitoring and a reproducible restore drill now exist;
+   production still needs provider PITR and an encrypted off-provider backup.
 5. The testnet's five-minute TWAP and shallow valueless liquidity do not prove
    manipulation resistance under real capital.
 6. The indexer mirrors parent-chain events and does not itself prove L3 state.
@@ -104,8 +113,8 @@ These are not presented as solved:
 
 ## Release decision
 
-Suitable for continued public **testnet** testing after deployment of this
-frontend revision. Not approved for mainnet or for marketing as independent
-blockchains. Any Solidity change requires a new deployment, bytecode
-verification and full live acceptance run; this pass intentionally does not
-silently replace the verified V10 contracts.
+The currently published V10 addresses remain suitable for continued public
+**testnet** testing. V11 source is not a live deployment yet and must pass a new
+snapshot, deployment, explorer verification and live acceptance run before the
+site points at it. Neither version is approved for mainnet or for marketing as
+1,111 independent blockchains.

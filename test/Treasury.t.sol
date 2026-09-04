@@ -200,6 +200,16 @@ contract TreasuryTest is Test {
         assertEq(voidToken.balanceOf(alice), earned);
     }
 
+    function test_AnyoneCanPayGasButClaimForCannotRedirectRevenue() public {
+        _settle(TOKEN, 10 ether);
+        uint256 earned = treasury.claimable(alice);
+        vm.prank(address(0xBEEF));
+        treasury.claimFor(alice);
+        assertEq(voidToken.balanceOf(alice), earned);
+        assertEq(voidToken.balanceOf(address(0xBEEF)), 0);
+        assertEq(treasury.claimable(alice), 0);
+    }
+
     // -----------------------------------------------------------------------
     // A conta
     // -----------------------------------------------------------------------

@@ -1,0 +1,56 @@
+name: security-nightly
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  heavy-foundry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: forge build --sizes
+      - run: forge test -vvv --fuzz-runs 4096
+      - run: forge test -vvv --match-contract RedTeam4
+        env:
+          FOUNDRY_INVARIANT_RUNS: 1024
+
+  slither:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npm ci
+      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: crytic/slither-action@v0.4.2
+        with:
+          fail-on: high
+
+  dependencies-and-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npm ci && npm audit --omit=dev
+      - run: npm ci && npm audit --omit=dev
+        working-directory: web
+      - run: npm ci && npm audit --omit=dev
+        working-directory: indexer

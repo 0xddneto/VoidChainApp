@@ -6,7 +6,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { DEPLOY, rhTransport } from '@/lib/testnet';
-import { RelayAdmissionError, relayClientId, reserveRelay } from '@/lib/relay-guard';
+import { RelayAdmissionError, relayClientId, reserveRelay, submitWithRelayerLock } from '@/lib/relay-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,7 +48,7 @@ async function quote(functionName: 'randomBuyQuote' | 'specificBuyQuote') {
 
 /** Relays only the three published NFT/VOID market actions. */
 export async function POST(request: Request) {
-  const key = process.env.PAYMASTER_RELAYER_PRIVATE_KEY;
+  const key = process.env.VOIDSCAN_RELAYER_PRIVATE_KEY;
   if (!/^0x[0-9a-fA-F]{64}$/.test(key ?? '')) return reject('VOID relay is not configured.', 503);
   const contentLength = Number(request.headers.get('content-length') ?? '0');
   if (!Number.isFinite(contentLength) || contentLength > 65_536) return reject('Relay request is too large.', 413);
@@ -119,8 +119,9 @@ export async function POST(request: Request) {
   }
 
   let reservation: Awaited<ReturnType<typeof reserveRelay>>;
+  let broadcast = false;
   try {
-    reservation = await reserveRelay('voidscan-market', user, nonce, signature, relayClientId(request));
+    reservation = await reserveRelay('voidscan-market', PAYMASTER, user, nonce, signature, relayClientId(request));
   } catch (error) {
     if (error instanceof RelayAdmissionError) return reject(error.message, error.status);
     return reject('Relay admission control is unavailable.', 503);
@@ -139,11 +140,15 @@ export async function POST(request: Request) {
       await reservation.failed();
       return reject('The market operation would fail. No transaction was sent.', 409);
     }
-    const hash = await wallet.sendTransaction({ account, chain: null, to: PAYMASTER, data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }) });
-    await reservation.submitted(hash);
-    return NextResponse.json({ hash });
+    const submission = await submitWithRelayerLock(account.address, 'voidscan-market', () => wallet.sendTransaction({ account, chain: null, to: PAYMASTER, data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }) }));
+    broadcast = true;
+    await reservation.submitted(submission.hash);
+    const receipt = await rpc.waitForTransactionReceipt({ hash: submission.hash, timeout: 45_000 });
+    await submission.confirmed(receipt.status === 'success');
+    if (receipt.status !== 'success') return reject('Sponsored market transaction reverted.', 502);
+    return NextResponse.json({ hash: submission.hash });
   } catch (error) {
-    await reservation.failed().catch(() => undefined);
+    if (!broadcast) await reservation.failed().catch(() => undefined);
     console.error('Market relay failed', error instanceof Error ? error.name : 'UnknownError');
     return reject('Relay refused the signed market action.', 502);
   }

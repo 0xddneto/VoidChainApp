@@ -72,7 +72,7 @@ mandatory DAO proposal because the owner bears the deployment cost.
 | `contracts/apps/` | Protocol examples and generic registered application gateways. |
 | `contracts/child/` | Research scaffold for a future independent L3; not part of the live runtime. |
 | `test/` | Unit, fuzz, invariant, red-team, scale and integration tests. |
-| `script/` | V10 deployment, verification, snapshot, audit and keeper operations. |
+| `script/` | Versioned deployment, verification, snapshot, audit and keeper operations. |
 | `indexer/` | Event indexer and Postgres projection used by VoidScan. |
 | `db/` | Versioned database schema and migrations. |
 | `infra/` | Local Postgres/runtime infrastructure and operator notes. |
@@ -151,7 +151,7 @@ the header.
 
 ## Safety status
 
-The local suite includes 308 unit, fuzz, invariant, attack and high-load tests, and
+The local suite includes unit, fuzz, invariant, attack and high-load tests, and
 the current V10 deployment has live testnet acceptance evidence. V10 freezes the
 runtime oracle after initial configuration and places Paymaster and Treasury
 administration behind a public 48-hour timelock. Neither this evidence nor the
@@ -164,6 +164,18 @@ The latest [V10 load validation](docs/V10_LOAD_VALIDATION.md) covers 1,000
 provisioned users, 4,800 mixed application calls, a separate 256-user V10
 no-allowance run, 256,000 invariant operations and a bounded live testnet
 canary indexed by VoidScan.
+
+V11 hardening in source adds cross-service relayer nonce serialization, exact
+Paymaster receipts including failed inner calls, a per-chain daily ETH budget,
+pause-only emergency roles, permissionless revenue claiming to the beneficiary,
+bounded emission epochs and an on-chain L3 migration registry. These Solidity
+changes require a new verified testnet deployment before they are public state;
+the currently published addresses remain the verified V10 deployment until that
+acceptance gate is complete.
+
+Operational roles and the recommended mainnet wallet count are documented in
+[`docs/OPERATOR_WALLETS.md`](docs/OPERATOR_WALLETS.md). Backup and restore
+procedures are in [`docs/database-backups.md`](docs/database-backups.md).
 
 ## License
 

@@ -18,6 +18,27 @@ export const pool = new pg.Pool({ connectionString: DATABASE_URL, max: 8 });
 
 export const TOTAL_CHAINS = 1_111;
 
+/** Clears only chain-derived projections. User profiles, declared expenses and
+ * social metadata survive a deployment cutover or confirmed-chain reorg. */
+export async function resetProjection(client: pg.PoolClient): Promise<void> {
+  await client.query('DELETE FROM blocks');
+  await client.query('DELETE FROM transactions');
+  await client.query('DELETE FROM contracts');
+  await client.query('DELETE FROM chain_daily_stats');
+  await client.query('DELETE FROM proposals');
+  await client.query('DELETE FROM chain_revenue');
+  await client.query('DELETE FROM sponsored_transactions');
+  await client.query(
+    `UPDATE chains SET name=NULL, description=NULL, image_uri=NULL,
+       external_url=NULL, owner_address=NULL, status='reserved', activated_at=NULL,
+       is_hot=FALSE, last_indexed_block=0, last_indexed_hash=NULL, updated_at=now()`,
+  );
+  await client.query(
+    `UPDATE chain_summary SET total_txs=0,total_contracts=0,total_addresses=0,
+       txs_24h=0,activity_score=0,last_block_at=NULL,updated_at=now()`,
+  );
+}
+
 /**
  * Makes the database follow exactly the deployment in deployment.json.
  *
@@ -56,10 +77,7 @@ export async function alignDeployment(runtime: string, deed: string): Promise<bo
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // Every table reached through `chains` is deployment-derived. CASCADE
-    // removes stale ownership, apps, DAO mirrors and financial mirrors without
-    // touching user_profiles or user_socials, which are wallet-local data.
-    await client.query('TRUNCATE TABLE chains CASCADE');
+    await resetProjection(client);
     await client.query('DELETE FROM indexer_state WHERE id = TRUE');
     await client.query(
       `INSERT INTO indexer_deployment (id, runtime_address, deed_address, deploy_block)
@@ -127,6 +145,22 @@ export interface NameRow {
   chain: number;
   name: string;
 }
+export interface SponsoredRow {
+  chain: number;
+  hash: string;
+  logIndex: number;
+  blockNumber: bigint;
+  user: string;
+  relayer: string;
+  target: string | null;
+  success: boolean;
+  toll: bigint;
+  gasVoid: bigint;
+  marginVoid: bigint;
+  ethReimbursed: bigint;
+  reason: string | null;
+  timestamp: number;
+}
 
 /**
  * Creates the 1,111 reserved rows, once.
@@ -176,6 +210,7 @@ export async function writePass(
     apps: AppRow[],
     removedApps: RemovedAppRow[],
     revenueRows: RevenueRow[],
+  sponsoredRows: SponsoredRow[],
   owners: OwnerRow[],
   names: NameRow[],
   newHead: bigint,
@@ -238,6 +273,20 @@ export async function writePass(
          VALUES ($1,to_timestamp($2),$3,$4,$5,0,$6,$7,$8)
          ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING`,
         [revenue.chain, revenue.timestamp, toBytes(revenue.hash), revenue.logIndex, revenue.gross.toString(), revenue.protocolFee.toString(), revenue.holderShare.toString(), toBytes(revenue.holder)],
+      );
+    }
+    for (const sponsored of sponsoredRows) {
+      await client.query(
+        `INSERT INTO sponsored_transactions
+           (chain_id,tx_hash,log_index,block_number,user_address,relayer_address,target_address,
+            success,toll,gas_void,margin_void,eth_reimbursed,failure_reason,timestamp)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,to_timestamp($14))
+         ON CONFLICT (chain_id,tx_hash,log_index) DO NOTHING`,
+        [sponsored.chain, toBytes(sponsored.hash), sponsored.logIndex,
+          sponsored.blockNumber.toString(), toBytes(sponsored.user), toBytes(sponsored.relayer),
+          toBytes(sponsored.target), sponsored.success, sponsored.toll.toString(),
+          sponsored.gasVoid.toString(), sponsored.marginVoid.toString(),
+          sponsored.ethReimbursed.toString(), toBytes(sponsored.reason), sponsored.timestamp],
       );
     }
 

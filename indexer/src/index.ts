@@ -16,9 +16,9 @@ import 'dotenv/config';
 import { createPublicClient, fallback, http, parseAbi, parseAbiItem, type Log, type PublicClient } from 'viem';
 import {
   CHAIN_ID_BASE, CONFIRMATIONS, DEED, MAX_BLOCKS_PER_PASS,
-  PARENT_RPC, POLL_INTERVAL_MS, RUNTIME, TREASURY,
+  PARENT_RPC, POLL_INTERVAL_MS, RUNTIME, TREASURY, PAYMASTER,
 } from './config.js';
-import { alignDeployment, cursor, pool, seedChains, writePass, type BlockInfo, type CallRow, type StatusRow } from './db.js';
+import { alignDeployment, cursor, pool, resetProjection, seedChains, writePass, type BlockInfo, type CallRow, type StatusRow } from './db.js';
 
 const EVENTS = {
   activated: parseAbiItem('event ChainAppActivated(uint256 indexed tokenId, address activator)'),
@@ -38,6 +38,8 @@ const EVENTS = {
   renamed: parseAbiItem(
     'event VoidChainRenamed(uint256 indexed tokenId, string previousName, string newName)',
   ),
+  sponsored: parseAbiItem('event Sponsored(address indexed user,address indexed relayer,uint256 indexed tokenId,uint256 toll,uint256 gasVoid,uint256 marginVoid,uint256 ethReimbursed)'),
+  executionFailed: parseAbiItem('event ExecutionFailed(address indexed user,uint256 indexed tokenId,address target,bytes reason)'),
 } as const;
 
 const client = createPublicClient({
@@ -117,7 +119,7 @@ async function scan(): Promise<number> {
       const reset = await pool.connect();
       try {
         await reset.query('BEGIN');
-        await reset.query('TRUNCATE TABLE chains CASCADE');
+        await resetProjection(reset);
         await reset.query('DELETE FROM indexer_state WHERE id = TRUE');
         await reset.query('COMMIT');
       } catch (error) {
@@ -151,10 +153,12 @@ async function scan(): Promise<number> {
   const revenue = await client.getLogs({ address: TREASURY, event: EVENTS.revenue, ...range });
   const transfers = await client.getLogs({ address: DEED, event: EVENTS.transfer, ...range });
   const renamed = await client.getLogs({ address: DEED, event: EVENTS.renamed, ...range });
+  const sponsored = await client.getLogs({ address: PAYMASTER, event: EVENTS.sponsored, ...range });
+  const failures = await client.getLogs({ address: PAYMASTER, event: EVENTS.executionFailed, ...range });
 
-  const all = [...activated, ...deactivated, ...reactivated, ...executed, ...registered, ...unregistered, ...revenue, ...transfers, ...renamed];
+  const all = [...activated, ...deactivated, ...reactivated, ...executed, ...registered, ...unregistered, ...revenue, ...transfers, ...renamed, ...sponsored, ...failures];
   if (all.length === 0) {
-    await writePass([], [], [], [], [], [], [], to, (await client.getBlock({ blockNumber: to })).hash);
+    await writePass([], [], [], [], [], [], [], [], to, (await client.getBlock({ blockNumber: to })).hash);
     return 0;
   }
 
@@ -189,6 +193,21 @@ async function scan(): Promise<number> {
     })),
     unregistered.map((l) => ({ chain: Number(l.args.tokenId!), app: l.args.app! })),
     revenue.map((l) => ({ chain: Number(l.args.tokenId!), holder: l.args.deedHolder!, gross: l.args.gross!, protocolFee: l.args.protocolFee!, holderShare: l.args.holderShare!, hash: l.transactionHash!, logIndex: l.logIndex!, timestamp: info.get(l.blockNumber!)!.timestamp })),
+    sponsored.map((log) => {
+      const previous = sponsored.filter((other) => other.transactionHash === log.transactionHash && other.logIndex! < log.logIndex!)
+        .reduce((index, other) => Math.max(index, other.logIndex!), -1);
+      const failed = failures.find((other) => other.transactionHash === log.transactionHash
+        && other.args.user === log.args.user && other.args.tokenId === log.args.tokenId
+        && other.logIndex! > previous && other.logIndex! < log.logIndex!);
+      return {
+        chain: Number(log.args.tokenId!), hash: log.transactionHash!, logIndex: log.logIndex!,
+        blockNumber: log.blockNumber!, user: log.args.user!, relayer: log.args.relayer!,
+        target: failed?.args.target ?? null, success: !failed, toll: log.args.toll!,
+        gasVoid: log.args.gasVoid!, marginVoid: log.args.marginVoid!,
+        ethReimbursed: log.args.ethReimbursed!, reason: failed?.args.reason ?? null,
+        timestamp: info.get(log.blockNumber!)!.timestamp,
+      };
+    }),
     // The last Transfer of each token within the batch is its owner at the end.
     transfers.map((l) => ({ chain: Number(l.args.tokenId!), owner: l.args.to! })),
     renamed.map((l) => ({ chain: Number(l.args.tokenId!), name: l.args.newName! })),
