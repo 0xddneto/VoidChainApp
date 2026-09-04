@@ -18,7 +18,22 @@ import { privateKeyToAccount } from 'viem/accounts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
-const deployment = JSON.parse(readFileSync(resolve(root, process.env.VOID_DEPLOYMENT_FILE ?? 'web/lib/deployment.json'), 'utf8'));
+const rawDeployment = JSON.parse(readFileSync(resolve(root, process.env.VOID_DEPLOYMENT_FILE ?? 'web/lib/deployment.json'), 'utf8'));
+// A staged migration uses compact labels until acceptance. Normalize it here
+// so apps can be proven before the public manifest is switched.
+const deployment = rawDeployment.production ? rawDeployment : {
+  version: rawDeployment.version,
+  network: rawDeployment.network,
+  production: {
+    VoidChainAppRuntime: rawDeployment.contracts.runtime,
+    VoidPaymaster: rawDeployment.contracts.paymaster,
+    VoidChainAppFactoryV3: rawDeployment.contracts.appFactory,
+  },
+  testnet: {
+    VoidTestToken: rawDeployment.contracts.token,
+    VoidEthPoolV6: rawDeployment.contracts.pool,
+  },
+};
 const out = resolve(root, 'out');
 const key = process.env.DEPLOYER_PRIVATE_KEY;
 if (!/^0x[0-9a-fA-F]{64}$/.test(key ?? '')) throw new Error('DEPLOYER_PRIVATE_KEY is required.');
@@ -172,7 +187,7 @@ if (resumeDex && resumeUsd && resumeLink) {
   if (event.eventName !== 'AppPublished') throw new Error('Unexpected app factory event.');
   dex = (event.args as unknown as { app: Address }).app;
   console.log('[3/5] Funding the liquidity provider and creating pools through VOID');
-  if (/^v[67]/.test(deployment.version)) {
+  if (/^v[678]/.test(deployment.version)) {
     const balance = await rpc.readContract({ address: voidToken, abi: tokenAbi, functionName: 'balanceOf', args: [account.address] });
     if (balance < liquidity * 2n + GAS_VOID * 4n) {
       // V6 VOID is fixed supply. Acquire test liquidity through its real pool;

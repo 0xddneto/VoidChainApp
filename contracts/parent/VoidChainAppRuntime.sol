@@ -198,8 +198,11 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     address private executingSpendPayer;
 
     /// @notice The oracle that converts the toll from dollars into VOID.
-    /// @dev    Replaceable by the deed's governance: oracles break, and an
-    ///         immutable one here would stop all 1,111 chains at once.
+    /// @dev    Written once during deployment and then frozen. An earlier
+    ///         version left this replaceable by the deployer, which silently
+    ///         gave one EOA control over the economics of all 1,111 chains.
+    ///         Replacing a failed oracle now requires an explicit runtime
+    ///         migration whose contracts and state can be reviewed in public.
     IVoidPriceOracle public oracle;
 
     /// @notice THERE IS NO GLOBAL TOLL CEILING ANY MORE.
@@ -384,6 +387,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     error NotTheForwarder(address who);
     error ForwarderAlreadySet(address current);
     error DaoFactoryAlreadySet(address current);
+    error OracleAlreadySet(address current);
     error NotTheDaoFactory(address who);
     error NotThisChainsDao(uint256 tokenId, address who);
     error DaoAlreadyRegistered(uint256 tokenId, address current);
@@ -535,9 +539,10 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         apps[tokenId].feePerCallUsd = feePerCallUsd;
     }
 
-    /// @notice Points at the oracle. Protocol governance, not the chain owner's.
+    /// @notice Pins the protocol oracle once during deployment.
     function setOracle(IVoidPriceOracle oracle_) external {
         if (msg.sender != deployer) revert NotTheDeployer(msg.sender);
+        if (address(oracle) != address(0)) revert OracleAlreadySet(address(oracle));
         if (address(oracle_) == address(0)) revert ZeroAddress();
         oracle = oracle_;
         emit OracleUpdated(address(oracle_));

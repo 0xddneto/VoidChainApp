@@ -5,6 +5,7 @@ import deployment from '../../web/lib/dex-chain1.json';
 export const DEX = {
   chainId: 46630,
   rpc: 'https://robinhood-testnet.drpc.org',
+  rpcUrls: ['https://robinhood-testnet.drpc.org', 'https://rpc.testnet.chain.robinhood.com'],
   voidToken: getAddress(deployment.baseToken),
   runtime: getAddress(deployment.runtime),
   paymaster: getAddress(deployment.paymaster),

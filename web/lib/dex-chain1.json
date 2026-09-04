@@ -1,26 +1,14 @@
 {
-  "version": "v7-migrated-eth-genesis-testnet",
+  "version": "v8-oracle-frozen-timelocked-testnet",
   "chainTokenId": 1,
-  "runtime": "0xe42eb31583513552cde8dbd578698c3f88d3b04d",
-  "paymaster": "0x7ef30a8567e1258edca38d068e9fbac49b40bad2",
-  "appFactory": "0x2178074c70f11cf46ca7d5ab419f723207d4ab05",
-  "factory": "0x2b69E20832bBf295347e5E3803D1186dcaDa6D09",
-  "baseToken": "0x87afe8d8c85f09345227127e610a20e732990456",
+  "runtime": "0x2912f4a8943e4a1434087ba78f18e102cce303d2",
+  "paymaster": "0xf66e7c04afc17f65526c325a089b87c15130bc06",
+  "appFactory": "0xa22619093b07250cad16047262ebf00ff09a851f",
+  "factory": "0xB392B14fbDAb4411Ea7090f5B58be04548C00794",
+  "baseToken": "0x7defce421374496709d470b17d37118028888dc5",
   "pools": [
-    {
-      "address": "0x30Fd71c17A4d2e2c425bF259685c326d53fC640C",
-      "label": "VOID / tUSD",
-      "asset": "0x40a13e56526e8b626fb3633e5f61d6731278a804",
-      "token0": "0x40A13e56526E8B626fb3633E5F61d6731278A804",
-      "token1": "0x87afE8D8c85F09345227127E610a20E732990456"
-    },
-    {
-      "address": "0x9aa77BEF37DCFBAa30a399EC181975832e422644",
-      "label": "VOID / tLINK",
-      "asset": "0xf4354657b33631a7c487e36fdf1a727e405ee947",
-      "token0": "0x87afE8D8c85F09345227127E610a20E732990456",
-      "token1": "0xf4354657b33631A7c487e36Fdf1A727E405eE947"
-    }
+    { "address": "0xd740641198d1C460436d6bef7f036BbF38D81BC3", "label": "VOID / tUSD", "asset": "0x2c106f69c69bba83561fc295ccab6435075610a2", "token0": "0x2c106F69c69BbA83561fc295CCAb6435075610A2", "token1": "0x7dEfce421374496709d470b17D37118028888dC5" },
+    { "address": "0xFA80E65C3d7815a713807593574a7Fdee73FB11f", "label": "VOID / tLINK", "asset": "0xb3c6cd5fde7ad47471c5251f48db42883f9e862f", "token0": "0x7dEfce421374496709d470b17D37118028888dC5", "token1": "0xb3c6cD5FDe7ad47471c5251f48dB42883f9E862f" }
   ],
-  "faucet": "0xAdC3aE0f0999A87D10c686Ea064b18DE7C3A2663"
+  "faucet": "0x56DC638cc4778Ac43a82C640B7ebefC1adEc8b38"
 }

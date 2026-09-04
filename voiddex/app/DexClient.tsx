@@ -1,19 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { createPublicClient, createWalletClient, custom, encodeFunctionData, formatUnits, http, maxUint256, parseAbi, parseUnits, type Address, type Hex } from 'viem';
+import { createPublicClient, createWalletClient, custom, encodeFunctionData, fallback, formatUnits, http, maxUint256, parseAbi, parseUnits, type Address, type Hex } from 'viem';
 import { DEX, MAX_GAS_VOID, CALL_GAS_LIMIT } from './dex-config';
 import { requireSponsoredSuccess } from '../../web/lib/sponsored-receipt';
 
-const RPC = 'https://robinhood-testnet.drpc.org';
 const CHAIN_ID = 46_630;
 const RUNTIME = DEX.runtime;
 const PAYMASTER = DEX.paymaster;
 const VOID = DEX.voidToken;
 const FAUCET = DEX.faucet;
 const PAIRS = DEX.pools;
-const RH = { chainId:'0xb626', chainName:'Robinhood Chain Testnet', nativeCurrency:{name:'Ether',symbol:'ETH',decimals:18}, rpcUrls:[RPC], blockExplorerUrls:['https://explorer.testnet.chain.robinhood.com'] };
-const rpc = createPublicClient({ transport:http(RPC) }); const zero=0n;
+const RH = { chainId:'0xb626', chainName:'Robinhood Chain Testnet', nativeCurrency:{name:'Ether',symbol:'ETH',decimals:18}, rpcUrls:DEX.rpcUrls, blockExplorerUrls:['https://explorer.testnet.chain.robinhood.com'] };
+const rpc = createPublicClient({ transport:fallback(DEX.rpcUrls.map((url) => http(url))) }); const zero=0n;
 const erc20=parseAbi(['function nonces(address) view returns(uint256)','function allowance(address,address) view returns(uint256)']);
 const paymasterAbi=parseAbi(['function nonces(address) view returns(uint256)']);
 const pairAbi=parseAbi(['function reserve0() view returns(uint256)','function reserve1() view returns(uint256)','function totalSupply() view returns(uint256)','function balanceOf(address) view returns(uint256)','function quote(bool,uint256) view returns(uint256)','function swap(bool,uint256,uint256) returns(uint256)','function addLiquidity(uint256,uint256,uint256) returns(uint256)','function removeLiquidity(uint256,uint256,uint256) returns(uint256,uint256)']);

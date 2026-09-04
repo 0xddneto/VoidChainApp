@@ -7,10 +7,9 @@ import {
   custom,
   encodeFunctionData,
   formatEther,
-  http,
   type Address,
 } from 'viem';
-import { ABI, DEPLOY, RH_TESTNET } from '@/lib/testnet';
+import { ABI, DEPLOY, RH_TESTNET, rhTransport } from '@/lib/testnet';
 import styles from './page.module.css';
 
 type Provider = {
@@ -21,7 +20,7 @@ type Provider = {
 
 type RevenueState = { pending: bigint; parked: bigint; ready: bigint };
 const EMPTY: RevenueState = { pending: 0n, parked: 0n, ready: 0n };
-const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
+const rpc = createPublicClient({ transport: rhTransport() });
 const getProvider = () => typeof window === 'undefined' ? undefined : (window as Window & { ethereum?: Provider }).ethereum;
 
 function accountFrom(value: unknown): Address | null {
@@ -69,9 +68,12 @@ export function RevenueClaimButton({ tokenId, owner }: { tokenId: number; owner:
 
   async function send(client: ReturnType<typeof createWalletClient>, to: Address, functionName: string, args: readonly unknown[] = []) {
     const abi = to.toLowerCase() === (DEPLOY.production.VoidChainTreasury as string).toLowerCase() ? ABI.treasury : ABI.runtime;
+    const data = encodeFunctionData({ abi, functionName, args } as never);
+    if (await rpc.getChainId() !== RH_TESTNET.chainId) throw new Error('The RPC returned the wrong network.');
+    await rpc.call({ account: account!, to, data });
     const hash = await client.sendTransaction({
       account: account!, chain: null, to,
-      data: encodeFunctionData({ abi, functionName, args } as never),
+      data,
     });
     const receipt = await rpc.waitForTransactionReceipt({ hash });
     if (receipt.status !== 'success') throw new Error(`${functionName} reverted.`);

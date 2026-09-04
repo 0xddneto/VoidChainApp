@@ -13,7 +13,7 @@
  * Usage:  npm run dev
  */
 import 'dotenv/config';
-import { createPublicClient, http, parseAbiItem, type Log, type PublicClient } from 'viem';
+import { createPublicClient, fallback, http, parseAbiItem, type Log, type PublicClient } from 'viem';
 import {
   CHAIN_ID_BASE, DEED, MAX_BLOCKS_PER_PASS,
   PARENT_RPC, POLL_INTERVAL_MS, RUNTIME,
@@ -38,7 +38,9 @@ const EVENTS = {
   ),
 } as const;
 
-const client = createPublicClient({ transport: http(PARENT_RPC) }) as PublicClient;
+const client = createPublicClient({
+  transport: fallback([http(PARENT_RPC), http('https://rpc.testnet.chain.robinhood.com')]),
+}) as PublicClient;
 let running = true;
 
 /**

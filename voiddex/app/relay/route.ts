@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createPublicClient, createWalletClient, encodeFunctionData, getAddress, http, isAddress, parseAbi, toFunctionSelector, type Address, type Hex } from 'viem';
+import { createPublicClient, createWalletClient, encodeFunctionData, fallback, getAddress, http, isAddress, parseAbi, toFunctionSelector, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { DEX, MAX_GAS_VOID, CALL_GAS_LIMIT } from '../dex-config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const RPC = 'https://robinhood-testnet.drpc.org';
 const RUNTIME = DEX.runtime;
 const PAYMASTER = DEX.paymaster;
 const VOID = DEX.voidToken;
@@ -22,7 +21,8 @@ const selectors = new Set([
 const faucetSelector = toFunctionSelector('claim()');
 const readAbi = parseAbi(['function nonces(address) view returns(uint256)', 'function feeOf(uint256) view returns(uint256)']);
 const paymasterAbi = parseAbi(['function sponsorWithAssetPermits((address user,uint256 tokenId,address target,bytes data,uint256 maxToll,uint256 maxGasVoid,uint256 callGasLimit,(address token,uint256 amount)[] spends,(address collection,uint256 tokenId)[] nftSpends,uint256 nonce,uint256 deadline),bytes,(address token,address spender,uint256 value,uint256 deadline,uint8 v,bytes32 r,bytes32 s)[]) returns(bool,bytes)']);
-const rpc = createPublicClient({ transport: http(RPC) });
+const transport = fallback(DEX.rpcUrls.map((url) => http(url)));
+const rpc = createPublicClient({ transport });
 const MAX_DEADLINE_SECONDS = 630n;
 
 type Raw = Record<string, unknown>;
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
   const sponsored = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends: [], nonce, deadline };
   try {
     const account = privateKeyToAccount(key as Hex);
-    const wallet = createWalletClient({ account, transport: http(RPC) });
+    const wallet = createWalletClient({ account, transport });
     const simulation = await rpc.simulateContract({ account, address: PAYMASTER, abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] });
     if (!simulation.result[0]) return reject('The DEX action would fail. No transaction was sent.', 409);
     const hash = await wallet.sendTransaction({ account, chain: null, to: PAYMASTER, data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }) });

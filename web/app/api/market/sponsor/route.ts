@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import {
   createPublicClient, createWalletClient, decodeFunctionData, decodeFunctionResult,
-  encodeFunctionData, getAddress, http, isAddress, parseAbi,
+  encodeFunctionData, getAddress, isAddress, parseAbi,
   type Address, type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { DEPLOY, RH_TESTNET } from '@/lib/testnet';
+import { DEPLOY, rhTransport } from '@/lib/testnet';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,7 +18,7 @@ const PAYMASTER = getAddress(DEPLOY.production.VoidPaymaster);
 const MAX_GAS_VOID = 10_000n * 10n ** 18n;
 const CALL_GAS_LIMIT = 1_500_000n;
 const MAX_DEADLINE_SECONDS = 630n;
-const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
+const rpc = createPublicClient({ transport: rhTransport() });
 
 const marketAbi = parseAbi([
   'function randomBuyQuote() view returns(uint256)',
@@ -117,7 +117,7 @@ export async function POST(request: Request) {
 
   try {
     const account = privateKeyToAccount(key as Hex);
-    const wallet = createWalletClient({ account, transport: http(RH_TESTNET.rpcUrls[0]) });
+    const wallet = createWalletClient({ account, transport: rhTransport() });
     const sponsored = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
     // The Paymaster catches app reverts. Estimating transaction gas alone
     // therefore cannot establish that the requested trade will execute.

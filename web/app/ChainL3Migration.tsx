@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   createPublicClient,
-  http,
   type Address,
 } from 'viem';
-import { ABI, DEPLOY, RH_TESTNET } from '@/lib/testnet';
+import { ABI, DEPLOY, RH_TESTNET, rhTransport } from '@/lib/testnet';
 import styles from './page.module.css';
 
 type Provider = {
@@ -15,7 +14,7 @@ type Provider = {
   removeListener?: (event: string, listener: (value: unknown) => void) => void;
 };
 
-const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
+const rpc = createPublicClient({ transport: rhTransport() });
 
 function provider(): Provider | undefined {
   return typeof window === 'undefined' ? undefined : (window as Window & { ethereum?: Provider }).ethereum;

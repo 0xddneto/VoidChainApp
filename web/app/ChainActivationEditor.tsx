@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createPublicClient, createWalletClient, custom, encodeFunctionData, http, type Address } from 'viem';
-import { ABI, DEPLOY, RH_TESTNET } from '@/lib/testnet';
+import { createPublicClient, createWalletClient, custom, encodeFunctionData, type Address } from 'viem';
+import { ABI, DEPLOY, RH_TESTNET, rhTransport } from '@/lib/testnet';
 import styles from './page.module.css';
 
 type Provider = {
@@ -11,7 +11,7 @@ type Provider = {
   removeListener?: (event: string, listener: (value: unknown) => void) => void;
 };
 
-const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
+const rpc = createPublicClient({ transport: rhTransport() });
 const provider = () => typeof window === 'undefined' ? undefined : (window as Window & { ethereum?: Provider }).ethereum;
 
 function firstAddress(accounts: unknown): Address | null {
@@ -80,7 +80,10 @@ export function ChainActivationEditor({ tokenId, onActiveChanged }: { tokenId: n
       const data = firstActivation
         ? encodeFunctionData({ abi: ABI.runtime, functionName: 'activate', args: [BigInt(tokenId), feeWad!] })
         : encodeFunctionData({ abi: ABI.runtime, functionName: 'setActive', args: [BigInt(tokenId), nextActive] });
-      const hash = await client.sendTransaction({ account, chain: null, to: DEPLOY.production.VoidChainAppRuntime as Address, data });
+      const target = DEPLOY.production.VoidChainAppRuntime as Address;
+      if (await rpc.getChainId() !== RH_TESTNET.chainId) throw new Error('The RPC returned the wrong network.');
+      await rpc.call({ account, to: target, data });
+      const hash = await client.sendTransaction({ account, chain: null, to: target, data });
       const receipt = await rpc.waitForTransactionReceipt({ hash });
       if (receipt.status !== 'success') throw new Error('Chain status transaction reverted.');
       setActive(nextActive);

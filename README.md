@@ -71,7 +71,7 @@ mandatory DAO proposal because the owner bears the deployment cost.
 | `contracts/apps/` | Registered application gateways, including the V4 DEX. |
 | `contracts/child/` | Research scaffold for a future independent L3; not part of the live runtime. |
 | `test/` | Unit, fuzz, invariant, red-team, scale and integration tests. |
-| `script/` | V7 deployment, proof, snapshot, audit, DEX and keeper operations. |
+| `script/` | V8 deployment, verification, snapshot, audit, DEX and keeper operations. |
 | `indexer/` | Event indexer and Postgres projection used by VoidScan. |
 | `db/` | Versioned database schema and migrations. |
 | `infra/` | Local Postgres/runtime infrastructure and operator notes. |
@@ -106,13 +106,16 @@ cd indexer && npm run dev
 cd ../web && npm run dev
 ```
 
-V7 testnet operations are intentionally explicit:
+V8 testnet operations are intentionally explicit and fail closed before a
+public manifest is changed:
 
 ```bash
 cd script
-npm run snapshot:testnet-v7
-npm run deploy:testnet-v7
-npm run audit:testnet-v7
+npm run snapshot:testnet-v8
+npm run deploy:testnet-v8
+npm run verify:testnet-v8
+npm run finalize:testnet-v8
+npm run audit:testnet-v8
 npm run paymaster:keeper -- --once
 ```
 
@@ -127,7 +130,9 @@ names, never secrets.
 - [Paymaster operations](docs/paymaster-operations.md)
 - [Repository map](docs/repository-map.md)
 - [Release checklist](docs/release-checklist.md)
-- [V7 live validation](docs/TESTNET_V7_VALIDATION.md)
+- [V8 live validation](docs/TESTNET_V8_VALIDATION.md)
+- [Security policy](SECURITY.md)
+- [Incident response](docs/incident-response.md)
 - [Full protocol review](docs/PROTOCOL_AUDIT.md)
 
 The same product explanation is available in the VoidScan `/docs` page from
@@ -136,10 +141,13 @@ the header.
 ## Safety status
 
 The local suite includes unit, fuzz, invariant, attack and high-load tests, and
-the current V7 deployment has live testnet acceptance evidence. Neither is an
-external audit. Before a value-bearing deployment the project still requires
-independent security review, multisig governance, dedicated RPC/indexer
-operations, monitoring, incident procedures and a fresh release audit.
+the current V8 deployment has live testnet acceptance evidence. V8 freezes the
+runtime oracle after initial configuration and places Paymaster and Treasury
+administration behind a public 48-hour timelock. Neither this evidence nor the
+timelock is an external audit. Before a value-bearing deployment the project
+still requires independent security review, multisig control of the timelock
+proposer, dedicated RPC/indexer operations, monitoring and a fresh release
+audit.
 
 ## License
 

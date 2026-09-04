@@ -1,5 +1,15 @@
 # Protocol review — 2026-09-03
 
+## V8 security migration
+
+The current public candidate supersedes the V7 control plane described in the
+historical findings below. V8 makes the Runtime oracle one-time and immutable,
+places Paymaster and Treasury administration behind a public 48-hour timelock,
+preserves the block-pinned owner and mint-limit snapshot, verifies all 19 core
+contracts in the explorer, restores the two market-custody NFTs, and adds a
+fail-closed acceptance audit. The proposer remains a single test wallet; this
+is explicitly not the mainnet governance design.
+
 ## Scope and evidence
 
 This review covered every tracked source area: Solidity contracts, Foundry

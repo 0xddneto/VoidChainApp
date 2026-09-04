@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   createPublicClient, createWalletClient, custom, encodeFunctionData, formatEther,
-  getAddress, http, maxUint256, parseAbi, type Address, type Hex,
+  getAddress, maxUint256, parseAbi, type Address, type Hex,
 } from 'viem';
-import { DEPLOY, RH_TESTNET } from '@/lib/testnet';
+import { DEPLOY, RH_TESTNET, rhTransport } from '@/lib/testnet';
 import { requireSponsoredSuccess } from '@/lib/sponsored-receipt';
 import { WalletProfileButton } from '../WalletProfileButton';
 import styles from './page.module.css';
@@ -17,7 +17,7 @@ const RUNTIME = getAddress(DEPLOY.production.VoidChainAppRuntime);
 const PAYMASTER = getAddress(DEPLOY.production.VoidPaymaster);
 const MAX_GAS_VOID = 10_000n * 10n ** 18n;
 const CALL_GAS_LIMIT = 1_500_000n;
-const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
+const rpc = createPublicClient({ transport: rhTransport() });
 const marketAbi = parseAbi(['function buyRandom(uint256) returns(uint256)', 'function buySpecific(uint256,uint256)', 'function sellWithPermit(uint256,uint256,uint8,bytes32,bytes32)']);
 const nonceAbi = parseAbi(['function nonces(address) view returns(uint256)', 'function nonces(uint256) view returns(uint256)', 'function allowance(address,address) view returns(uint256)']);
 const permitTypes = { Permit: [

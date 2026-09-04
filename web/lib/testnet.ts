@@ -6,6 +6,7 @@
  * layer follows — no address is hardcoded.
  */
 import deployment from './deployment.json';
+import { fallback, http } from 'viem';
 
 export const DEPLOY = deployment;
 
@@ -14,8 +15,14 @@ export const RH_TESTNET = {
   chainId: 46630,
   chainName: 'Robinhood Testnet',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: ['https://robinhood-testnet.drpc.org'],
+  rpcUrls: [
+    'https://robinhood-testnet.drpc.org',
+    'https://rpc.testnet.chain.robinhood.com',
+  ],
 } as const;
+
+/** Read traffic fails over instead of turning one provider outage into a dead UI. */
+export const rhTransport = () => fallback(RH_TESTNET.rpcUrls.map((url) => http(url)));
 
 /** Only what the page calls. A lean ABI is an ABI you can read. */
 export const ABI = {

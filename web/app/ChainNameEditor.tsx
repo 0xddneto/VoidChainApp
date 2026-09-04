@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createPublicClient, createWalletClient, custom, encodeFunctionData, http, type Address } from 'viem';
-import { ABI, DEPLOY, RH_TESTNET } from '@/lib/testnet';
+import { createPublicClient, createWalletClient, custom, encodeFunctionData, type Address } from 'viem';
+import { ABI, DEPLOY, RH_TESTNET, rhTransport } from '@/lib/testnet';
 import styles from './page.module.css';
 
 type Provider = {
@@ -11,7 +11,7 @@ type Provider = {
   removeListener?: (event: string, listener: (value: unknown) => void) => void;
 };
 
-const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
+const rpc = createPublicClient({ transport: rhTransport() });
 const walletProvider = () =>
   typeof window === 'undefined' ? undefined : (window as Window & { ethereum?: Provider }).ethereum;
 
@@ -100,11 +100,15 @@ export function ChainNameEditor({
         catch { await provider.request({ method: 'wallet_addEthereumChain', params: [RH_TESTNET] }); }
       }
       const client = createWalletClient({ account: wallet, transport: custom(provider) });
+      const target = DEPLOY.production.VoidChainDeed as Address;
+      const data = encodeFunctionData({ abi: ABI.deed, functionName: 'rename', args: [BigInt(tokenId), next] });
+      if (await rpc.getChainId() !== RH_TESTNET.chainId) throw new Error('The RPC returned the wrong network.');
+      await rpc.call({ account: wallet, to: target, data });
       const hash = await client.sendTransaction({
         account: wallet,
         chain: null,
-        to: DEPLOY.production.VoidChainDeed as Address,
-        data: encodeFunctionData({ abi: ABI.deed, functionName: 'rename', args: [BigInt(tokenId), next] }),
+        to: target,
+        data,
       });
       const receipt = await rpc.waitForTransactionReceipt({ hash });
       if (receipt.status !== 'success') throw new Error('Name transaction reverted.');

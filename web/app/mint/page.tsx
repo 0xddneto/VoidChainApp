@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   createPublicClient, createWalletClient, custom, encodeFunctionData, formatEther,
-  http, parseEther, type Address, type Hex,
+  parseEther, type Address, type Hex,
 } from 'viem';
-import { RH_TESTNET } from '@/lib/testnet';
+import { RH_TESTNET, rhTransport } from '@/lib/testnet';
 import GENESIS from '@/lib/genesis-v6.json';
 import { WalletProfileButton } from '../WalletProfileButton';
 import styles from './page.module.css';
 
-const rpc = createPublicClient({ transport: http(GENESIS.network.rpc) });
+const rpc = createPublicClient({ transport: rhTransport() });
 const C = GENESIS.contracts as Record<string, Address>;
 const P = GENESIS.parameters;
 const mintAbi = [
@@ -34,6 +34,7 @@ export default function MintPage() {
   const [account, setAccount] = useState<Address | null>(null);
   const [chainOk, setChainOk] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [readHealthy, setReadHealthy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const [minted, setMinted] = useState<bigint | null>(null);
   const [hasMinted, setHasMinted] = useState(false);
@@ -50,6 +51,7 @@ export default function MintPage() {
   const onboardingQuote = effectiveOnboarding > 0n && reserveEth > 0n ? effectiveOnboarding * reserveVoid / (reserveEth + effectiveOnboarding) : 0n;
 
   const refresh = useCallback(async (wallet: Address | null) => {
+    setReadHealthy(false);
     const [supply, price, voidReserve, ethReserve] = await Promise.all([
       rpc.readContract({ address: C.mint, abi: mintAbi, functionName: 'totalMinted' }),
       rpc.readContract({ address: C.mint, abi: mintAbi, functionName: 'mintPriceWei' }),
@@ -65,13 +67,13 @@ export default function MintPage() {
       // wallet balances, or the locked pool from the user.
       setTwapRate(0n);
     }
-    if (!wallet) { setHasMinted(false); setEthBalance(0n); setVoidBalance(0n); return; }
+    if (!wallet) { setHasMinted(false); setEthBalance(0n); setVoidBalance(0n); setReadHealthy(true); return; }
     const [already, eth, token] = await Promise.all([
       rpc.readContract({ address: C.mint, abi: mintAbi, functionName: 'hasMinted', args: [wallet] }),
       rpc.getBalance({ address: wallet }),
       rpc.readContract({ address: C.token, abi: tokenAbi, functionName: 'balanceOf', args: [wallet] }),
     ]);
-    setHasMinted(already); setEthBalance(eth); setVoidBalance(token);
+    setHasMinted(already); setEthBalance(eth); setVoidBalance(token); setReadHealthy(true);
   }, []);
   useEffect(() => { void refresh(account).catch(() => setMessage({ kind: 'err', text: 'Could not read the testnet. Try again shortly.' })); }, [account, refresh]);
 
@@ -102,10 +104,23 @@ export default function MintPage() {
   }
   async function send(label: string, to: Address, data: Hex, value: bigint, success: string) {
     const eth = provider(); if (!eth || !account) return;
-    setBusy(label); setMessage({ kind: 'info', text: 'Confirm the exact ETH amount in your wallet…' });
+    setBusy(label); setMessage({ kind: 'info', text: `Review ${label === 'mint' ? 'mint()' : 'swapEthForVoid()'} · Robinhood Testnet 46630 · ${to} · ${ethText(value, 6)} ETH.` });
     try {
       const current = await eth.request({ method: 'eth_chainId' });
-      if (current.toLowerCase() !== RH_TESTNET.chainIdHex) throw new Error('Switch your wallet to Robinhood Chain Testnet.');
+      if (typeof current !== 'string' || current.toLowerCase() !== RH_TESTNET.chainIdHex) throw new Error('Switch your wallet to Robinhood Chain Testnet.');
+      if (await rpc.getChainId() !== RH_TESTNET.chainId) throw new Error('The RPC returned the wrong network.');
+
+      const expectedMintData = encodeFunctionData({ abi: mintAbi, functionName: 'mint' });
+      const mintTarget = to.toLowerCase() === C.mint.toLowerCase();
+      const poolTarget = to.toLowerCase() === C.pool.toLowerCase();
+      if (!mintTarget && !poolTarget) throw new Error('Blocked: unknown transaction destination.');
+      if (mintTarget) {
+        const livePrice = await rpc.readContract({ address: C.mint, abi: mintAbi, functionName: 'mintPriceWei' });
+        if (data !== expectedMintData || value !== livePrice) throw new Error('Blocked: mint destination, function or price changed.');
+      } else if (!data.startsWith(encodeFunctionData({ abi: poolAbi, functionName: 'swapEthForVoid', args: [0n] }).slice(0, 10)) || value <= 0n) {
+        throw new Error('Blocked: unexpected VOID purchase transaction.');
+      }
+      await rpc.call({ account, to, data, value });
       const wallet = createWalletClient({ account, transport: custom(eth) });
       const hash = await wallet.sendTransaction({ account, chain: null, to, data, value });
       const receipt = await rpc.waitForTransactionReceipt({ hash });
@@ -126,12 +141,12 @@ export default function MintPage() {
       'VOID acquired from the locked genesis pool. Future app actions use signed VOID through the Paymaster.');
   };
   const connected = Boolean(account && chainOk); const twapReady = twapRate > 0n;
-  const soldOut = minted !== null && minted >= BigInt(P.maxSupply); const canMint = minted !== null && connected && !hasMinted && !soldOut && ethBalance >= mintPrice && busy === null;
+  const soldOut = minted !== null && minted >= BigInt(P.maxSupply); const canMint = readHealthy && minted !== null && connected && !hasMinted && !soldOut && ethBalance >= mintPrice && busy === null;
 
   return <>
     <header className={styles.header}><div className={styles.bar}><div className={styles.logo}>Void<span>Scan</span></div><a className={styles.back} href="/">← explorer</a><a className={styles.docsLink} href="/docs">Docs</a><WalletProfileButton /></div></header>
     <main className={styles.wrap}>
-      <div className={styles.hero}><div className={styles.testnet}>● Robinhood testnet · V7 genesis</div><h1>Mint a VOID Deed with ETH.</h1><p>Mint one Deed with ETH. Each mint locks VOID/ETH liquidity and funds the Paymaster. Apps and NFT trades use VOID.</p><a href="/market">Trade NFTs ↔ VOID →</a></div>
+      <div className={styles.hero}><div className={styles.testnet}>● Robinhood testnet · V8 genesis</div><h1>Mint a VOID Deed with ETH.</h1><p>Mint one Deed with ETH. Each mint locks VOID/ETH liquidity and funds the Paymaster. Apps and NFT trades use VOID.</p><a href="/market">Trade NFTs ↔ VOID →</a></div>
       <dl className={styles.facts}>
         <div className={styles.fact}><dt>Minted</dt><dd>{minted?.toString() ?? '—'}<small> / {P.maxSupply}</small></dd></div>
         <div className={styles.fact}><dt>Mint price</dt><dd>{ethText(mintPrice, 4)}<small> ETH</small></dd></div>
@@ -144,7 +159,7 @@ export default function MintPage() {
         <section id="get-void" className={styles.step} data-done={voidBalance > 0n} data-blocked={!twapReady}><div className={styles.num}>{voidBalance > 0n ? '✓' : '3'}</div><div className={styles.stepBody}><h2>Get VOID for apps</h2><p>Optional onboarding swap from the locked VOID/ETH pool. This intentionally uses ETH because it acquires the token that pays later sponsored app transactions. Pool fee: {P.poolFeeBps / 100}%.</p>{connected && <p>Your VOID: <b className={styles.mono}>{voidText(voidBalance)} VOID</b></p>}<label className={styles.swapAmount}>ETH amount<input value={onboardingEth} onChange={(event) => setOnboardingEth(event.target.value)} inputMode="decimal" aria-label="ETH to swap for VOID" /></label><p>Estimated output: <b>{voidText(onboardingQuote, 2)} VOID</b> · 2% max slippage. Large swaps have price impact.</p><button className={`${styles.btn} ${styles.btnGhost}`} onClick={buyVoid} disabled={!connected || !twapReady || busy !== null || onboardingWei <= 0n || ethBalance <= onboardingWei || reserveVoid === 0n}>Buy VOID</button></div></section>
       </div>
       {message && <div className={`${styles.msg} ${message.kind === 'ok' ? styles.msgOk : message.kind === 'err' ? styles.msgErr : styles.msgInfo}`}>{message.text}</div>}
-      <div className={styles.note}><p><strong>Testnet only.</strong> V7 starts a new VOID economy with a fixed supply of 1,000,000,000 VOID. The five existing Deeds were reissued to their recorded owners or the replacement pool. Old VOID is not used by this deployment.</p><p>The NFT/VOID pool runs inside Chain #1. Buy random: 1%. Buy selected: 2%. Sell: 1.5%. Each fee includes a 0.5% protocol share. NFTs can be bought and sold repeatedly; their 500,000 VOID backing is released only once.</p></div>
+      <div className={styles.note}><p><strong>Testnet only.</strong> V8 starts a new VOID economy with a fixed supply of 1,000,000,000 VOID. The six existing Deeds were reissued to their recorded owners or the replacement pool. Old VOID is not used by this deployment.</p><p>The NFT/VOID pool runs inside Chain #1. Buy random: 1%. Buy selected: 2%. Sell: 1.5%. Each fee includes a 0.5% protocol share. NFTs can be bought and sold repeatedly; their 500,000 VOID backing is released only once.</p></div>
     </main>
   </>;
 }

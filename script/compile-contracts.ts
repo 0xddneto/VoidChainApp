@@ -6,7 +6,7 @@
  * Usage: npm run build:contracts
  */
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, relative, resolve } from 'node:path';
+import { basename, dirname, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import solc from 'solc';
 
@@ -23,11 +23,37 @@ function solidityFiles(directory: string): string[] {
   });
 }
 
+// Standard JSON verification has no import callback. Walk the exact transitive
+// dependency graph and preserve Solidity's virtual import paths. Including the
+// entire OpenZeppelin tree is both unnecessary and large enough to exhaust the
+// wasm compiler on ordinary CI runners.
+const sourceFiles = new Map<string, string>(
+  solidityFiles(contractsRoot).map((file) => [relative(root, file).replaceAll('\\', '/'), file]),
+);
+const pending = [...sourceFiles.entries()];
+const importPattern = /import\s+(?:[^"']*?from\s+)?["']([^"']+)["'];/g;
+for (let index = 0; index < pending.length; index++) {
+  const [virtualName, actualFile] = pending[index]!;
+  const content = readFileSync(actualFile, 'utf8');
+  for (const match of content.matchAll(importPattern)) {
+    const importPath = match[1]!;
+    const importedVirtualName = importPath.startsWith('.')
+      ? posix.normalize(posix.join(posix.dirname(virtualName), importPath))
+      : importPath;
+    if (sourceFiles.has(importedVirtualName)) continue;
+    const importedFile = importPath.startsWith('.')
+      ? resolve(dirname(actualFile), importPath)
+      : importPath.startsWith('@')
+        ? resolve(root, 'node_modules', importPath)
+        : resolve(root, importPath);
+    // Read now so a missing dependency fails before compilation with its path.
+    readFileSync(importedFile, 'utf8');
+    sourceFiles.set(importedVirtualName, importedFile);
+    pending.push([importedVirtualName, importedFile]);
+  }
+}
 const sources = Object.fromEntries(
-  solidityFiles(contractsRoot).map((file) => {
-    const name = relative(root, file).replaceAll('\\', '/');
-    return [name, { content: readFileSync(file, 'utf8') }];
-  }),
+  [...sourceFiles].map(([name, file]) => [name, { content: readFileSync(file, 'utf8') }]),
 );
 
 function findImport(importPath: string): { contents?: string; error?: string } {
@@ -70,6 +96,11 @@ if (errors.length > 0) {
   // Artifacts are generated build output. Clear only this ignored directory,
   // never source or deployment records.
   rmSync(out, { recursive: true, force: true });
+  mkdirSync(out, { recursive: true });
+  // This is the exact compiler input used for deployment. Keeping it beside
+  // the artifacts makes explorer verification reproducible instead of asking
+  // another tool to guess settings or rebuild a subtly different input.
+  writeFileSync(resolve(out, 'standard-input.json'), JSON.stringify(input));
   for (const [source, contracts] of Object.entries(output.contracts)) {
     const sourceFolder = basename(source);
     for (const [name, artifact] of Object.entries(contracts)) {

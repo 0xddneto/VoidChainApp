@@ -6,17 +6,16 @@ import {
   createWalletClient,
   custom,
   encodeFunctionData,
-  http,
   isAddress,
   parseUnits,
   type Address,
   type Hex,
 } from 'viem';
-import { ABI, DEPLOY, RH_TESTNET, fmt } from '@/lib/testnet';
+import { ABI, DEPLOY, RH_TESTNET, fmt, rhTransport } from '@/lib/testnet';
 import { Copyable } from './Copyable';
 import styles from './page.module.css';
 
-const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
+const rpc = createPublicClient({ transport: rhTransport() });
 const STATES = ['Pending', 'Active', 'Defeated', 'Succeeded', 'Executed'] as const;
 const GENERIC_DAO = Boolean((DEPLOY as { governance?: unknown }).governance);
 
@@ -175,11 +174,14 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
     try {
       const { provider, account: sender } = await connectedWallet();
       const client = createWalletClient({ account: sender, transport: custom(provider as never) });
+      const callData = encodeFunctionData({ abi: GENERIC_DAO ? ABI.dao : ABI.daoLegacy, functionName, args } as never);
+      if (await rpc.getChainId() !== RH_TESTNET.chainId) throw new Error('The RPC returned the wrong network.');
+      await rpc.call({ account: sender, to: data.dao, data: callData });
       const hash = await client.sendTransaction({
         account: sender,
         chain: null,
         to: data.dao,
-        data: encodeFunctionData({ abi: GENERIC_DAO ? ABI.dao : ABI.daoLegacy, functionName, args } as never),
+        data: callData,
       });
       setNotice('Sent. Waiting for Robinhood testnet confirmation…');
       const receipt = await rpc.waitForTransactionReceipt({ hash });

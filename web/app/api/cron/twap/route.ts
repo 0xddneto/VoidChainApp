@@ -3,13 +3,13 @@ import {
   createPublicClient,
   createWalletClient,
   encodeFunctionData,
-  http,
   parseAbi,
   type Address,
   type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import GENESIS from '@/lib/genesis-v6.json';
+import { rhTransport } from '@/lib/testnet';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,7 @@ const abi = parseAbi([
   'function minInterval() view returns(uint32)',
   'function voidPerEth() view returns(uint256)',
 ]);
-const rpc = createPublicClient({ transport: http(GENESIS.network.rpc) });
+const rpc = createPublicClient({ transport: rhTransport() });
 const paymaster = GENESIS.contracts.paymaster as Address;
 const refillAbi = parseAbi([
   'function refillPlan() view returns(bool,uint256,uint256)',
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     ]);
     const elapsed = block.timestamp - BigInt(lastTimestamp);
     const account = privateKeyToAccount(key as Hex);
-    const wallet = createWalletClient({ account, transport: http(GENESIS.network.rpc) });
+    const wallet = createWalletClient({ account, transport: rhTransport() });
     let hash: Hex | null = null;
     if (elapsed >= BigInt(minInterval)) {
       hash = await wallet.sendTransaction({ account, chain: null, to: oracle, data: encodeFunctionData({ abi, functionName: 'update' }) });

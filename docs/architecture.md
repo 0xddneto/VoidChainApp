@@ -80,7 +80,7 @@ changing a label or social link does not rewrite execution rules or custody.
 
 The collection genesis mint is protocol infrastructure, outside every deed's
 runtime. It takes ETH because it creates the Deed and starts the VOID economy;
-the chain is still inactive, so no chain transaction fee exists yet. The V7
+the chain is still inactive, so no chain transaction fee exists yet. The V8
 mint imported the verified ownership of the earlier test deployment and then
 continued a one-mint-per-wallet supply from the next Deed ID. Mint proceeds are
 split by the immutable genesis rules into liquidity and time-locked protocol

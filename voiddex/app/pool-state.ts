@@ -1,7 +1,7 @@
-import { createPublicClient, decodeFunctionResult, encodeFunctionData, http, parseAbi, type Address } from 'viem';
+import { createPublicClient, decodeFunctionResult, encodeFunctionData, fallback, http, parseAbi, type Address } from 'viem';
 import { DEX } from './dex-config';
 
-const rpc = createPublicClient({ transport: http(DEX.rpc) });
+const rpc = createPublicClient({ transport: fallback(DEX.rpcUrls.map((url) => http(url))) });
 const gatewayAbi = parseAbi(['function query(bytes) view returns(bytes)']);
 const pairAbi = parseAbi(['function reserve0() view returns(uint112)', 'function reserve1() view returns(uint112)', 'function totalSupply() view returns(uint256)', 'function balanceOf(address) view returns(uint256)']);
 const runtimeAbi = parseAbi(['function feeOf(uint256) view returns(uint256)']);

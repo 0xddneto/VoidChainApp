@@ -29,7 +29,9 @@ The refill is deliberately outside a user transaction. The user path only
 checks a signed cap, charges VOID and reimburses the relayer. A swap there
 would put DEX availability, price movement and sandwich risk on every user.
 
-The governor configures four things only after the real VOID/ETH market exists:
+Protocol governance configures four things only after the real VOID/ETH market
+exists. In V8 these calls must first be scheduled in the public 48-hour
+`VoidProtocolTimelock`; the proposer cannot execute them immediately:
 
 1. A `VoidTwapOracleV6` for the permanently locked VOID/ETH pool, wrapped by a
    freshness guard. The current testnet observation interval is five minutes;
@@ -59,10 +61,11 @@ separate `KEEPER_PRIVATE_KEY` is set.
 
 ## Current testnet boundary
 
-The V7 Robinhood **testnet** deployment uses its permanently locked genesis
+The V8 Robinhood **testnet** deployment uses its permanently locked genesis
 VOID/ETH pool, a TWAP oracle and a freshness guard. The Paymaster exit route is
 pinned once to that pool; governance cannot redirect it later. A permissionless
 keeper calls `refill` only below the configured reserve threshold and must use
 the contract's bounded plan. This proves the route mechanics with valueless
 test assets; it does not prove production liquidity depth, oracle economics or
-mainnet solvency.
+mainnet solvency. The V8 testnet timelock proposer is still one project wallet;
+mainnet requires a hardware-backed multisig.

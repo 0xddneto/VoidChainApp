@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { createPublicClient, http, parseAbi, parseAbiItem, type Address, type Log, type PublicClient } from 'viem';
+import { createPublicClient, fallback, http, parseAbi, parseAbiItem, type Address, type Log, type PublicClient } from 'viem';
 
 import deployment from './deployment.json';
 import { pool } from './db';
@@ -249,7 +249,9 @@ export async function indexOnePass(): Promise<IndexerResult> {
     await seedChains();
     const from = (await cursor()) + 1n;
     const rpc = process.env.PARENT_RPC ?? deployment.network.rpc;
-    const client = createPublicClient({ transport: http(rpc) }) as PublicClient;
+    const client = createPublicClient({
+      transport: fallback([http(rpc), http('https://rpc.testnet.chain.robinhood.com')]),
+    }) as PublicClient;
     const head = await client.getBlockNumber();
     await hydrateDeedMetadata(client);
     if (from > head) return { status: 'caught-up', from: from.toString(), to: head.toString(), events: 0 };

@@ -4,14 +4,13 @@ import {
   createWalletClient,
   encodeFunctionData,
   getAddress,
-  http,
   isAddress,
   parseAbi,
   type Address,
   type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { DEPLOY, RH_TESTNET } from '@/lib/testnet';
+import { DEPLOY, rhTransport } from '@/lib/testnet';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,7 +18,7 @@ export const dynamic = 'force-dynamic';
 const MAX_CALL_GAS_LIMIT = 1_500_000n;
 const MAX_GAS_VOID = 100n * 10n ** 18n;
 const MAX_SIGNATURE_LIFETIME_SECONDS = 630n;
-const publicClient = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
+const publicClient = createPublicClient({ transport: rhTransport() });
 
 const RUNTIME_ABI = parseAbi([
   'function feeOf(uint256) view returns(uint256)',
@@ -114,7 +113,7 @@ export async function POST(httpRequest: Request) {
   const request = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
   try {
     const account = privateKeyToAccount(relayerKey as Hex);
-    const wallet = createWalletClient({ account, transport: http(RH_TESTNET.rpcUrls[0]) });
+    const wallet = createWalletClient({ account, transport: rhTransport() });
     const simulation = await publicClient.simulateContract({
       account,
       address: paymaster,

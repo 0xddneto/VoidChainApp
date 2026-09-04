@@ -30,7 +30,7 @@ const gas = () => rpc.getGasPrice().then((value) => value * 3n);
 const tx = await wallet.sendTransaction({ account, chain: null, data: encodeDeployData({ abi: faucet.abi, bytecode: faucet.bytecode, args: [dex.runtime, BigInt(dex.chainTokenId), dex.pools[0].asset, dex.pools[1].asset, parseEther('100000')] }), maxFeePerGas: await gas(), maxPriorityFeePerGas: 0n });
 const receipt = await rpc.waitForTransactionReceipt({ hash: tx });
 if (receipt.status !== 'success' || !receipt.contractAddress) throw new Error(`Faucet deployment failed: ${tx}`);
-const factory = deployment.production.VoidChainAppFactoryV3 as Address;
+const factory = (deployment.production?.VoidChainAppFactoryV3 ?? deployment.contracts?.appFactory) as Address;
 const factoryAbi = JSON.parse(readFileSync(resolve(root, 'out/VoidChainAppFactoryV3.sol/VoidChainAppFactoryV3.json'), 'utf8')).abi as Abi;
 const registered = await wallet.writeContract({ account, chain: null, address: factory, abi: factoryAbi, functionName: 'publish', args: [BigInt(dex.chainTokenId), receipt.contractAddress, '0x', `0x${Date.now().toString(16).padStart(64, '0')}`], maxFeePerGas: await gas(), maxPriorityFeePerGas: 0n });
 const published = await rpc.waitForTransactionReceipt({ hash: registered });

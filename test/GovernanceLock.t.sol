@@ -6,7 +6,8 @@ import {
     VoidChainAppRuntime,
     IVoidChainDeed as IRuntimeDeed,
     IERC20,
-    IVoidChainTreasury
+    IVoidChainTreasury,
+    IVoidPriceOracle
 } from "../contracts/parent/VoidChainAppRuntime.sol";
 import {
     VoidChainDao,
@@ -162,5 +163,18 @@ contract GovernanceLockTest is Test {
         );
         (, uint256 fee,,,,,) = runtime.apps(CHAIN);
         assertEq(fee, VOTED_FEE);
+    }
+
+    function test_protocolOracleIsPinnedOnceAndTheDeployerCannotReplaceIt() public {
+        IVoidPriceOracle first = IVoidPriceOracle(address(0xA11CE));
+        IVoidPriceOracle replacement = IVoidPriceOracle(address(0xB0B));
+
+        runtime.setOracle(first);
+        vm.expectRevert(
+            abi.encodeWithSelector(VoidChainAppRuntime.OracleAlreadySet.selector, address(first))
+        );
+        runtime.setOracle(replacement);
+
+        assertEq(address(runtime.oracle()), address(first));
     }
 }

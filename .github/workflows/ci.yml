@@ -86,3 +86,21 @@ jobs:
         working-directory: indexer
       - run: npm run typecheck
         working-directory: indexer
+
+  scripts:
+    name: scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: script/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: script
+      - run: npm run typecheck
+        working-directory: script
+      - run: npm run build:contracts
+        working-directory: script

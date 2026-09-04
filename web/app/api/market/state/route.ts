@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   createPublicClient, decodeFunctionResult, encodeFunctionData, getAddress,
-  http, isAddress, parseAbi, type Address, type Hex,
+  isAddress, parseAbi, type Address, type Hex,
 } from 'viem';
-import { DEPLOY, RH_TESTNET } from '@/lib/testnet';
+import { DEPLOY, rhTransport } from '@/lib/testnet';
 
 export const dynamic = 'force-dynamic';
 
 const MARKET = getAddress(DEPLOY.testnet.VoidGenesisNftAmmV6);
-const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
+const rpc = createPublicClient({ transport: rhTransport() });
 const marketAbi = parseAbi([
   'function inventoryCount() view returns(uint256)',
   'function inventoryAt(uint256) view returns(uint256)',
