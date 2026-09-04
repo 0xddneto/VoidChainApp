@@ -12,7 +12,7 @@ if (!/^0x[0-9a-fA-F]{64}$/.test(key ?? '')) throw Error('Missing project testnet
 const account = privateKeyToAccount(key as Hex);
 const rpc = createPublicClient({ transport: http(process.env.PARENT_RPC ?? staged.network.rpc) });
 const wallet = createWalletClient({ account, transport: http(process.env.PARENT_RPC ?? staged.network.rpc) });
-const proofPath = process.env.V7_HTTP ? 'deployments/testnet-v7-http-proof.json' : 'deployments/testnet-v7-market-proof.json';
+const proofPath = process.env.V7_PROOF_FILE ?? (process.env.V7_HTTP ? 'deployments/testnet-v7-http-proof.json' : 'deployments/testnet-v7-market-proof.json');
 const proof: any = existsSync(proofPath) ? JSON.parse(readFileSync(proofPath, 'utf8')) : { runtime: c.runtime, steps: {}, trades: [] };
 if (proof.runtime !== c.runtime) throw Error('Proof belongs to another runtime');
 const abi = (name: string): Abi => JSON.parse(readFileSync(name === 'VoidChainAppGatewayV3' ? '../out/VoidChainAppFactoryV3.sol/VoidChainAppGateway.json' : `../out/${name}.sol/${name}.json`, 'utf8')).abi;

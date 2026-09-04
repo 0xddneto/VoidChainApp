@@ -68,7 +68,12 @@ back in the pool and personal NFT #5 ownership was unchanged.
 The same two buy/sell cycles passed through the deployed public market relay.
 A DEX swap also passed through its deployed relay and produced a matching
 successful Paymaster event and exact runtime revenue:
-`0x15885ec752db92850c30c225a6997e231ed0f98d393e8be7932784e5bc3457b0`.
+`0x10fc21c02047721a1b2599bc48e53db2e745da55eb2214ded92089c05e4ea959`.
+The final public-market deployment was rechecked with another full repeated
+cycle: buy `0x4fdc2653c6bff544ee5de331cc285e4cc0df36cab4472083e97503aabb15b50d`,
+sell `0xc60ff09ed9e172da0e0aa0516830222efd75bcd90a4d2d62307325bc04491ad4`,
+buy `0x753aafb932fc53d4b5fd2c00326768d7d8e14ce0318b435897df6c24c6c36471`
+and sell `0x890dcb54799e620a6761c96d9c0e4716d0e2e3737fcab9b2e6c769c7638f6079`.
 
 A separate deterministic test wallet minted NFT #6 with 0.001 ETH:
 `0x3106950694de1b8dce2f100412bda86830a91af31b8a714c51d1a6210fbba539`.
