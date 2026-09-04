@@ -17,6 +17,8 @@ or mismatched explorer bytecode as a protocol incident.
    `VoidProtocolTimelock`. Record the operation ID and its execution time.
 5. Reproduce against a fork, add a regression test, run the full suite and have
    the patch reviewed before execution.
+6. Inspect `relay_requests` for duplicate or abnormal wallet/client-hash rates.
+   Preserve rows as evidence; never publish client hashes or database exports.
 
 ## Recovery gate
 

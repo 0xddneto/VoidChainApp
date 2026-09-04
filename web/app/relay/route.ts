@@ -11,6 +11,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { DEPLOY, rhTransport } from '@/lib/testnet';
+import { RelayAdmissionError, relayClientId, reserveRelay } from '@/lib/relay-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -50,19 +51,21 @@ const reject = (error: string, status = 400) => NextResponse.json({ error }, { s
 export async function POST(httpRequest: Request) {
   const relayerKey = process.env.PAYMASTER_RELAYER_PRIVATE_KEY;
   if (!/^0x[0-9a-fA-F]{64}$/.test(relayerKey ?? '')) return reject('VOID relay is not configured.', 503);
+  const contentLength = Number(httpRequest.headers.get('content-length') ?? '0');
+  if (!Number.isFinite(contentLength) || contentLength > 65_536) return reject('Relay request is too large.', 413);
 
   let body: Raw;
   try { body = await httpRequest.json() as Raw; } catch { return reject('Malformed relay request.'); }
   const rawRequest = body.request as Raw | undefined;
   const rawPermits = body.permits;
   const signature = asHex(body.signature);
-  if (!rawRequest || !Array.isArray(rawPermits) || !signature || signature.length !== 132) return reject('Invalid signed request.');
+  if (!rawRequest || !Array.isArray(rawPermits) || rawPermits.length > 9 || !signature || signature.length !== 132) return reject('Invalid signed request.');
 
   const user = asAddress(rawRequest.user); const target = asAddress(rawRequest.target); const data = asHex(rawRequest.data);
   const tokenId = asUint(rawRequest.tokenId); const maxToll = asUint(rawRequest.maxToll); const maxGasVoid = asUint(rawRequest.maxGasVoid);
   const callGasLimit = asUint(rawRequest.callGasLimit); const nonce = asUint(rawRequest.nonce); const deadline = asUint(rawRequest.deadline);
   const rawSpends = rawRequest.spends; const rawNftSpends = rawRequest.nftSpends;
-  if (!user || !target || !data || !tokenId || maxToll === null || maxGasVoid === null || callGasLimit === null || nonce === null || deadline === null || !Array.isArray(rawSpends) || !Array.isArray(rawNftSpends)) return reject('Invalid signed fields.');
+  if (!user || !target || !data || data.length > 49_154 || !tokenId || maxToll === null || maxGasVoid === null || callGasLimit === null || nonce === null || deadline === null || !Array.isArray(rawSpends) || !Array.isArray(rawNftSpends)) return reject('Invalid signed fields.');
   if (maxGasVoid > MAX_GAS_VOID || callGasLimit === 0n || callGasLimit > MAX_CALL_GAS_LIMIT) return reject('Gas limit exceeds the public relayer policy.');
   const now = BigInt(Math.floor(Date.now() / 1000));
   if (deadline <= now || deadline > now + MAX_SIGNATURE_LIFETIME_SECONDS) return reject('Signature expired.');
@@ -111,6 +114,13 @@ export async function POST(httpRequest: Request) {
   if (nonce !== chainNonce || maxToll !== currentFee) return reject('Fee or nonce changed; sign again.', 409);
 
   const request = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
+  let reservation: Awaited<ReturnType<typeof reserveRelay>>;
+  try {
+    reservation = await reserveRelay('voidscan-app', user, nonce, signature, relayClientId(httpRequest));
+  } catch (error) {
+    if (error instanceof RelayAdmissionError) return reject(error.message, error.status);
+    return reject('Relay admission control is unavailable.', 503);
+  }
   try {
     const account = privateKeyToAccount(relayerKey as Hex);
     const wallet = createWalletClient({ account, transport: rhTransport() });
@@ -121,15 +131,20 @@ export async function POST(httpRequest: Request) {
       functionName: 'sponsorWithAssetPermits',
       args: [request, signature, permits],
     });
-    if (!simulation.result[0]) return reject('The application action would fail. No transaction was sent.', 409);
+    if (!simulation.result[0]) {
+      await reservation.failed();
+      return reject('The application action would fail. No transaction was sent.', 409);
+    }
     const hash = await wallet.sendTransaction({
       account,
       chain: null,
       to: paymaster,
       data: encodeFunctionData({ abi: PAYMASTER_ABI, functionName: 'sponsorWithAssetPermits', args: [request, signature, permits] }),
     });
+    await reservation.submitted(hash);
     return NextResponse.json({ hash });
   } catch {
+    await reservation.failed().catch(() => undefined);
     return reject('Relay refused the signed action. Sign a fresh request and try again.', 502);
   }
 }

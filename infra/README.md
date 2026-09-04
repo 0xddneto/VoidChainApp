@@ -9,6 +9,9 @@ inside the application source tree.
   next to the data model instead of being duplicated into a container folder.
 - `../indexer/` is the event-processing service; it reads the deployment record
   written by `../script/deploy-testnet.ts`.
+- `../db/migrations/003-relay-guard.sql` adds the shared, persistent nonce and
+  rate-limit guard used by both public relays. Apply migrations to hosted
+  Postgres before deploying a relay revision that depends on them.
 - `../contracts/` is the on-chain protocol; `../script/` is reproducible
   testnet provisioning, including the 1,111 per-deed DAO clones.
 

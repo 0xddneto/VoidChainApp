@@ -69,3 +69,15 @@ export const POLL_INTERVAL_MS = 1_000;
  * still catch up quickly after a long stop.
  */
 export const MAX_BLOCKS_PER_PASS = 10_000;
+
+/**
+ * Only publish parent-chain events after this many newer blocks exist.
+ *
+ * Robinhood is fast enough that twenty blocks add only a few seconds while
+ * preventing the explorer from presenting an unconfirmed tip as settled
+ * history. Production may raise this without rebuilding the indexer.
+ */
+export const CONFIRMATIONS = Math.max(
+  1,
+  Number.parseInt(process.env.INDEXER_CONFIRMATIONS ?? '20', 10) || 20,
+);

@@ -6,6 +6,10 @@ import { pool } from './db';
 
 const TOTAL_CHAINS = 1_111;
 const MAX_BLOCKS_PER_PASS = 10_000n;
+const CONFIRMATIONS = BigInt(Math.max(
+  1,
+  Number.parseInt(process.env.INDEXER_CONFIRMATIONS ?? '20', 10) || 20,
+));
 // Held by the dedicated cron connection for the full sweep.  A second Vercel
 // invocation simply reports "busy" instead of racing the cursor or RPC.
 const INDEXER_LOCK = 4_662_011;
@@ -252,7 +256,11 @@ export async function indexOnePass(): Promise<IndexerResult> {
     const client = createPublicClient({
       transport: fallback([http(rpc), http('https://rpc.testnet.chain.robinhood.com')]),
     }) as PublicClient;
-    const head = await client.getBlockNumber();
+    const tip = await client.getBlockNumber();
+    if (tip < CONFIRMATIONS) {
+      return { status: 'caught-up', from: from.toString(), to: '0', events: 0 };
+    }
+    const head = tip - CONFIRMATIONS;
     await hydrateDeedMetadata(client);
     if (from > head) return { status: 'caught-up', from: from.toString(), to: head.toString(), events: 0 };
     const to = head - from >= MAX_BLOCKS_PER_PASS ? from + MAX_BLOCKS_PER_PASS - 1n : head;

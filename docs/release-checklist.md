@@ -25,6 +25,11 @@
   to the 48-hour protocol timelock before changing either public manifest.
 - [ ] Confirm both public origins return CSP, frame-denial, MIME-sniffing and
   referrer-policy headers and both RPC endpoints pass read-only health checks.
+- [ ] Apply `db/migrations/003-relay-guard.sql` to the shared database, set the
+  same `DATABASE_URL` on VoidScan and VoidDEX, then prove duplicate nonce and
+  per-minute rate-limit rejection from separate processes.
+- [ ] Set and record `INDEXER_CONFIRMATIONS`; verify that the newest indexed
+  block remains at least that many blocks behind the parent tip.
 
 ## Mainnet gate
 

@@ -123,6 +123,14 @@ Private keys and authenticated RPC endpoints belong only in ignored local or
 hosting environment variables. The repository contains examples with variable
 names, never secrets.
 
+Public relays also require the shared Postgres database. Before any transaction
+is submitted, `(surface, wallet, nonce)` is reserved atomically and requests are
+rate-limited by wallet plus a hashed client identifier. This prevents separate
+serverless instances from racing the same signature. The relays fail closed if
+that admission control is unavailable. VoidScan publishes events only after a
+configurable parent-chain confirmation depth (`INDEXER_CONFIRMATIONS`, default
+20), rather than treating the current tip as settled history.
+
 ## Documentation
 
 - [Architecture boundary](docs/architecture.md)
@@ -146,7 +154,7 @@ runtime oracle after initial configuration and places Paymaster and Treasury
 administration behind a public 48-hour timelock. Neither this evidence nor the
 timelock is an external audit. Before a value-bearing deployment the project
 still requires independent security review, multisig control of the timelock
-proposer, dedicated RPC/indexer operations, monitoring and a fresh release
+proposer, independent monitoring, tested database backups and a fresh release
 audit.
 
 ## License

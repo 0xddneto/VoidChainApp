@@ -6,6 +6,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { DEPLOY, rhTransport } from '@/lib/testnet';
+import { RelayAdmissionError, relayClientId, reserveRelay } from '@/lib/relay-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,18 +50,20 @@ async function quote(functionName: 'randomBuyQuote' | 'specificBuyQuote') {
 export async function POST(request: Request) {
   const key = process.env.PAYMASTER_RELAYER_PRIVATE_KEY;
   if (!/^0x[0-9a-fA-F]{64}$/.test(key ?? '')) return reject('VOID relay is not configured.', 503);
+  const contentLength = Number(request.headers.get('content-length') ?? '0');
+  if (!Number.isFinite(contentLength) || contentLength > 65_536) return reject('Relay request is too large.', 413);
 
   let body: Raw;
   try { body = await request.json() as Raw; } catch { return reject('Malformed relay request.'); }
   const raw = body.request as Raw | undefined;
   const signature = asHex(body.signature);
   const rawPermits = body.permits;
-  if (!raw || !signature || signature.length !== 132 || !Array.isArray(rawPermits)) return reject('Invalid signed request.');
+  if (!raw || !signature || signature.length !== 132 || !Array.isArray(rawPermits) || rawPermits.length > 3) return reject('Invalid signed request.');
 
   const user = asAddress(raw.user); const target = asAddress(raw.target); const data = asHex(raw.data);
   const tokenId = asUint(raw.tokenId); const maxToll = asUint(raw.maxToll); const maxGasVoid = asUint(raw.maxGasVoid);
   const callGasLimit = asUint(raw.callGasLimit); const nonce = asUint(raw.nonce); const deadline = asUint(raw.deadline);
-  if (!user || target !== MARKET || !data || tokenId !== 1n || maxToll === null || maxGasVoid !== MAX_GAS_VOID || callGasLimit !== CALL_GAS_LIMIT || nonce === null || deadline === null) return reject('Invalid market limits.');
+  if (!user || target !== MARKET || !data || data.length > 4_098 || tokenId !== 1n || maxToll === null || maxGasVoid !== MAX_GAS_VOID || callGasLimit !== CALL_GAS_LIMIT || nonce === null || deadline === null) return reject('Invalid market limits.');
   const now = BigInt(Math.floor(Date.now() / 1000));
   if (deadline <= now || deadline > now + MAX_DEADLINE_SECONDS) return reject('Signature expired.');
 
@@ -115,6 +118,13 @@ export async function POST(request: Request) {
     return reject('Insufficient VOID for the NFT price, chain fee and refundable gas budget. Get VOID before signing again.', 409);
   }
 
+  let reservation: Awaited<ReturnType<typeof reserveRelay>>;
+  try {
+    reservation = await reserveRelay('voidscan-market', user, nonce, signature, relayClientId(request));
+  } catch (error) {
+    if (error instanceof RelayAdmissionError) return reject(error.message, error.status);
+    return reject('Relay admission control is unavailable.', 503);
+  }
   try {
     const account = privateKeyToAccount(key as Hex);
     const wallet = createWalletClient({ account, transport: rhTransport() });
@@ -125,10 +135,15 @@ export async function POST(request: Request) {
       account, address: PAYMASTER, abi: paymasterAbi,
       functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits],
     });
-    if (!simulation.result[0]) return reject('The market operation would fail. No transaction was sent.', 409);
+    if (!simulation.result[0]) {
+      await reservation.failed();
+      return reject('The market operation would fail. No transaction was sent.', 409);
+    }
     const hash = await wallet.sendTransaction({ account, chain: null, to: PAYMASTER, data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }) });
+    await reservation.submitted(hash);
     return NextResponse.json({ hash });
   } catch (error) {
+    await reservation.failed().catch(() => undefined);
     console.error('Market relay failed', error instanceof Error ? error.name : 'UnknownError');
     return reject('Relay refused the signed market action.', 502);
   }
