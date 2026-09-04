@@ -11,8 +11,11 @@ Evidence collected after the changes:
 
 - 287 Foundry tests pass, including fuzz, invariant, red-team and scale suites.
 - VoidScan and VoidDEX production builds pass; script and indexer typechecks pass.
-- The read-only V7 live audit reconciles 1,111 DAOs, 20 paid executions, runtime
+- The read-only V7 live audit reconciles 1,111 DAOs, 22 paid executions, runtime
   custody and the 98%/2% revenue split.
+- Two consecutive swaps through the production HTTP relay succeeded. The setup
+  call supplied two missing token permits; the repeat call supplied zero permits
+  and used only its fresh, bounded SponsoredCall signature.
 - The keeper reports the Paymaster healthy, with its refill route pinned to the
   locked VOID/ETH pool.
 - No private key, mnemonic, credential file or real `.env` is tracked. Only
