@@ -21,9 +21,15 @@ requested flow is complete. Canonical addresses are in
 - Both relays simulate the actual Paymaster return value before submitting.
   Both clients require a matching successful Sponsored event and reject
   ExecutionFailed, even when the outer receipt reports success.
+- The published DEX HTTP relay was exercised with the project test wallet:
+  `0x7d7df1250b17bfe08bd835b436d2d5053315dd3627c2b196e16fb4c338b1a6e9`.
+  Its successful app event and exact runtime revenue increment were checked.
 - TWAP maintenance has a separate authenticated cron endpoint. Deployment,
   configured credentials, scheduling and ETH balance are operational
   requirements; adding the route alone does not prove keeper uptime.
+- Vercel showed the TWAP cron enabled every five minutes and its scheduled
+  2026-09-04 00:35:13 UTC invocation returned HTTP 200. Both project deployments
+  completed successfully. This observation does not guarantee future uptime.
 - The local explorer's old-runtime derived tables were rebuilt with
   `node --import tsx sync-web-indexer.ts` from `script/`. No on-chain NFT,
   token balance or contract was reset by this synchronization.
