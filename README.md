@@ -151,7 +151,7 @@ the header.
 
 ## Safety status
 
-The local suite includes unit, fuzz, invariant, attack and high-load tests, and
+The local suite includes 308 unit, fuzz, invariant, attack and high-load tests, and
 the current V10 deployment has live testnet acceptance evidence. V10 freezes the
 runtime oracle after initial configuration and places Paymaster and Treasury
 administration behind a public 48-hour timelock. Neither this evidence nor the
@@ -159,6 +159,11 @@ timelock is an external audit. Before a value-bearing deployment the project
 still requires independent security review, multisig control of the timelock
 proposer, independent monitoring, tested database backups and a fresh release
 audit.
+
+The latest [V10 load validation](docs/V10_LOAD_VALIDATION.md) covers 1,000
+provisioned users, 4,800 mixed application calls, a separate 256-user V10
+no-allowance run, 256,000 invariant operations and a bounded live testnet
+canary indexed by VoidScan.
 
 ## License
 
