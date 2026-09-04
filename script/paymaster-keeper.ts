@@ -28,6 +28,7 @@ const abi = parseAbi([
   'function refillTarget() view returns (uint256)',
   'function reimbursableVoid() view returns (uint256)',
   'function swapRouter() view returns (address)',
+  'function voidEthPool() view returns (address)',
 ]);
 
 const client = createPublicClient({ transport: http(rpcUrl) });
@@ -41,19 +42,21 @@ function text(value: bigint): string {
 }
 
 async function tick(): Promise<void> {
-  const [plan, reserve, threshold, target, reimbursable, router] = await Promise.all([
+  const [plan, reserve, threshold, target, reimbursable, router, lockedPool] = await Promise.all([
     client.readContract({ address: paymaster, abi, functionName: 'refillPlan' }),
     client.getBalance({ address: paymaster }),
     client.readContract({ address: paymaster, abi, functionName: 'refillThreshold' }),
     client.readContract({ address: paymaster, abi, functionName: 'refillTarget' }),
     client.readContract({ address: paymaster, abi, functionName: 'reimbursableVoid' }),
     client.readContract({ address: paymaster, abi, functionName: 'swapRouter' }),
+    client.readContract({ address: paymaster, abi, functionName: 'voidEthPool' }),
   ]);
   const [shouldRefill, amountVoid, minEthOut] = plan;
   const timestamp = new Date().toISOString();
+  const route = /^0x0{40}$/i.test(lockedPool) ? router : lockedPool;
 
   if (!shouldRefill) {
-    console.log(`${timestamp} healthy/idle reserve=${text(reserve)} ETH threshold=${text(threshold)} target=${text(target)} reimbursable=${text(reimbursable)} VOID route=${router}`);
+    console.log(`${timestamp} healthy/idle reserve=${text(reserve)} ETH threshold=${text(threshold)} target=${text(target)} reimbursable=${text(reimbursable)} VOID route=${route}`);
     return;
   }
   if (!wallet || !account) {

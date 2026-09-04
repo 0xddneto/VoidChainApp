@@ -12,7 +12,7 @@ const PAYMASTER = DEX.paymaster;
 const VOID = DEX.voidToken;
 const FAUCET = DEX.faucet;
 const PAIRS = DEX.pools;
-const RH = { chainId:'0xb626', chainName:'Robinhood Chain Testnet', nativeCurrency:{name:'Ether',symbol:'ETH',decimals:18}, rpcUrls:[RPC], blockExplorerUrls:['https://testnet-explorer.chain.robinhood.com'] };
+const RH = { chainId:'0xb626', chainName:'Robinhood Chain Testnet', nativeCurrency:{name:'Ether',symbol:'ETH',decimals:18}, rpcUrls:[RPC], blockExplorerUrls:['https://explorer.testnet.chain.robinhood.com'] };
 const rpc = createPublicClient({ transport:http(RPC) }); const zero=0n;
 const erc20=parseAbi(['function nonces(address) view returns(uint256)']);
 const paymasterAbi=parseAbi(['function nonces(address) view returns(uint256)']);

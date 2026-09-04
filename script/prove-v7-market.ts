@@ -67,7 +67,13 @@ async function trade(label: string, kind: 'donation' | 'buy' | 'sell') {
   let hash: Hex;
   if (process.env.V7_HTTP && kind !== 'donation') {
     const response=await fetch('https://voidscan-nu.vercel.app/api/market/sponsor',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({request,signature,permits},(_k,v)=>typeof v==='bigint'?v.toString():v)});
-    const body=await response.json() as {hash?:Hex,error?:string}; if(!response.ok||!body.hash)throw Error(body.error??'Public relay failed'); hash=body.hash;
+    const body=await response.json() as {hash?:Hex,error?:string};
+    if(!response.ok||!body.hash){
+      const diagnostic=await rpc.simulateContract({account,address:c.paymaster,abi:pmAbi,functionName:'sponsorWithAssetPermits',args:[request,signature,permits]});
+      console.log('Local relay simulation:',diagnostic.result);
+      console.log('VOID balance:',String(await read(c.token,'VoidTokenV6','balanceOf',[account.address])));
+      throw Error(body.error??'Public relay failed');
+    } hash=body.hash;
   } else {
     const args=[request,signature,permits];
     const simulation=await rpc.simulateContract({account,address:c.paymaster,abi:pmAbi,functionName:'sponsorWithAssetPermits',args});
@@ -88,6 +94,16 @@ async function main() {
   if(!process.env.V7_HTTP) {
     const balance=await read(c.token,'VoidTokenV6','balanceOf',[account.address]) as bigint;
     if(balance<parseEther('550000')&&!proof.steps.acquireVoid)await send('acquireVoid',c.pool,'VoidEthPoolV6','swapEthForVoid',[parseEther('590000')],parseEther('0.003'));
+  } else if(!proof.steps.acquireHttpBudget) {
+    const balance=await read(c.token,'VoidTokenV6','balanceOf',[account.address]) as bigint;
+    const desired=parseEther('620000');
+    if(balance<desired){
+      const rv=await read(c.pool,'VoidEthPoolV6','reserveVoid') as bigint,re=await read(c.pool,'VoidEthPoolV6','reserveEth') as bigint;
+      const needed=desired-balance;
+      const ethIn=needed*re*10000n/((rv-needed)*9970n)+1n;
+      if(ethIn>parseEther('0.002'))throw Error('Proof funding exceeds 0.002 ETH cap');
+      await send('acquireHttpBudget',c.pool,'VoidEthPoolV6','swapEthForVoid',[needed*99n/100n],ethIn);
+    }
   }
   const elapsed=Number((await rpc.getBlock()).timestamp)-Number(await read(c.twap,'VoidTwapOracleV6','lastTimestamp'));
   if(elapsed>=300)await send(`twap:${Math.floor(Date.now()/1000)}`,c.twap,'VoidTwapOracleV6','update');

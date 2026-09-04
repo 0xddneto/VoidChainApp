@@ -88,6 +88,9 @@ export default function MarketPage() {
     const eth = provider(); if (!eth) return;
     setBusy(true); setMessage('Review the VOID amounts and sign in your wallet. No ETH will be charged to you.');
     try {
+      const price = kind === 'sell' ? 0n : BigInt(kind === 'random' ? state.randomQuote : state.specificQuote);
+      const required = price + BigInt(state.transactionFee) + MAX_GAS_VOID;
+      if (BigInt(state.balance) < required) throw new Error(`You need at least ${showVoid(required)} VOID for this trade, including the refundable gas budget. Get VOID before signing.`);
       const network = await eth.request({ method: 'eth_chainId' });
       if (network.toLowerCase() !== RH_TESTNET.chainIdHex) throw new Error('Switch your wallet to Robinhood Chain Testnet.');
       const client = createWalletClient({ account, transport: custom(eth) });
@@ -137,7 +140,7 @@ export default function MarketPage() {
   return <>
     <header className={styles.header}><div className={styles.bar}><div className={styles.logo}>VOID<span>MARKET</span></div><a href="/">← VoidScan</a><WalletProfileButton /></div></header>
     <main className={styles.wrap}>
-      <section className={styles.hero}><p>CHAIN 1 · NFT / VOID AMM</p><h1>Trade Deeds directly in VOID.</h1><span>Every trade enters through the Chain 1 Runtime. Your wallet signs exact VOID and NFT budgets; the Paymaster submits the transaction and pays parent-chain gas.</span></section>
+      <section className={styles.hero}><p>CHAIN 1 · NFT / VOID AMM</p><h1>Trade Deeds directly in VOID.</h1><span>Every trade enters through the Chain 1 Runtime. Your wallet signs exact VOID and NFT budgets; the Paymaster submits the transaction and pays parent-chain gas.</span><p><a href="/mint#get-void">Get VOID →</a></p></section>
       <div className={styles.stats}>
         <div><small>Minted</small><strong>{state?.minted ?? '—'} / 1,111</strong></div>
         <div><small>Pool inventory</small><strong>{state?.inventory.length ?? '—'} Deeds</strong></div>

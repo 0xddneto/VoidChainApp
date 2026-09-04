@@ -102,11 +102,15 @@ export async function POST(request: Request) {
   for (const spend of spends) required.set(`${spend.token}:${RUNTIME}`.toLowerCase(), spend.amount);
   if (permits.length !== required.size || permits.some((permit) => permit.value !== required.get(`${permit.token}:${permit.spender}`.toLowerCase()))) return reject('Permits do not match the displayed VOID budgets.');
 
-  const [currentNonce, fee] = await Promise.all([
+  const [currentNonce, fee, balance] = await Promise.all([
     rpc.readContract({ address: PAYMASTER, abi: readAbi, functionName: 'nonces', args: [user] }),
     rpc.readContract({ address: RUNTIME, abi: readAbi, functionName: 'feeOf', args: [1n] }),
+    rpc.readContract({ address: VOID, abi: parseAbi(['function balanceOf(address) view returns(uint256)']), functionName: 'balanceOf', args: [user] }),
   ]);
   if (nonce !== currentNonce || maxToll !== fee) return reject('Quote changed; sign again.', 409);
+  if (balance < maxToll + maxGasVoid + spends.reduce((sum, spend) => sum + spend.amount, 0n)) {
+    return reject('Insufficient VOID for the NFT price, chain fee and refundable gas budget. Get VOID before signing again.', 409);
+  }
 
   try {
     const account = privateKeyToAccount(key as Hex);

@@ -43,6 +43,11 @@ export default function MintPage() {
   const [reserveVoid, setReserveVoid] = useState(0n);
   const [reserveEth, setReserveEth] = useState(0n);
   const [twapRate, setTwapRate] = useState(0n);
+  const [onboardingEth, setOnboardingEth] = useState('0.0001');
+  let onboardingWei = 0n;
+  try { onboardingWei = parseEther(onboardingEth); } catch { /* Invalid input disables the swap. */ }
+  const effectiveOnboarding = onboardingWei * BigInt(10_000 - P.poolFeeBps) / 10_000n;
+  const onboardingQuote = effectiveOnboarding > 0n && reserveEth > 0n ? effectiveOnboarding * reserveVoid / (reserveEth + effectiveOnboarding) : 0n;
 
   const refresh = useCallback(async (wallet: Address | null) => {
     const [supply, price, voidReserve, ethReserve] = await Promise.all([
@@ -112,8 +117,8 @@ export default function MintPage() {
   const mint = () => send('mint', C.mint, encodeFunctionData({ abi: mintAbi, functionName: 'mint' }), mintPrice,
     'Mint confirmed. Your Deed is yours; its chain begins inactive until you choose its initial fee.');
   const buyVoid = () => {
-    const ethIn = parseEther('0.0001');
-    if (reserveVoid === 0n || reserveEth === 0n) return;
+    const ethIn = onboardingWei;
+    if (ethIn <= 0n || reserveVoid === 0n || reserveEth === 0n) return;
     const effective = ethIn * BigInt(10_000 - P.poolFeeBps) / 10_000n;
     const expected = effective * reserveVoid / (reserveEth + effective);
     const minOut = expected * 98n / 100n;
@@ -136,7 +141,7 @@ export default function MintPage() {
       <div className={styles.steps}>
         <section className={styles.step} data-done={connected}><div className={styles.num}>{connected ? '✓' : '1'}</div><div className={styles.stepBody}><h2>Connect wallet</h2><p>Use Robinhood Chain testnet. Connecting never spends anything.</p><button className={styles.btn} onClick={connect} disabled={busy !== null || connected}>{connected ? `${account!.slice(0, 6)}…${account!.slice(-4)}` : 'Connect wallet'}</button></div></section>
         <section className={styles.step} data-done={hasMinted} data-blocked={!connected}><div className={styles.num}>{hasMinted ? '✓' : '2'}</div><div className={styles.stepBody}><h2>Mint</h2><p>Your wallet will show exactly <b>{ethText(mintPrice, 4)} ETH</b> sent to the genesis mint contract. There is no VOID approval and no hidden relayer fee. One Deed per wallet.</p>{connected && <p className={ethBalance < mintPrice ? styles.noEth : undefined}>Wallet balance: <b className={styles.mono}>{ethText(ethBalance, 5)} ETH</b>{ethBalance < mintPrice && ' — insufficient for the mint.'}</p>}<div className={styles.row}><button className={styles.btn} onClick={mint} disabled={!canMint}>{busy === 'mint' ? 'Minting…' : hasMinted ? 'Mint complete' : soldOut ? 'Sold out' : 'Mint'}</button><span className={styles.mono}>40% locked LP · 20% Paymaster · 40% protocol</span></div></div></section>
-        <section className={styles.step} data-done={voidBalance > 0n} data-blocked={!twapReady}><div className={styles.num}>{voidBalance > 0n ? '✓' : '3'}</div><div className={styles.stepBody}><h2>Get VOID for apps</h2><p>Optional onboarding swap from the locked VOID/ETH pool. This intentionally uses ETH because it acquires the token that pays later sponsored app transactions. Pool fee: {P.poolFeeBps / 100}%.</p>{connected && <p>Your VOID: <b className={styles.mono}>{voidText(voidBalance)} VOID</b></p>}<button className={`${styles.btn} ${styles.btnGhost}`} onClick={buyVoid} disabled={!connected || !twapReady || busy !== null || reserveVoid === 0n}>Buy VOID with 0.0001 ETH</button></div></section>
+        <section id="get-void" className={styles.step} data-done={voidBalance > 0n} data-blocked={!twapReady}><div className={styles.num}>{voidBalance > 0n ? '✓' : '3'}</div><div className={styles.stepBody}><h2>Get VOID for apps</h2><p>Optional onboarding swap from the locked VOID/ETH pool. This intentionally uses ETH because it acquires the token that pays later sponsored app transactions. Pool fee: {P.poolFeeBps / 100}%.</p>{connected && <p>Your VOID: <b className={styles.mono}>{voidText(voidBalance)} VOID</b></p>}<label className={styles.swapAmount}>ETH amount<input value={onboardingEth} onChange={(event) => setOnboardingEth(event.target.value)} inputMode="decimal" aria-label="ETH to swap for VOID" /></label><p>Estimated output: <b>{voidText(onboardingQuote, 2)} VOID</b> · 2% max slippage. Large swaps have price impact.</p><button className={`${styles.btn} ${styles.btnGhost}`} onClick={buyVoid} disabled={!connected || !twapReady || busy !== null || onboardingWei <= 0n || ethBalance <= onboardingWei || reserveVoid === 0n}>Buy VOID</button></div></section>
       </div>
       {message && <div className={`${styles.msg} ${message.kind === 'ok' ? styles.msgOk : message.kind === 'err' ? styles.msgErr : styles.msgInfo}`}>{message.text}</div>}
       <div className={styles.note}><p><strong>Testnet only.</strong> V7 starts a new VOID economy with a fixed supply of 1,000,000,000 VOID. The five existing Deeds were reissued to their recorded owners or the replacement pool. Old VOID is not used by this deployment.</p><p>The NFT/VOID pool runs inside Chain #1. Buy random: 1%. Buy selected: 2%. Sell: 1.5%. Each fee includes a 0.5% protocol share. NFTs can be bought and sold repeatedly; their 500,000 VOID backing is released only once.</p></div>

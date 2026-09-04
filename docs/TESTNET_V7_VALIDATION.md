@@ -45,6 +45,11 @@ All 27 Foundry suites passed, including the migration and repeated market-cycle
 tests, 1,111-chain tests, Paymaster refill checks and custody/fee invariants.
 Web and isolated DEX production builds passed.
 
+The 1,111 DAO addresses were checked from `DaoCreated` events with no missing
+token ID. Fourteen paid runtime transactions were reconciled against runtime
+custody: 1,876.625173512997563219 VOID gross, 1,839.092670042737611959 VOID
+for the holder and 37.532503470259951260 VOID for the protocol.
+
 Live repeated circulation of NFT #4, with successful inner execution verified:
 
 | Action | Transaction |
@@ -60,6 +65,30 @@ sale removes 495,000 VOID (492,500 to seller and 2,500 to protocol). Chain fees
 are separate and were checked against exact runtime accounting. NFT #4 ended
 back in the pool and personal NFT #5 ownership was unchanged.
 
+The same two buy/sell cycles passed through the deployed public market relay.
+A DEX swap also passed through its deployed relay and produced a matching
+successful Paymaster event and exact runtime revenue:
+`0x15885ec752db92850c30c225a6997e231ed0f98d393e8be7932784e5bc3457b0`.
+
+A separate deterministic test wallet minted NFT #6 with 0.001 ETH:
+`0x3106950694de1b8dce2f100412bda86830a91af31b8a714c51d1a6210fbba539`.
+The emitted split was exactly 0.0004 ETH locked LP, 0.0002 ETH Paymaster and
+0.0004 ETH protocol. The chain was inactive and a second mint was rejected.
+
+Real Chain #1 fee delivery was exercised after accounting reconciliation:
+
+| Destination | Amount | Transaction |
+| --- | ---: | --- |
+| Holder | 1,839.092670042737611959 VOID | `0x7f7bbb7aa946a78d72fa9dc7a8e77b56d281f3a9b18271c6d21cd7fa243a2645` |
+| Protocol | 37.532503470259951260 VOID | `0xd9b510a6fe650d166312e66e98c89e8c1027afceffbc11a4b9c023732f8c516c` |
+
+The production cron was forced into a small bounded refill test. It converted
+8,381.099774500933032971 VOID and increased the Paymaster reserve from
+0.00105970483 ETH to 0.001173616205695733 ETH in transaction
+`0xb3e4847639a3bd340184754779bc25a37842f690116c2fa23acc247654fd8cb8`.
+The normal 0.0001 ETH threshold / 0.0005 ETH target policy was restored in
+`0x722519715d61cb9ffb2adac9e6f72b7064ad5e7926e06c9d51e88d63d0a22cc2`.
+
 ## Operations and limits
 
 - Keeper checks every five minutes: update TWAP, then request the bounded
@@ -73,3 +102,8 @@ back in the pool and personal NFT #5 ownership was unchanged.
   matching successful Paymaster execution and no `ExecutionFailed` event.
 - Public HTTP relay and browser checks are recorded below after deployment;
   source tests alone do not establish public-site functionality.
+
+The genesis mint, Deed, VOID, pool, oracle stack, Runtime, Paymaster, Treasury,
+DAO factory, app factory, escrow, timelocks and implementation were verified on
+the Robinhood testnet Blockscout. Published gateways and DEX/test-token helpers
+are live bytecode but are not claimed as explorer-verified here.
