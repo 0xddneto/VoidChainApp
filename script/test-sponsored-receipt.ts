@@ -25,4 +25,7 @@ assert.throws(() => requireSponsoredSuccess(receipt([success, failure]), paymast
 assert.throws(() => requireSponsoredSuccess(receipt([]), paymaster, user, 1n), /No matching/);
 assert.throws(() => requireSponsoredSuccess(receipt([success], 'reverted'), paymaster, user, 1n), /reverted/);
 assert.throws(() => requireSponsoredSuccess(receipt([success]), paymaster, user, 2n), /No matching/);
-console.log('PASS: six sponsored receipt cases (success, inner failures in both orders, absent event, outer revert, wrong chain).');
+assert.throws(() => requireSponsoredSuccess(receipt([{ ...success, address: user }]), paymaster, user, 1n), /No matching/);
+assert.throws(() => requireSponsoredSuccess(receipt([success]), paymaster, paymaster, 1n), /No matching/);
+assert.throws(() => requireSponsoredSuccess(receipt([{ ...success, data: '0x' }]), paymaster, user, 1n), /No matching/);
+console.log('PASS: nine sponsored receipt cases, including wrong emitter, wrong user and malformed confirmation.');
