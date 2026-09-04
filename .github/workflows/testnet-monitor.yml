@@ -1,0 +1,29 @@
+name: testnet-monitor
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testnet-monitor
+  cancel-in-progress: false
+
+jobs:
+  public-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: script/package-lock.json
+      - run: npm ci
+        working-directory: script
+      - run: npm run monitor:testnet-v8
+        working-directory: script

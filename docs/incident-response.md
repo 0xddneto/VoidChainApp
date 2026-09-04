@@ -6,6 +6,10 @@ Treat unexpected ownership, mint supply, VOID custody, oracle freshness,
 Paymaster reserve, sponsored-call failures, unrecognized application gateways
 or mismatched explorer bytecode as a protocol incident.
 
+The scheduled `testnet-monitor` workflow is the first independent availability
+alarm. A failed run must be investigated; rerunning it until green is not an
+incident response.
+
 ## Immediate actions
 
 1. Stop the public relayer and keeper credentials in the hosting environment.
