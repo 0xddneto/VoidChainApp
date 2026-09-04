@@ -16,7 +16,7 @@ interface IV4MarketNft {
 /// @notice ERC-4494-compatible permit surface. Future VOID Deeds implement
 /// this so an NFT listing is entirely signature-only, like an ERC-20 permit.
 interface IV4MarketNftPermit {
-    function permit(address spender, uint256 tokenId, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external;
+    function permit(address spender, uint256 tokenId, uint256 deadline, bytes calldata signature) external;
 }
 
 /// @title VoidChainNftMarketV4
@@ -94,11 +94,9 @@ contract VoidChainNftMarketV4 is ChainAppBase, ReentrancyGuard {
         uint256 tokenId,
         uint256 price,
         uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
+        bytes calldata signature
     ) external onlyFromMyChain nonReentrant returns (uint256 listingId) {
-        IV4MarketNftPermit(collection).permit(address(runtime), tokenId, deadline, v, r, s);
+        IV4MarketNftPermit(collection).permit(address(runtime), tokenId, deadline, signature);
         if (IV4MarketNft(collection).ownerOf(tokenId) != caller()) {
             revert NotTokenOwner(IV4MarketNft(collection).ownerOf(tokenId), caller());
         }

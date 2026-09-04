@@ -1,31 +1,34 @@
 {
-  "network": { "chainId": 46630, "rpc": "https://robinhood-testnet.drpc.org", "deployBlock": 112783984 },
-  "version": "v8-oracle-frozen-timelocked-testnet",
+  "network": { "chainId": 46630, "rpc": "https://robinhood-testnet.drpc.org", "deployBlock": 113023269 },
+  "version": "v10-exact-ledger-chainapp-testnet",
   "production": {
-    "VoidProtocolTimelock": "0x039af9921906165619ae2135f46471c19fa987c9",
-    "VoidChainDeed": "0xd19f35353c4bb25d179724d762c7fe3b06408e0e",
-    "VoidChainTreasury": "0x725536120ab34dac4ce72527e67cf67a6f416377",
-    "VoidChainAppRuntime": "0x2912f4a8943e4a1434087ba78f18e102cce303d2",
-    "VoidPaymaster": "0xf66e7c04afc17f65526c325a089b87c15130bc06",
-    "VoidChainDaoFactory": "0x89ee6d166a6345ccaf20476fa6f2b3d2f283ff99",
-    "VoidChainAppFactoryV3": "0xa22619093b07250cad16047262ebf00ff09a851f",
-    "VoidEthGenesisMintV6": "0x1ca182f625aaa06c35e2f5019821ebaa4b83c539",
-    "VoidEthGenesisMintV8": "0x1ca182f625aaa06c35e2f5019821ebaa4b83c539"
+    "VoidProtocolTimelock": "0x5e92dce7ee45cd390564b77698f5445c467db7e0",
+    "VoidChainDeed": "0xd6e64be932666a8a55a0f61473931f6166346d1e",
+    "VoidChainTreasury": "0x29a73a0e0a46a40a2fe77db3df386546407669f8",
+    "VoidChainAppRuntime": "0x67fe2acba322f2d031dc79fd4dde997bd1ec9dae",
+    "VoidPaymaster": "0x56fcd97b9ca8eb2c3a451c1b557708cdca7f62fd",
+    "VoidChainDaoFactory": "0xda3b02006d689eb0c87a9fe56807d912416fd7cd",
+    "VoidChainAppFactoryV3": "0x1e9826220b98a150f9aa4a644ad7af157f63c2ce",
+    "VoidGovernanceVotesV9": "0xd7788a536d4da5d63f9362f26dacbdf8b33b0b67",
+    "VoidEthGenesisMintV6": "0x4eaa37e811af0dd2405447e64065f57e0b4dd08b",
+    "VoidEthGenesisMintV10": "0x4eaa37e811af0dd2405447e64065f57e0b4dd08b"
   },
   "governance": {
-    "paymasterGovernor": "0x039af9921906165619ae2135f46471c19fa987c9",
-    "protocolTimelock": "0x039af9921906165619ae2135f46471c19fa987c9",
+    "paymasterGovernor": "0x5e92dce7ee45cd390564b77698f5445c467db7e0",
+    "protocolTimelock": "0x5e92dce7ee45cd390564b77698f5445c467db7e0",
     "proposer": "0x440D2340C907735632A5fa0070273AFeF3D26827",
     "delaySeconds": 172800,
     "protocolTreasury": "0x892F840aF9CFE78D4FF91D8e6D0F783264388A78"
   },
   "testnet": {
-    "VoidTestToken": "0x7defce421374496709d470b17d37118028888dc5",
-    "VoidGenesisEscrowV6": "0x78c8391c05c6ecbcad40bd0d49ffbbf646d99d72",
-    "VoidEthPoolV6": "0x30b840d58edc20fdc420a0c6f12c364bb71dda1d",
-    "VoidTwapOracleV6": "0xa52ab088e33efbab61580e51dcb7d55d3918caa4",
-    "VoidTwapFreshnessGuardV6": "0xf858e47c12994981e7e773ebaafd4de5e3ea4470",
-    "VoidGenesisNftAmmV6": "0x1a13cc77070b43b98fdd1e0e6f5d349c2c9fda6d"
+    "VoidTestToken": "0x3a53442e32e6b4a4c8fb6989c6ba38411034f5e3",
+    "VoidGenesisEscrowV6": "0x4c41c00dbff7e3a952b96c8c9e092ff1a312b775",
+    "VoidGenesisEscrowV10": "0x4c41c00dbff7e3a952b96c8c9e092ff1a312b775",
+    "VoidEthPoolV6": "0x946cb49e782d41ac8e238729aa845f06e9e44213",
+    "VoidTwapOracleV6": "0x5627de6128bbea756cf8d2484672a83bea14314b",
+    "VoidTwapFreshnessGuardV6": "0x8ccc173801801eb15a937b6aa101e40d5001fe9a",
+    "VoidGenesisNftAmmV6": "0xc902f69644e7503614ace3253544aa074fbb37af",
+    "VoidSoftStakingV9": "0xee915bfd02a893345dc11b7d615d4abcdffef37f"
   },
   "parameters": { "nfts": 1111, "tokensPerNFT": "500000000000000000000000", "randomFeeBps": 100, "specificFeeBps": 200, "protocolCutBps": 50, "tollUsd": "1000000000000000", "inPool": 2 },
   "chainIdBase": "46630000"

@@ -25,5 +25,15 @@ jobs:
           cache-dependency-path: script/package-lock.json
       - run: npm ci
         working-directory: script
-      - run: npm run monitor:testnet-v8
+      - uses: actions/cache/restore@v5
+        with:
+          path: script/deployments/paymaster-monitor-state.json
+          key: paymaster-monitor-${{ github.run_id }}
+          restore-keys: paymaster-monitor-
+      - run: npm run monitor:testnet-v10
         working-directory: script
+      - uses: actions/cache/save@v5
+        if: success()
+        with:
+          path: script/deployments/paymaster-monitor-state.json
+          key: paymaster-monitor-${{ github.run_id }}

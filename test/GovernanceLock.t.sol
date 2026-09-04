@@ -20,8 +20,10 @@ import {VoidTestToken} from "../contracts/testnet/VoidTestToken.sol";
 
 contract GovernanceDeed is IRuntimeDeed {
     mapping(uint256 => address) public owners;
+    mapping(uint256 => uint256) public ownershipEpoch;
 
     function setOwner(uint256 tokenId, address owner) external {
+        if (owners[tokenId] != address(0) && owners[tokenId] != owner) ++ownershipEpoch[tokenId];
         owners[tokenId] = owner;
     }
 

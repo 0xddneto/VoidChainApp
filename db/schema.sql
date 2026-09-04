@@ -42,6 +42,7 @@ CREATE TABLE chains (
     is_hot          BOOLEAN NOT NULL DEFAULT FALSE,
 
     last_indexed_block BIGINT NOT NULL DEFAULT 0,
+    last_indexed_hash  BYTEA,
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -223,6 +224,7 @@ CREATE TABLE chain_revenue (
     chain_id        SMALLINT NOT NULL REFERENCES chains(id) ON DELETE CASCADE,
     settled_at      TIMESTAMPTZ NOT NULL,
     tx_hash         BYTEA NOT NULL,
+    log_index       INTEGER NOT NULL DEFAULT 0,
     gross           NUMERIC(78, 0) NOT NULL,
     -- The AEP licence is NOT collected by our treasury: Arbitrum's own
     -- RewardDistributor splits it at the source, before the revenue ever
@@ -232,11 +234,20 @@ CREATE TABLE chain_revenue (
     protocol_fee    NUMERIC(78, 0) NOT NULL,   -- 2% VOIDS, see PROTOCOL_BPS
     holder_share    NUMERIC(78, 0) NOT NULL,   -- the rest, to the NFT owner
     holder_address  BYTEA NOT NULL,            -- who owned it at the time
-    PRIMARY KEY (chain_id, tx_hash)
+    PRIMARY KEY (chain_id, tx_hash, log_index)
 );
 
 CREATE INDEX revenue_by_chain ON chain_revenue (chain_id, settled_at DESC);
 CREATE INDEX revenue_by_holder ON chain_revenue (holder_address, settled_at DESC);
+
+-- Immutable totals captured before a public Runtime cutover. The new indexer
+-- rebuilds its event projection without erasing already-settled history.
+CREATE TABLE chain_migration_baseline (
+    chain_id        INTEGER PRIMARY KEY,
+    tx_count        BIGINT NOT NULL DEFAULT 0,
+    holder_revenue  NUMERIC(78, 0) NOT NULL DEFAULT 0,
+    captured_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- Expenses. Unlike revenue, NOTHING here is on-chain: these are real-world
 -- operating costs. Two origins, and the distinction has to stay visible in the
@@ -284,3 +295,11 @@ CREATE TABLE relay_requests (
 
 CREATE INDEX relay_requests_user_recent ON relay_requests (user_address, created_at DESC);
 CREATE INDEX relay_requests_client_recent ON relay_requests (client_hash, created_at DESC);
+
+CREATE TABLE profile_requests (
+    client_hash     BYTEA NOT NULL,
+    user_address    BYTEA NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX profile_requests_client_recent ON profile_requests (client_hash, created_at DESC);
+CREATE INDEX profile_requests_user_recent ON profile_requests (user_address, created_at DESC);

@@ -14,6 +14,10 @@ interface IERC20 {
     function balanceOf(address account) external view returns (uint256);
 }
 
+interface IVoidProtocolToken {
+    function protocolTransferFrom(address from, address to, uint256 amount) external returns (bool);
+}
+
 interface IVoidChainTreasury {
     function settle(uint256 tokenId, uint256 amount) external;
     function settleTo(uint256 tokenId, address beneficiary, uint256 amount) external;
@@ -823,7 +827,16 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         if (amount > budget) revert BudgetExceeded(token, amount, budget);
         spendBudget[token] = budget - amount;
 
-        if (!IERC20(token).transferFrom(executingSpendPayer, to, amount)) {
+        if (token == address(voidToken)) {
+            try IVoidProtocolToken(token).protocolTransferFrom(executingSpendPayer, to, amount) returns (bool ok) {
+                if (!ok) revert CallFailed("VOID spend refused");
+            } catch {
+                // Compatibility path for the deployed V8 token.
+                if (!IERC20(token).transferFrom(executingSpendPayer, to, amount)) {
+                    revert CallFailed("VOID spend refused");
+                }
+            }
+        } else if (!IERC20(token).transferFrom(executingSpendPayer, to, amount)) {
             revert CallFailed("spend refused by the token");
         }
         emit Spent(chain, executingCaller, token, msg.sender, to, amount);
@@ -852,8 +865,12 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         uint256 fee = app.feePerCallUsd == 0 ? 0 : oracle.usdToVoid(app.feePerCallUsd);
         if (fee > maxFee) revert TollAboveLimit(fee, maxFee);
         if (fee > 0) {
-            if (!voidToken.transferFrom(msg.sender, address(this), fee)) {
-                revert CallFailed("toll not paid");
+            try IVoidProtocolToken(address(voidToken)).protocolTransferFrom(msg.sender, address(this), fee) returns (bool moved) {
+                if (!moved) revert CallFailed("toll not paid");
+            } catch {
+                if (!voidToken.transferFrom(msg.sender, address(this), fee)) {
+                    revert CallFailed("toll not paid");
+                }
             }
 
             // THE PROTOCOL'S 2% IS SPLIT OFF HERE, AT THE MOMENT OF THE

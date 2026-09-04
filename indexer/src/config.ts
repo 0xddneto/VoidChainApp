@@ -21,7 +21,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const DEPLOYMENT = resolve(here, '../../web/lib/deployment.json');
 
 interface Deployment {
-  production: { VoidChainDeed: string; VoidChainAppRuntime: string };
+  production: { VoidChainDeed: string; VoidChainAppRuntime: string; VoidChainTreasury: string };
   network: { rpc: string; chainId: number; deployBlock?: number };
   chainIdBase: number;
 }
@@ -39,6 +39,7 @@ try {
 
 export const RUNTIME = deployment.production.VoidChainAppRuntime as `0x${string}`;
 export const DEED = deployment.production.VoidChainDeed as `0x${string}`;
+export const TREASURY = deployment.production.VoidChainTreasury as `0x${string}`;
 export const PARENT_RPC = process.env.PARENT_RPC ?? deployment.network.rpc;
 export const CHAIN_ID_BASE = deployment.chainIdBase;
 

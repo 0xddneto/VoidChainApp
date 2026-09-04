@@ -63,6 +63,11 @@ interface IWETH {
     function withdraw(uint256 amount) external;
 }
 
+interface IVoidProtocolToken {
+    function protocolTransferFrom(address from, address to, uint256 amount) external returns (bool);
+    function isProtocolOperator(address account) external view returns (bool);
+}
+
 /// @notice The permanently locked VOID/ETH pool used by the V6 genesis.
 /// @dev Kept deliberately smaller than a general DEX interface: the Paymaster
 /// can only sell VOID into ETH and ETH is always returned to this contract.
@@ -1113,7 +1118,14 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     }
 
     function _pull(address from, uint256 amount) private {
-        if (!voidToken.transferFrom(from, address(this), amount)) revert TransferFailed();
+        // V9's frozen Paymaster operator removes the first-use approval while
+        // the signed request still caps every amount and consumes a nonce. The
+        // fallback preserves compatibility with the already deployed V8 token.
+        try IVoidProtocolToken(address(voidToken)).protocolTransferFrom(from, address(this), amount) returns (bool ok) {
+            if (!ok) revert TransferFailed();
+        } catch {
+            if (!voidToken.transferFrom(from, address(this), amount)) revert TransferFailed();
+        }
     }
 
     /// @dev Adds the signed VOID budgets so the legacy VOID-only permit is
@@ -1140,14 +1152,27 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
             for (uint256 j; j < i; ++j) if (spends[j].token == token) seen = true;
             if (seen) continue;
             uint256 needed = _spendLimit(spends, token);
+            if (token == address(voidToken) && _v9OperatorsReady()) continue;
             uint256 available = IERC20(token).allowance(user, address(runtime));
             if (available < needed) revert AllowanceTooLow(user, address(runtime), available, needed);
         }
     }
 
     function _requireAllowance(address user, address spender, uint256 needed) private view {
+        if (
+            _v9OperatorsReady()
+                && (spender == address(this) || spender == address(runtime))
+        ) return;
         uint256 available = voidToken.allowance(user, spender);
         if (available < needed) revert AllowanceTooLow(user, spender, available, needed);
+    }
+
+    function _v9OperatorsReady() private view returns (bool) {
+        try IVoidProtocolToken(address(voidToken)).isProtocolOperator(address(this)) returns (bool ready) {
+            return ready;
+        } catch {
+            return false;
+        }
     }
 
     // ---------------------------------------------------------------------

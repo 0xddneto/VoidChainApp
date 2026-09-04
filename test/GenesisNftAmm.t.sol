@@ -14,7 +14,7 @@ import {IVoidChainAppRuntime} from "../contracts/apps/ChainAppBase.sol";
 contract AmmTestDeed is ERC721 {
     constructor() ERC721("Test Deed", "DEED") {}
     function mint(address to, uint256 id) external { _mint(to, id); }
-    function permit(address spender, uint256 id, uint256, uint8, bytes32, bytes32) external {
+    function permit(address spender, uint256 id, uint256, bytes calldata) external {
         _approve(spender, id, address(0));
     }
 }
@@ -43,6 +43,8 @@ contract AmmTestRuntime is IVoidChainAppRuntime {
     }
 }
 
+contract AmmRewardsSink {}
+
 contract GenesisNftAmmTest is Test {
     address private constant USER = address(0xA11CE);
     address private constant TREASURY = address(0xBEEF);
@@ -54,17 +56,22 @@ contract GenesisNftAmmTest is Test {
     AmmTestRuntime private runtime;
     VoidChainAppGateway private gateway;
     VoidGenesisNftAmmV6 private implementation;
+    AmmRewardsSink private rewards;
 
     function setUp() public {
         escrow = new VoidGenesisEscrowV6(address(this));
         token = new VoidTokenV6(address(escrow));
         deed = new AmmTestDeed();
         runtime = new AmmTestRuntime();
+        rewards = new AmmRewardsSink();
         implementation = new VoidGenesisNftAmmV6(
             runtime, 1, IVoidGenesisTokenV6(address(token)), IVoidGenesisDeedV6(address(deed)),
             IVoidGenesisEscrowV6(address(escrow)), TREASURY
         );
-        gateway = new VoidChainAppGateway(address(runtime), 1, address(implementation), "");
+        gateway = new VoidChainAppGateway(
+            address(runtime), 1, address(implementation),
+            abi.encodeCall(implementation.initializeStakerRewards, (address(rewards)))
+        );
         escrow.configureOnce(IVoidEscrowToken(address(token)), address(this), address(this), BUILDER, RESERVE);
         escrow.setNftAmmOnce(address(gateway));
         deed.mint(USER, 1);
@@ -90,7 +97,7 @@ contract GenesisNftAmmTest is Test {
     }
     function sell() private {
         vm.prank(USER);
-        runtime.execute(address(gateway), abi.encodeCall(implementation.sellWithPermit, (1, block.timestamp + 600, 27, bytes32(0), bytes32(0))));
+        runtime.execute(address(gateway), abi.encodeCall(implementation.sellWithPermit, (1, block.timestamp + 600, bytes("signature"))));
     }
     function buy(bool specific) private {
         bytes memory data = specific
@@ -104,6 +111,7 @@ contract GenesisNftAmmTest is Test {
     function assertConservation() private view {
         uint256 accounted = token.balanceOf(address(escrow)) + token.balanceOf(USER)
             + token.balanceOf(address(gateway)) + token.balanceOf(TREASURY)
+            + token.balanceOf(address(rewards))
             + token.balanceOf(BUILDER) + token.balanceOf(RESERVE);
         assertEq(accounted, token.totalSupply());
         assertEq(token.totalSupply(), 1_000_000_000 ether);
@@ -123,6 +131,7 @@ contract GenesisNftAmmTest is Test {
             assertConservation();
         }
         assertEq(token.balanceOf(TREASURY), 41 * 2_500 ether);
+        assertEq(token.balanceOf(address(rewards)), 31 * 5_000 ether + 10 * 10_000 ether);
     }
 
     function test_buyAboveLimitPreservesInventory() public {
@@ -138,13 +147,13 @@ contract GenesisNftAmmTest is Test {
     function test_directWalletCannotSellThroughGateway() public {
         vm.expectRevert(abi.encodeWithSelector(VoidChainAppGateway.NotRuntime.selector, USER));
         vm.prank(USER);
-        VoidGenesisNftAmmV6(address(gateway)).sellWithPermit(1, block.timestamp + 600, 27, bytes32(0), bytes32(0));
+        VoidGenesisNftAmmV6(address(gateway)).sellWithPermit(1, block.timestamp + 600, bytes("signature"));
         assertFalse(escrow.deedReleased(1));
     }
 
     function test_nonOwnerCannotReleaseBacking() public {
         vm.expectRevert();
-        runtime.execute(address(gateway), abi.encodeCall(implementation.sellWithPermit, (1, block.timestamp + 600, 27, bytes32(0), bytes32(0))));
+        runtime.execute(address(gateway), abi.encodeCall(implementation.sellWithPermit, (1, block.timestamp + 600, bytes("signature"))));
         assertFalse(escrow.deedReleased(1));
         assertConservation();
     }

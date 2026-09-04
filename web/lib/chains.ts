@@ -230,7 +230,8 @@ export async function allChains(): Promise<ChainRow[]> {
             COALESCE(s.total_txs, 0)       AS txs,
             COALESCE(s.total_contracts, 0) AS contracts,
             COALESCE(s.total_addresses, 0) AS addresses,
-            COALESCE((SELECT (sum(toll) * 98) / 100 FROM transactions t WHERE t.chain_id = c.id), 0) AS revenue
+            COALESCE((SELECT holder_revenue FROM chain_migration_baseline b WHERE b.chain_id = c.id), 0)
+              + COALESCE((SELECT sum(holder_share) FROM chain_revenue r WHERE r.chain_id = c.id), 0) AS revenue
        FROM chains c
        LEFT JOIN chain_summary s ON s.chain_id = c.id
       ORDER BY c.id`,
@@ -431,7 +432,8 @@ export async function profilePage(address: string): Promise<ProfilePage> {
               COALESCE(s.total_txs, 0)       AS txs,
               COALESCE(s.total_contracts, 0) AS contracts,
               COALESCE(s.total_addresses, 0) AS addresses,
-              COALESCE((SELECT (sum(toll) * 98) / 100 FROM transactions t WHERE t.chain_id = c.id), 0) AS revenue
+              COALESCE((SELECT holder_revenue FROM chain_migration_baseline b WHERE b.chain_id = c.id), 0)
+                + COALESCE((SELECT sum(holder_share) FROM chain_revenue r WHERE r.chain_id = c.id), 0) AS revenue
          FROM chains c
          LEFT JOIN chain_summary s ON s.chain_id = c.id
         WHERE c.owner_address = $1

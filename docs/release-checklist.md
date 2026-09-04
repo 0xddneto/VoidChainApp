@@ -5,27 +5,28 @@
 - [ ] Install exactly the locked Node and Solidity dependencies from a clean clone.
 - [ ] Run `forge build` and `forge test`, including `MegaLoadTest`.
 - [ ] Snapshot the currently published supply, deploy with
-  `script/deploy-testnet-v8.ts`, and require every staged proof before updating
+  `script/deploy-testnet-v10.ts`, and require every staged proof before updating
   `web/lib/deployment.json`.
 - [ ] Confirm the deployment creates the runtime, fixes the DAO factory once,
   and creates all 1,111 deterministic DAO clones before user activation.
 - [ ] Verify deployed source and constructor arguments in the parent-chain
   explorer; compare the generated deployment file with the web configuration.
-- [ ] Run `npm run verify:testnet-v8`, require all contracts to pass explorer
-  recompilation, then run `npm run audit:testnet-v8` and reconcile supply, owners, 1,111 DAOs,
+- [ ] Run `npm run verify:testnet-v10`, require all contracts to pass explorer
+  recompilation, then reconcile supply, owners, 1,111 DAOs,
   runtime custody, owner revenue, protocol revenue and Paymaster reserve.
 - [ ] Run the indexer against that deployment and exercise VoidScan's registry,
   detail, profile, DAO and owner-claim routes with a disposable wallet.
 - [ ] Exercise mint, NFT buy/sell, swap, add/remove liquidity and refill. For
   every application action, prove a Paymaster event, a VOID balance delta and
   the matching indexed transaction; a wallet preview alone is not evidence.
-- [ ] From a fresh wallet, record the one-time token setup prompts. Repeat the
-  same action and require exactly one bounded `SponsoredCall` signature.
+- [ ] From a fresh wallet, require exactly one bounded `SponsoredCall`
+  signature for VOID-only actions and no VOID allowance. Record any separate
+  permit required to move an external ERC-20 or ERC-721 asset.
 - [ ] Confirm `Runtime.oracle` rejects replacement and Paymaster/Treasury point
   to the 48-hour protocol timelock before changing either public manifest.
 - [ ] Confirm both public origins return CSP, frame-denial, MIME-sniffing and
   referrer-policy headers and both RPC endpoints pass read-only health checks.
-- [ ] Apply `db/migrations/003-relay-guard.sql` to the shared database, set the
+- [ ] Apply all migrations through `005-v10-history-baseline.sql` to the shared database, set the
   same `DATABASE_URL` on VoidScan and VoidDEX, then prove duplicate nonce and
   per-minute rate-limit rejection from separate processes.
 - [ ] Set and record `INDEXER_CONFIRMATIONS`; verify that the newest indexed

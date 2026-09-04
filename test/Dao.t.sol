@@ -8,8 +8,10 @@ import {VoidTestToken} from "../contracts/testnet/VoidTestToken.sol";
 
 contract DeedSpy is IVoidChainDeed {
     mapping(uint256 => address) public owners;
+    mapping(uint256 => uint256) public ownershipEpoch;
 
     function setOwner(uint256 tokenId, address owner) external {
+        if (owners[tokenId] != address(0) && owners[tokenId] != owner) ++ownershipEpoch[tokenId];
         owners[tokenId] = owner;
     }
 
@@ -119,6 +121,12 @@ contract DaoTest is Test {
         (, , , , uint256 deadline, , , , ) = dao.proposals(id);
         assertEq(deadline, block.timestamp + 5 days);
         assertEq(uint256(dao.state(id)), uint256(VoidChainDao.State.Active));
+    }
+
+    function test_DeedTransferInvalidatesSellerProposal() public {
+        uint256 id = _propose();
+        deed.setOwner(CHAIN, bob);
+        assertEq(uint256(dao.state(id)), uint256(VoidChainDao.State.Defeated));
     }
 
     function test_WalletVotingNeverLocksOrMovesVoid() public {

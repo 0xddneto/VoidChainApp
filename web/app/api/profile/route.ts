@@ -6,17 +6,45 @@
  * what proves it, and the two have to agree or nothing is written.
  */
 import { NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import { verifyMessage, isAddress } from 'viem';
 import { profileIdentity, saveProfile, type Social } from '@/lib/chains';
 import { canonicalProfile, profileMessage } from '@/lib/profile-signature';
+import { pool } from '@/lib/db';
+import { relayClientId } from '@/lib/relay-guard';
 
-const MAX_AVATAR_DATA_URI = 900_000;
+const MAX_AVATAR_BYTES = 650_000;
+const MAX_REQUEST_BYTES = 950_000;
 
 function validAvatarUri(value: string): boolean {
   if (!value) return true;
   if (value.startsWith('https://')) return value.length <= 400;
-  return value.length <= MAX_AVATAR_DATA_URI
-    && /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(value);
+  const match = value.match(/^data:image\/(?:png|jpeg|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$/);
+  return Boolean(match && Buffer.from(match[1], 'base64').byteLength <= MAX_AVATAR_BYTES);
+}
+
+async function admitProfileWrite(req: Request, address: string): Promise<boolean> {
+  const clientHash = createHash('sha256').update(relayClientId(req)).digest();
+  const addressBytes = Buffer.from(address.slice(2), 'hex');
+  const client = await pool.connect().catch(() => null);
+  if (!client) return false;
+  try {
+    await client.query('BEGIN');
+    await client.query("DELETE FROM profile_requests WHERE created_at < now() - interval '7 days'");
+    const count = await client.query<{ n: string }>(
+      `SELECT count(*) AS n FROM profile_requests
+       WHERE created_at > now() - interval '1 minute'
+         AND (client_hash = $1 OR user_address = $2)`,
+      [clientHash, addressBytes],
+    );
+    if (Number(count.rows[0].n) >= 10) { await client.query('ROLLBACK'); return false; }
+    await client.query('INSERT INTO profile_requests (client_hash, user_address) VALUES ($1,$2)', [clientHash, addressBytes]);
+    await client.query('COMMIT');
+    return true;
+  } catch {
+    await client.query('ROLLBACK').catch(() => undefined);
+    return false;
+  } finally { client.release(); }
 }
 
 export async function GET(req: Request) {
@@ -29,6 +57,10 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const length = Number(req.headers.get('content-length') ?? '0');
+  if (length > MAX_REQUEST_BYTES) {
+    return NextResponse.json({ error: 'profile request is too large' }, { status: 413 });
+  }
   let body: {
     address?: string;
     nonce?: string;
@@ -71,6 +103,9 @@ export async function POST(req: Request) {
 
   if (!ok) {
     return NextResponse.json({ error: 'the signature does not match that address' }, { status: 401 });
+  }
+  if (!await admitProfileWrite(req, address)) {
+    return NextResponse.json({ error: 'too many profile updates; wait one minute and try again' }, { status: 429 });
   }
 
   const avatarUri = profile.avatarUri;

@@ -17,7 +17,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const deployment = JSON.parse(readFileSync(resolve(root, 'web/lib/deployment.json'), 'utf8'));
-const dex = JSON.parse(readFileSync(resolve(root, 'web/lib/dex-chain1.json'), 'utf8')) as {
+const dex = JSON.parse(readFileSync(resolve(root, 'web/lib/dex-chain1-v10.json'), 'utf8')) as {
   chainTokenId: number; runtime: Address; baseToken: Address;
   pools: Array<{ address: Address; token0: Address; token1: Address }>;
 };

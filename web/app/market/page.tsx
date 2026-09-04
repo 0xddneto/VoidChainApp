@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   createPublicClient, createWalletClient, custom, encodeFunctionData, formatEther,
-  getAddress, maxUint256, parseAbi, type Address, type Hex,
+  getAddress, parseAbi, type Address, type Hex,
 } from 'viem';
 import { DEPLOY, RH_TESTNET, rhTransport } from '@/lib/testnet';
 import { requireSponsoredSuccess } from '@/lib/sponsored-receipt';
@@ -18,12 +18,8 @@ const PAYMASTER = getAddress(DEPLOY.production.VoidPaymaster);
 const MAX_GAS_VOID = 10_000n * 10n ** 18n;
 const CALL_GAS_LIMIT = 1_500_000n;
 const rpc = createPublicClient({ transport: rhTransport() });
-const marketAbi = parseAbi(['function buyRandom(uint256) returns(uint256)', 'function buySpecific(uint256,uint256)', 'function sellWithPermit(uint256,uint256,uint8,bytes32,bytes32)']);
-const nonceAbi = parseAbi(['function nonces(address) view returns(uint256)', 'function nonces(uint256) view returns(uint256)', 'function allowance(address,address) view returns(uint256)']);
-const permitTypes = { Permit: [
-  { name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }, { name: 'value', type: 'uint256' },
-  { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' },
-] } as const;
+const marketAbi = parseAbi(['function buyRandom(uint256) returns(uint256)', 'function buySpecific(uint256,uint256)', 'function sellWithPermit(uint256,uint256,bytes)']);
+const nonceAbi = parseAbi(['function nonces(address) view returns(uint256)', 'function nonces(uint256) view returns(uint256)']);
 const deedPermitTypes = { Permit: [
   { name: 'spender', type: 'address' }, { name: 'tokenId', type: 'uint256' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' },
 ] } as const;
@@ -78,11 +74,6 @@ export default function MarketPage() {
     setAccount(getAddress(wallet)); setMessage(null);
   }
 
-  async function tokenPermit(client: ReturnType<typeof createWalletClient>, spender: Address, value: bigint, nonce: bigint, deadline: bigint): Promise<Permit> {
-    const signature = await client.signTypedData({ account: account!, domain: { name: 'VOID', version: '1', chainId: RH_TESTNET.chainId, verifyingContract: VOID }, types: permitTypes, primaryType: 'Permit', message: { owner: account!, spender, value, nonce, deadline } });
-    return { token: VOID, spender, value, deadline, ...split(signature) };
-  }
-
   async function submit(kind: 'random' | 'specific' | 'sell') {
     if (!account || !state || state.transactionFee === null) return;
     const eth = provider(); if (!eth) return;
@@ -95,10 +86,7 @@ export default function MarketPage() {
       if (network.toLowerCase() !== RH_TESTNET.chainIdHex) throw new Error('Switch your wallet to Robinhood Chain Testnet.');
       const client = createWalletClient({ account, transport: custom(eth) });
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
-      const [requestNonce, tokenNonce] = await Promise.all([
-        rpc.readContract({ address: PAYMASTER, abi: nonceAbi, functionName: 'nonces', args: [account] }),
-        rpc.readContract({ address: VOID, abi: nonceAbi, functionName: 'nonces', args: [account] }),
-      ]);
+      const requestNonce = await rpc.readContract({ address: PAYMASTER, abi: nonceAbi, functionName: 'nonces', args: [account] });
       const fee = BigInt(state.transactionFee);
       let data: Hex;
       let spends: Array<{ token: Address; amount: bigint }> = [];
@@ -109,14 +97,8 @@ export default function MarketPage() {
         if (!state.sellable.includes(deedId.toString())) throw new Error('Select a Deed owned by your connected wallet.');
         const deedNonce = await rpc.readContract({ address: DEED, abi: nonceAbi, functionName: 'nonces', args: [deedId] });
         const deedSignature = await client.signTypedData({ account, domain: { name: 'VOIDS Chain Deed', version: '1', chainId: RH_TESTNET.chainId, verifyingContract: DEED }, types: deedPermitTypes, primaryType: 'Permit', message: { spender: RUNTIME, tokenId: deedId, nonce: deedNonce, deadline } });
-        const signedDeed = split(deedSignature);
-        data = encodeFunctionData({ abi: marketAbi, functionName: 'sellWithPermit', args: [deedId, deadline, signedDeed.v, signedDeed.r, signedDeed.s] });
+        data = encodeFunctionData({ abi: marketAbi, functionName: 'sellWithPermit', args: [deedId, deadline, deedSignature] });
         nftSpends = [{ collection: DEED, tokenId: deedId }];
-        const paymasterAllowance = await rpc.readContract({ address: VOID, abi: nonceAbi, functionName: 'allowance', args: [account, PAYMASTER] });
-        if (paymasterAllowance < fee + MAX_GAS_VOID) {
-          setMessage('One-time VOID setup: authorize the Paymaster. This signature does not sell or transfer a Deed.');
-          permits.push(await tokenPermit(client, PAYMASTER, maxUint256, tokenNonce, deadline));
-        }
       } else {
         const quote = BigInt(kind === 'random' ? state.randomQuote : state.specificQuote);
         if (BigInt(state.balance) < quote + fee + MAX_GAS_VOID) throw new Error('Insufficient VOID for the NFT price and transaction budget.');
@@ -124,19 +106,6 @@ export default function MarketPage() {
           ? encodeFunctionData({ abi: marketAbi, functionName: 'buyRandom', args: [quote] })
           : encodeFunctionData({ abi: marketAbi, functionName: 'buySpecific', args: [BigInt(specificId), quote] });
         spends = [{ token: VOID, amount: quote }];
-        const [paymasterAllowance, runtimeAllowance] = await Promise.all([
-          rpc.readContract({ address: VOID, abi: nonceAbi, functionName: 'allowance', args: [account, PAYMASTER] }),
-          rpc.readContract({ address: VOID, abi: nonceAbi, functionName: 'allowance', args: [account, RUNTIME] }),
-        ]);
-        let nextPermitNonce = tokenNonce;
-        if (paymasterAllowance < fee + MAX_GAS_VOID) {
-          setMessage('One-time VOID setup: authorize the Paymaster. This signature does not buy a Deed.');
-          permits.push(await tokenPermit(client, PAYMASTER, maxUint256, nextPermitNonce++, deadline));
-        }
-        if (runtimeAllowance < quote) {
-          setMessage('One-time VOID setup: authorize the Runtime. The signed action still limits every purchase amount.');
-          permits.push(await tokenPermit(client, RUNTIME, maxUint256, nextPermitNonce++, deadline));
-        }
       }
       const sponsored = { user: account, tokenId: 1n, target: MARKET, data, maxToll: fee, maxGasVoid: MAX_GAS_VOID, callGasLimit: CALL_GAS_LIMIT, spends, nftSpends, nonce: requestNonce, deadline };
       setMessage('Sign this exact market action. Deed, price, chain, fee cap, gas cap and expiry are bound to it.');
@@ -171,7 +140,7 @@ export default function MarketPage() {
         <section className={styles.card}><div className={styles.tag}>SELL</div><h2>Sell to the pool</h2><p>Your Deeds: {state?.owned.length ? state.owned.map((id) => `#${id}`).join(', ') : 'none'}</p><input value={sellId} onChange={(event) => setSellId(event.target.value.replace(/\D/g, ''))} aria-label="Deed to sell" placeholder="Deed ID" /><strong>{state ? showVoid(state.sellQuote) : '—'} VOID payout</strong><button className={styles.primary} disabled={!account || busy || state?.transactionFee == null || !sellId || !state?.sellable.includes(sellId)} onClick={() => void submit('sell')}>Sell Deed</button></section>
       </div>
       {message && <div className={styles.message}>{message}</div>}
-      <p className={styles.foot}>Pool buy 1% · selected buy 2% · sell 1.5% · protocol cut 0.5% (included). Each trade also reserves the Chain 1 fee plus up to {showVoid(MAX_GAS_VOID)} VOID for gas. Unused gas budget is refunded. The gas cap is not the final charge.</p>
+      <p className={styles.foot}>Random buy/sell 1% market fee · selected buy 2% market fee · fixed 0.5% protocol fee. Each trade also reserves the Chain 1 fee plus up to {showVoid(MAX_GAS_VOID)} VOID for gas. Unused gas budget is refunded. The gas cap is not the final charge.</p>
     </main>
   </>;
 }

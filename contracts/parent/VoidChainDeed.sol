@@ -7,11 +7,20 @@ import {ERC2981} from "@openzeppelin/contracts/token/common/ERC2981.sol";
 import {IERC4906} from "@openzeppelin/contracts/interfaces/IERC4906.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+
+/// @dev ERC-4494 is intentionally declared locally because OpenZeppelin 5.1
+///      does not ship the interface. Its ERC-165 id is 0x5604e225.
+interface IERC4494 is IERC165 {
+    function permit(address spender, uint256 tokenId, uint256 deadline, bytes calldata sig) external;
+    function nonces(uint256 tokenId) external view returns (uint256);
+    function DOMAIN_SEPARATOR() external view returns (bytes32);
+}
 
 /// @title VoidChainDeed
-/// @notice Title of ownership over one sovereign Arbitrum Orbit chain.
+/// @notice Title of ownership over one isolated Void ChainApp execution space.
 /// @dev    The deed carries NO execution authority of its own. It is a pure
 ///         ownership record; every privileged action is performed by
 ///         `VoidChainController`, which reads `ownerOf` at call time. This split is
@@ -21,24 +30,18 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 ///
 ///         Immutable per token (fixed at collection genesis, never editable):
 ///           - tokenId
-///           - chainId
+///           - runtime ID
 ///         Mutable by the deed holder (identity only, never consensus):
 ///           - display name, description, artwork, social profiles
-contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, EIP712 {
+contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, IERC4494, EIP712 {
     using Strings for uint256;
 
     /// @notice Total chains. Fixed forever; there is no mint function after genesis.
     uint256 public constant MAX_SUPPLY = 1111;
 
-    /// @notice First EIP-155 chain ID of the reserved contiguous block.
-    /// @dev    chainId(tokenId) == CHAIN_ID_BASE + tokenId - 1, so the mapping is
-    ///         verifiable offline by anyone and needs no storage read.
-    ///
-    ///         WARNING: this block MUST be reserved before mainnet genesis by
-    ///         opening a PR against ethereum-lists/chains. A collision with an
-    ///         existing chain ID is unrecoverable -- replay protection (EIP-155)
-    ///         binds signatures to the chain ID, so two chains sharing an ID means
-    ///         a transaction signed for one is valid on the other.
+    /// @notice First protocol runtime ID in the deterministic contiguous block.
+    /// @dev This is not an EIP-155 network chain ID. A Deed becomes an independent
+    ///      L3 only after its holder explicitly provisions and migrates to one.
     uint256 public immutable CHAIN_ID_BASE;
 
     /// @notice Per-chain mutable identity. Never touched by consensus.
@@ -58,6 +61,10 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, EIP712 {
     /// exact Deed by signature, so listing it never requires an ETH approval.
     mapping(uint256 tokenId => uint256) public nonces;
 
+    /// @notice Changes only when ownership changes. Governance uses this to
+    ///         invalidate proposals created by a seller before a Deed transfer.
+    mapping(uint256 tokenId => uint256) public ownershipEpoch;
+
     bytes32 public constant PERMIT_TYPEHASH = keccak256(
         "Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)"
     );
@@ -76,6 +83,8 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, EIP712 {
     error NameTooLong();
     error NameHasInvalidChars();
     error TooManySocials();
+    error IdentityFieldTooLong();
+    error InvalidIdentityCharacter();
     error ZeroAddress();
 
     /// @notice Who may mint, until minting is sealed forever.
@@ -87,7 +96,7 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, EIP712 {
     ///         verifiable fact, and is irreversible on purpose.
     bool public mintingSealed;
 
-    event Minted(uint256 indexed tokenId, address indexed to, uint256 chainId);
+    event Minted(uint256 indexed tokenId, address indexed to, uint256 runtimeId);
     event MintingSealed(uint256 totalMinted);
     event MinterTransferred(address previous, address next);
 
@@ -157,23 +166,23 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, EIP712 {
     /// sponsored request that carries this NFT id. It removes the ETH approval
     /// transaction from a marketplace listing without granting an unlimited
     /// collection-wide operator.
-    function permit(
-        address spender,
-        uint256 tokenId,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external {
+    function permit(address spender, uint256 tokenId, uint256 deadline, bytes calldata sig) external {
         if (block.timestamp > deadline) revert PermitExpired(deadline);
         address owner = ownerOf(tokenId);
         uint256 nonce = nonces[tokenId]++;
         bytes32 structHash = keccak256(
             abi.encode(PERMIT_TYPEHASH, spender, tokenId, nonce, deadline)
         );
-        address signer = ECDSA.recover(_hashTypedDataV4(structHash), v, r, s);
-        if (signer != owner) revert InvalidPermitSigner(signer, owner);
+        bytes32 digest = _hashTypedDataV4(structHash);
+        if (!SignatureChecker.isValidSignatureNow(owner, digest, sig)) {
+            revert InvalidPermitSigner(address(0), owner);
+        }
         _approve(spender, tokenId, owner);
+    }
+
+    /// @notice ERC-4494 domain separator used by wallets and marketplaces.
+    function DOMAIN_SEPARATOR() external view returns (bytes32) {
+        return _domainSeparatorV4();
     }
 
     // ---------------------------------------------------------------------
@@ -217,6 +226,12 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, EIP712 {
     ) external {
         _requireDeedHolder(tokenId);
         if (socials.length > 8) revert TooManySocials();
+        if (bytes(description).length > 1_024 || bytes(imageURI).length > 512 || bytes(externalURL).length > 512) {
+            revert IdentityFieldTooLong();
+        }
+        for (uint256 i; i < socials.length; ++i) {
+            if (bytes(socials[i]).length > 256) revert IdentityFieldTooLong();
+        }
 
         Identity storage id = _identity[tokenId];
         id.description = description;
@@ -241,7 +256,7 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, EIP712 {
     // Views
     // ---------------------------------------------------------------------
 
-    /// @notice EIP-155 chain ID of the chain. Derived, immutable, verifiable offline.
+    /// @notice Legacy alias for the deterministic Runtime ID.
     function chainIdOf(uint256 tokenId) public view returns (uint256) {
         _requireOwned(tokenId);
         return CHAIN_ID_BASE + tokenId - 1;
@@ -250,6 +265,68 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, EIP712 {
     function identityOf(uint256 tokenId) external view returns (Identity memory) {
         _requireOwned(tokenId);
         return _identity[tokenId];
+    }
+
+    function runtimeIdOf(uint256 tokenId) external view returns (uint256) {
+        return chainIdOf(tokenId);
+    }
+
+    /// @notice Standard ERC-721 metadata. It remains available without a
+    ///         centralized API, while holder edits are reflected immediately.
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        _requireOwned(tokenId);
+        Identity storage id = _identity[tokenId];
+        string memory displayName = bytes(id.name).length == 0
+            ? string.concat("VOID Chain #", tokenId.toString())
+            : id.name;
+        string memory description = bytes(id.description).length == 0
+            ? "A programmable execution-space Deed in the VoidChainApp protocol."
+            : id.description;
+        bytes memory json = abi.encodePacked(
+            '{"name":"', _escapeJson(displayName),
+            '","description":"', _escapeJson(description), '"',
+            bytes(id.imageURI).length == 0 ? "" : string.concat(',"image":"', _escapeJson(id.imageURI), '"'),
+            bytes(id.externalURL).length == 0 ? "" : string.concat(',"external_url":"', _escapeJson(id.externalURL), '"'),
+            ',"attributes":[{"trait_type":"Deed","value":"', tokenId.toString(),
+            '"},{"trait_type":"Runtime ID","value":"', chainIdOf(tokenId).toString(), '"}]}'
+        );
+        return string.concat("data:application/json;base64,", Base64.encode(json));
+    }
+
+    /// @dev Escapes holder-controlled strings before embedding them in JSON.
+    function _escapeJson(string memory value) private pure returns (string memory) {
+        bytes memory input = bytes(value);
+        bytes memory output = new bytes(input.length * 2);
+        uint256 length;
+        for (uint256 i; i < input.length; ++i) {
+            bytes1 char = input[i];
+            if (char == 0x22 || char == 0x5c) {
+                output[length++] = 0x5c;
+                output[length++] = char;
+            } else if (char == 0x0a || char == 0x0d || char == 0x09) {
+                output[length++] = 0x5c;
+                output[length++] = char == 0x0a ? bytes1("n") : char == 0x0d ? bytes1("r") : bytes1("t");
+            } else {
+                if (uint8(char) < 0x20) revert InvalidIdentityCharacter();
+                output[length++] = char;
+            }
+        }
+        assembly ("memory-safe") { mstore(output, length) }
+        return string(output);
+    }
+
+    /// @dev ERC-4494 requires invalidating every outstanding permit whenever
+    ///      ownership changes, including the sell-and-buy-back replay case.
+    function _update(address to, uint256 tokenId, address auth)
+        internal
+        override(ERC721Enumerable)
+        returns (address from)
+    {
+        from = super._update(to, tokenId, auth);
+        if (from != address(0)) {
+            ++nonces[tokenId];
+            ++ownershipEpoch[tokenId];
+        }
     }
 
     /// @notice Only lets through names in a single, safe alphabet.
@@ -310,9 +387,8 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, EIP712 {
         if (_ownerOf(tokenId) != msg.sender) revert NotDeedHolder(tokenId, msg.sender);
     }
 
-    /// @dev `IERC165` has to appear in the list: the ERC-4906 we implement
-    ///      inherits it, so there are three paths to `supportsInterface` and the
-    ///      compiler requires all of them to be named.
+    /// @dev ERC721Enumerable and ERC2981 are the two concrete implementations
+    ///      that contribute ERC-165 support. IERC4494 is reported explicitly.
     function supportsInterface(bytes4 interfaceId)
         public
         view
@@ -320,6 +396,7 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, EIP712 {
         returns (bool)
     {
         return interfaceId == bytes4(0x49064906) // ERC-4906
+            || interfaceId == type(IERC4494).interfaceId
             || super.supportsInterface(interfaceId);
     }
 }

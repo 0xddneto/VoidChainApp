@@ -6,7 +6,7 @@ import {
   parseEther, type Address, type Hex,
 } from 'viem';
 import { RH_TESTNET, rhTransport } from '@/lib/testnet';
-import GENESIS from '@/lib/genesis-v6.json';
+import GENESIS from '@/lib/genesis-v10.json';
 import { WalletProfileButton } from '../WalletProfileButton';
 import styles from './page.module.css';
 
@@ -146,7 +146,7 @@ export default function MintPage() {
   return <>
     <header className={styles.header}><div className={styles.bar}><div className={styles.logo}>Void<span>Scan</span></div><a className={styles.back} href="/">← explorer</a><a className={styles.docsLink} href="/docs">Docs</a><WalletProfileButton /></div></header>
     <main className={styles.wrap}>
-      <div className={styles.hero}><div className={styles.testnet}>● Robinhood testnet · V8 genesis</div><h1>Mint a VOID Deed with ETH.</h1><p>Mint one Deed with ETH. Each mint locks VOID/ETH liquidity and funds the Paymaster. Apps and NFT trades use VOID.</p><a href="/market">Trade NFTs ↔ VOID →</a></div>
+      <div className={styles.hero}><div className={styles.testnet}>● Robinhood testnet · V10 genesis</div><h1>Mint a VOID Deed with ETH.</h1><p>Mint one Deed with ETH. Each new mint locks VOID/ETH liquidity and funds the Paymaster. Apps and NFT trades use VOID.</p><a href="/market">Trade NFTs ↔ VOID →</a></div>
       <dl className={styles.facts}>
         <div className={styles.fact}><dt>Minted</dt><dd>{minted?.toString() ?? '—'}<small> / {P.maxSupply}</small></dd></div>
         <div className={styles.fact}><dt>Mint price</dt><dd>{ethText(mintPrice, 4)}<small> ETH</small></dd></div>
@@ -159,7 +159,7 @@ export default function MintPage() {
         <section id="get-void" className={styles.step} data-done={voidBalance > 0n} data-blocked={!twapReady}><div className={styles.num}>{voidBalance > 0n ? '✓' : '3'}</div><div className={styles.stepBody}><h2>Get VOID for apps</h2><p>Optional onboarding swap from the locked VOID/ETH pool. This intentionally uses ETH because it acquires the token that pays later sponsored app transactions. Pool fee: {P.poolFeeBps / 100}%.</p>{connected && <p>Your VOID: <b className={styles.mono}>{voidText(voidBalance)} VOID</b></p>}<label className={styles.swapAmount}>ETH amount<input value={onboardingEth} onChange={(event) => setOnboardingEth(event.target.value)} inputMode="decimal" aria-label="ETH to swap for VOID" /></label><p>Estimated output: <b>{voidText(onboardingQuote, 2)} VOID</b> · 2% max slippage. Large swaps have price impact.</p><button className={`${styles.btn} ${styles.btnGhost}`} onClick={buyVoid} disabled={!connected || !twapReady || busy !== null || onboardingWei <= 0n || ethBalance <= onboardingWei || reserveVoid === 0n}>Buy VOID</button></div></section>
       </div>
       {message && <div className={`${styles.msg} ${message.kind === 'ok' ? styles.msgOk : message.kind === 'err' ? styles.msgErr : styles.msgInfo}`}>{message.text}</div>}
-      <div className={styles.note}><p><strong>Testnet only.</strong> V8 starts a new VOID economy with a fixed supply of 1,000,000,000 VOID. The six existing Deeds were reissued to their recorded owners or the replacement pool. Old VOID is not used by this deployment.</p><p>The NFT/VOID pool runs inside Chain #1. Buy random: 1%. Buy selected: 2%. Sell: 1.5%. Each fee includes a 0.5% protocol share. NFTs can be bought and sold repeatedly; their 500,000 VOID backing is released only once.</p></div>
+      <div className={styles.note}><p><strong>Testnet only.</strong> V10 preserves the block-pinned Deed ownership and exact 1,000,000,000 VOID ledger from the preceding testnet deployment. It does not duplicate supply or charge existing holders again.</p><p>The NFT/VOID pool runs inside Chain #1. Buy random: 1%. Buy selected: 2%. Sell: 1.5%. Each fee includes a 0.5% protocol share. NFTs can be bought and sold repeatedly; their 500,000 VOID backing is released only once.</p></div>
     </main>
   </>;
 }

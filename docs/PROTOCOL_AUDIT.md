@@ -1,14 +1,13 @@
-# Protocol review — 2026-09-03
+# Protocol review — 2026-09-04
 
-## V8 security migration
+## V10 exact-ledger migration
 
-The current public candidate supersedes the V7 control plane described in the
-historical findings below. V8 makes the Runtime oracle one-time and immutable,
+The current public candidate supersedes the earlier V8 testnet control plane.
+V10 makes the Runtime oracle one-time and immutable,
 places Paymaster and Treasury administration behind a public 48-hour timelock,
-preserves the block-pinned owner and mint-limit snapshot, verifies all 19 core
-contracts in the explorer, restores the two market-custody NFTs, and adds a
-fail-closed acceptance audit. The proposer remains a single test wallet; this
-is explicitly not the mainnet governance design.
+preserves the block-pinned Deed owners and the exact one-billion-token ledger,
+and verifies all 22 deployed contracts in the explorer. The proposer remains a
+single test wallet; this is explicitly not the mainnet governance design.
 
 ## Scope and evidence
 
@@ -19,10 +18,10 @@ It is an internal engineering review, not an independent security audit.
 
 Evidence collected after the changes:
 
-- 291 Foundry tests pass, including fuzz, invariant, red-team and scale suites.
+- 307 Foundry tests pass, including fuzz, invariant, red-team and scale suites.
 - VoidScan and VoidDEX production builds pass; script and indexer typechecks pass.
-- The read-only V8 live audit reconciles 1,111 DAOs, migrated Deeds, runtime
-  custody, registered applications and the 98%/2% revenue split.
+- The V10 migration tests reconcile the exact token ledger, migrated Deeds,
+  resumed VOID/ETH pool and non-duplicated escrow liabilities.
 - Two consecutive swaps through the production HTTP relay succeeded. The setup
   call supplied two missing token permits; the repeat call supplied zero permits
   and used only its fresh, bounded SponsoredCall signature.
@@ -54,14 +53,12 @@ chain, app, calldata, exact fungible/NFT budgets, fee cap, gas cap, nonce and
 deadline. The Runtime creates those spend budgets only for the duration of that
 call.
 
-EIP-2612 permissions belong to token contracts, each with its own signing
-domain. They cannot be cryptographically collapsed into the Paymaster signature
-without a new token/Permit2 or smart-account architecture. V8 therefore treats
-them as one-time setup: only a missing allowance asks for its token permit. A
-fresh wallet may see setup prompts on its first operation; repeating the same
-operation must show only the action signature. NFT sales still require a
-Deed-specific permit because an ERC-721 token ID cannot be inferred from a
-fungible allowance.
+V10 VOID grants authority only to the permanently frozen Runtime and Paymaster,
+so a VOID-only first use needs no approval and only the SponsoredCall signature.
+External EIP-2612 tokens have independent signing domains and still require a
+permit when allowance is absent. NFT sales still require a Deed-specific
+ERC-4494 permit because transferring the asset is separate from paying the
+chain fee.
 
 ## High-severity linter triage
 
@@ -102,7 +99,7 @@ These are not presented as solved:
    Production indexing needs a reviewed confirmation/reorg policy.
 7. A universal first-use single prompt for arbitrary ERC-20 and ERC-721 assets
    requires a separately audited Permit2, account-abstraction or native
-   intent-token design. V8 safely reduces repeated prompts; it does not pretend
+   intent-token design. V10 safely removes VOID setup prompts; it does not pretend
    different token signature domains are one signature.
 
 ## Release decision
@@ -111,4 +108,4 @@ Suitable for continued public **testnet** testing after deployment of this
 frontend revision. Not approved for mainnet or for marketing as independent
 blockchains. Any Solidity change requires a new deployment, bytecode
 verification and full live acceptance run; this pass intentionally does not
-silently replace the proven V8 contracts.
+silently replace the verified V10 contracts.
