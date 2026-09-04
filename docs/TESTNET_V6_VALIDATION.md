@@ -34,7 +34,8 @@ requested flow is complete. Canonical addresses are in
 - All 26 Foundry suites passed, including existing invariants and load tests.
 - Four added NFT AMM tests cover repeat circulation, slippage, unauthorized
   callers and ownership. The repeat test performs 20 buy/sell cycles.
-- Six receipt-validation tests passed.
+- Nine receipt-validation tests passed. The helper is dependency-free so the
+  DEX can build without installing the VoidScan application's dependencies.
 - Local browser inspection confirmed public DEX links, current-runtime
   activity, explicit VOID revenue and real pool reserves.
 

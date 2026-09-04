@@ -41,6 +41,37 @@ jobs:
       - run: npm run build
         working-directory: web
 
+  voiddex:
+    name: voiddex
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: voiddex/package-lock.json
+      - run: npm ci
+        working-directory: voiddex
+      # Intentionally do not install web: this must be an independent build.
+      - run: npm run build
+        working-directory: voiddex
+
+  sponsored-receipts:
+    name: sponsored-receipts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: script/package-lock.json
+      - run: npm ci
+        working-directory: script
+      - run: node --import tsx test-sponsored-receipt.ts
+        working-directory: script
+
   indexer:
     name: indexer
     runs-on: ubuntu-latest
