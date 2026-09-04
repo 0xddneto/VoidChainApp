@@ -12,8 +12,8 @@ const root = resolve(here, '..');
 // `--prefix script` command. Load the project-scoped secret file explicitly
 // so deployment never depends on the caller's working directory.
 config({ path: resolve(root, 'script/.env') });
-const deployment = JSON.parse(readFileSync(resolve(root, 'web/lib/deployment.json'), 'utf8'));
-const configPath = resolve(root, 'web/lib/dex-chain1.json');
+const deployment = JSON.parse(readFileSync(resolve(root, process.env.VOID_DEPLOYMENT_FILE ?? 'web/lib/deployment.json'), 'utf8'));
+const configPath = resolve(root, process.env.VOID_DEX_CONFIG_FILE ?? 'web/lib/dex-chain1.json');
 const dex = JSON.parse(readFileSync(configPath, 'utf8')) as { chainTokenId: number; runtime: Address; pools: Array<{ asset: Address }> ; faucet?: Address };
 const key = process.env.DEPLOYER_PRIVATE_KEY as Hex | undefined;
 if (!/^0x[0-9a-fA-F]{64}$/.test(key ?? '')) throw new Error('DEPLOYER_PRIVATE_KEY is required.');

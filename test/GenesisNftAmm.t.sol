@@ -73,6 +73,21 @@ contract GenesisNftAmmTest is Test {
         vm.prank(USER); token.approve(address(runtime), type(uint256).max);
     }
 
+    function test_donatedCustodyKeepsBackingInPool() public {
+        vm.prank(USER);deed.transferFrom(USER,address(gateway),1);
+        runtime.execute(address(gateway),abi.encodeCall(implementation.acceptDonation,(1)));
+        assertEq(inventory(),1);
+        assertEq(token.balanceOf(address(gateway)),500_000 ether);
+        assertEq(token.balanceOf(TREASURY),0);
+        assertEq(token.balanceOf(USER),2_000_000 ether);
+        vm.expectRevert(abi.encodeWithSelector(VoidGenesisNftAmmV6.DeedAlreadyInVault.selector,1));
+        runtime.execute(address(gateway),abi.encodeCall(implementation.acceptDonation,(1)));
+        assertConservation();
+    }
+    function test_cannotImportNftStillHeldByUser() public {
+        vm.expectRevert(abi.encodeWithSelector(VoidGenesisNftAmmV6.NotDeedOwner.selector,1,USER,address(gateway)));
+        runtime.execute(address(gateway),abi.encodeCall(implementation.acceptDonation,(1)));
+    }
     function sell() private {
         vm.prank(USER);
         runtime.execute(address(gateway), abi.encodeCall(implementation.sellWithPermit, (1, block.timestamp + 600, 27, bytes32(0), bytes32(0))));

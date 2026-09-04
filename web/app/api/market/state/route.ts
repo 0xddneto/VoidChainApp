@@ -21,7 +21,6 @@ const runtimeAbi = parseAbi(['function feeOf(uint256) view returns(uint256)']);
 const mintAbi = parseAbi(['function totalMinted() view returns(uint256)']);
 const tokenAbi = parseAbi(['function balanceOf(address) view returns(uint256)']);
 const deedAbi = parseAbi(['function ownerOf(uint256) view returns(address)']);
-const escrowAbi = parseAbi(['function deedReleased(uint256) view returns(bool)']);
 
 async function query(functionName: 'inventoryCount' | 'inventoryAt' | 'randomBuyQuote' | 'specificBuyQuote' | 'sellQuote', args: readonly bigint[] = []) {
   const data = encodeFunctionData({ abi: marketAbi, functionName, args: args as never });
@@ -47,16 +46,12 @@ export async function GET(request: NextRequest) {
         rpc.readContract({ address: getAddress(DEPLOY.production.VoidChainDeed), abi: deedAbi, functionName: 'ownerOf', args: [BigInt(index + 1)] }) as Promise<Address>));
       owned = owners.flatMap((owner, index) => owner.toLowerCase() === account.toLowerCase() ? [BigInt(index + 1)] : []);
     }
-    const released = await Promise.all(owned.map((id) => rpc.readContract({
-      address: getAddress(DEPLOY.testnet.VoidGenesisEscrowV6), abi: escrowAbi,
-      functionName: 'deedReleased', args: [id],
-    })));
     return NextResponse.json({
       market: MARKET,
       inventory: inventory.map(String),
       randomQuote: randomQuote.toString(), specificQuote: specificQuote.toString(), sellQuote: sellQuote.toString(),
       transactionFee: fee?.toString() ?? null, minted: minted.toString(), balance: balance.toString(), owned: owned.map(String),
-      sellable: owned.filter((_, index) => !released[index]).map(String),
+      sellable: owned.map(String),
     }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch (error) {
     console.error('V6 market state failed', error);

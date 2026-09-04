@@ -126,7 +126,7 @@ export default function MintPage() {
   return <>
     <header className={styles.header}><div className={styles.bar}><div className={styles.logo}>Void<span>Scan</span></div><a className={styles.back} href="/">← explorer</a><WalletProfileButton /></div></header>
     <main className={styles.wrap}>
-      <div className={styles.hero}><div className={styles.testnet}>● Robinhood testnet · V6 genesis</div><h1>Mint a VOID Deed with ETH.</h1><p>The genesis purchase is the only normal ETH entry: it mints one Deed, locks matching VOID/ETH liquidity and funds the Paymaster reserve atomically. After genesis, apps use signed VOID transactions.</p></div>
+      <div className={styles.hero}><div className={styles.testnet}>● Robinhood testnet · V7 genesis</div><h1>Mint a VOID Deed with ETH.</h1><p>Mint one Deed with ETH. Each mint locks VOID/ETH liquidity and funds the Paymaster. Apps and NFT trades use VOID.</p><a href="/market">Trade NFTs ↔ VOID →</a></div>
       <dl className={styles.facts}>
         <div className={styles.fact}><dt>Minted</dt><dd>{minted?.toString() ?? '—'}<small> / {P.maxSupply}</small></dd></div>
         <div className={styles.fact}><dt>Mint price</dt><dd>{ethText(mintPrice, 4)}<small> ETH</small></dd></div>
@@ -139,7 +139,7 @@ export default function MintPage() {
         <section className={styles.step} data-done={voidBalance > 0n} data-blocked={!twapReady}><div className={styles.num}>{voidBalance > 0n ? '✓' : '3'}</div><div className={styles.stepBody}><h2>Get VOID for apps</h2><p>Optional onboarding swap from the locked VOID/ETH pool. This intentionally uses ETH because it acquires the token that pays later sponsored app transactions. Pool fee: {P.poolFeeBps / 100}%.</p>{connected && <p>Your VOID: <b className={styles.mono}>{voidText(voidBalance)} VOID</b></p>}<button className={`${styles.btn} ${styles.btnGhost}`} onClick={buyVoid} disabled={!connected || !twapReady || busy !== null || reserveVoid === 0n}>Buy VOID with 0.0001 ETH</button></div></section>
       </div>
       {message && <div className={`${styles.msg} ${message.kind === 'ok' ? styles.msgOk : message.kind === 'err' ? styles.msgErr : styles.msgInfo}`}>{message.text}</div>}
-      <div className={styles.note}><p><strong>Testnet only.</strong> V6 has a fixed 1,000,000,000 VOID supply. The genesis escrow holds every bucket; LP has no redemption path; the Paymaster waits for a time-weighted price before it sponsors a transaction.</p><p>The NFT/VOID market is registered inside Chain #1. Its published fees are 1% pool buy, 2% specific buy and 0.5% protocol cut; each NFT can release its 500,000 VOID backing from escrow once.</p></div>
+      <div className={styles.note}><p><strong>Testnet only.</strong> V7 starts a new VOID economy with a fixed supply of 1,000,000,000 VOID. The five existing Deeds were reissued to their recorded owners or the replacement pool. Old VOID is not used by this deployment.</p><p>The NFT/VOID pool runs inside Chain #1. Buy random: 1%. Buy selected: 2%. Sell: 1.5%. Each fee includes a 0.5% protocol share. NFTs can be bought and sold repeatedly; their 500,000 VOID backing is released only once.</p></div>
     </main>
   </>;
 }

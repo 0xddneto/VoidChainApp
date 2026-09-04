@@ -45,7 +45,7 @@ async function quote(functionName: 'randomBuyQuote' | 'specificBuyQuote') {
   return decodeFunctionResult({ abi: marketAbi, functionName, data: raw }) as bigint;
 }
 
-/** Relays only the three published V6 NFT/VOID market actions. */
+/** Relays only the three published NFT/VOID market actions. */
 export async function POST(request: Request) {
   const key = process.env.PAYMASTER_RELAYER_PRIVATE_KEY;
   if (!/^0x[0-9a-fA-F]{64}$/.test(key ?? '')) return reject('VOID relay is not configured.', 503);
@@ -87,12 +87,6 @@ export async function POST(request: Request) {
     const deedId = decoded.args?.[0] as bigint;
     const permitDeadline = decoded.args?.[1] as bigint;
     if (spends.length !== 0 || nftSpends.length !== 1 || nftSpends[0].collection !== DEED || nftSpends[0].tokenId !== deedId || permitDeadline !== deadline) return reject('Sale does not match the signed Deed budget.');
-    const alreadyReleased = await rpc.readContract({
-      address: getAddress(DEPLOY.testnet.VoidGenesisEscrowV6),
-      abi: parseAbi(['function deedReleased(uint256) view returns(bool)']),
-      functionName: 'deedReleased', args: [deedId],
-    });
-    if (alreadyReleased) return reject('Repeat deposits are unavailable in the current testnet AMM. No transaction was sent.', 409);
   } else return reject('Unknown market action.');
 
   const permits = [] as Array<{ token: Address; spender: Address; value: bigint; deadline: bigint; v: number; r: Hex; s: Hex }>;
@@ -128,7 +122,7 @@ export async function POST(request: Request) {
     const hash = await wallet.sendTransaction({ account, chain: null, to: PAYMASTER, data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }) });
     return NextResponse.json({ hash });
   } catch (error) {
-    console.error('V6 market relay failed', error);
+    console.error('Market relay failed', error instanceof Error ? error.name : 'UnknownError');
     return reject('Relay refused the signed market action.', 502);
   }
 }

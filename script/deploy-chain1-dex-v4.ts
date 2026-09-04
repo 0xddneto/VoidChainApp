@@ -18,7 +18,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
-const deployment = JSON.parse(readFileSync(resolve(root, 'web/lib/deployment.json'), 'utf8'));
+const deployment = JSON.parse(readFileSync(resolve(root, process.env.VOID_DEPLOYMENT_FILE ?? 'web/lib/deployment.json'), 'utf8'));
 const out = resolve(root, 'out');
 const key = process.env.DEPLOYER_PRIVATE_KEY;
 if (!/^0x[0-9a-fA-F]{64}$/.test(key ?? '')) throw new Error('DEPLOYER_PRIVATE_KEY is required.');
@@ -35,7 +35,7 @@ const runtime = deployment.production.VoidChainAppRuntime as Address;
 const paymaster = deployment.production.VoidPaymaster as Address;
 const appFactory = deployment.production.VoidChainAppFactoryV3 as Address;
 const voidToken = deployment.testnet.VoidTestToken as Address;
-const configPath = resolve(root, 'web/lib/dex-chain1.json');
+const configPath = resolve(root, process.env.VOID_DEX_CONFIG_FILE ?? 'web/lib/dex-chain1.json');
 const resumeDex = process.env.DEX_V4_FACTORY as Address | undefined;
 const resumeUsd = process.env.DEX_V4_TUSD as Address | undefined;
 const resumeLink = process.env.DEX_V4_TLINK as Address | undefined;
@@ -172,7 +172,7 @@ if (resumeDex && resumeUsd && resumeLink) {
   if (event.eventName !== 'AppPublished') throw new Error('Unexpected app factory event.');
   dex = (event.args as unknown as { app: Address }).app;
   console.log('[3/5] Funding the liquidity provider and creating pools through VOID');
-  if (deployment.version.startsWith('v6')) {
+  if (/^v[67]/.test(deployment.version)) {
     const balance = await rpc.readContract({ address: voidToken, abi: tokenAbi, functionName: 'balanceOf', args: [account.address] });
     if (balance < liquidity * 2n + GAS_VOID * 4n) {
       // V6 VOID is fixed supply. Acquire test liquidity through its real pool;
@@ -215,6 +215,6 @@ console.log('[5/5] Writing VoidDEX configuration');
 const pools = await Promise.all([
   [poolUsd, 'VOID / tUSD', tUsd], [poolLink, 'VOID / tLINK', tLink],
 ].map(async ([address, label, asset]) => ({ address, label, asset, token0: await query(address as Address, pairArt.abi, 'token0') as Address, token1: await query(address as Address, pairArt.abi, 'token1') as Address })));
-writeFileSync(configPath, `${JSON.stringify({ version: 'v6', chainTokenId: 1, runtime, paymaster, appFactory, factory: dex, baseToken: voidToken, pools }, null, 2)}\n`);
+writeFileSync(configPath, `${JSON.stringify({ version: deployment.version, chainTokenId: 1, runtime, paymaster, appFactory, factory: dex, baseToken: voidToken, pools }, null, 2)}\n`);
 console.log(`✓ V4 DEX factory: ${dex}`);
 console.log(`✓ pools: ${poolUsd}, ${poolLink}`);

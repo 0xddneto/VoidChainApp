@@ -103,7 +103,7 @@ export default function MarketPage() {
       const permits: Permit[] = [];
       if (kind === 'sell') {
         const deedId = BigInt(sellId);
-        if (!state.sellable.includes(deedId.toString())) throw new Error('This Deed cannot be sold to the current testnet pool. Repeat deposits require a contract migration.');
+        if (!state.sellable.includes(deedId.toString())) throw new Error('Select a Deed owned by your connected wallet.');
         const deedNonce = await rpc.readContract({ address: DEED, abi: nonceAbi, functionName: 'nonces', args: [deedId] });
         const deedSignature = await client.signTypedData({ account, domain: { name: 'VOIDS Chain Deed', version: '1', chainId: RH_TESTNET.chainId, verifyingContract: DEED }, types: deedPermitTypes, primaryType: 'Permit', message: { spender: RUNTIME, tokenId: deedId, nonce: deedNonce, deadline } });
         const signedDeed = split(deedSignature);
@@ -138,7 +138,6 @@ export default function MarketPage() {
     <header className={styles.header}><div className={styles.bar}><div className={styles.logo}>VOID<span>MARKET</span></div><a href="/">← VoidScan</a><WalletProfileButton /></div></header>
     <main className={styles.wrap}>
       <section className={styles.hero}><p>CHAIN 1 · NFT / VOID AMM</p><h1>Trade Deeds directly in VOID.</h1><span>Every trade enters through the Chain 1 Runtime. Your wallet signs exact VOID and NFT budgets; the Paymaster submits the transaction and pays parent-chain gas.</span></section>
-      <p className={styles.message} role="note">Testnet limitation: this deployed pool accepts each Deed only once. A Deed bought from this pool cannot be sold back to it until the contract migration is complete. Wallet-to-wallet transfers remain available.</p>
       <div className={styles.stats}>
         <div><small>Minted</small><strong>{state?.minted ?? '—'} / 1,111</strong></div>
         <div><small>Pool inventory</small><strong>{state?.inventory.length ?? '—'} Deeds</strong></div>

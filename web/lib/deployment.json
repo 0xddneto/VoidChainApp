@@ -2,29 +2,29 @@
   "network": {
     "chainId": 46630,
     "rpc": "https://robinhood-testnet.drpc.org",
-    "deployBlock": 112543803
+    "deployBlock": 112592784
   },
-  "version": "v6-reviewed-eth-genesis-testnet",
+  "version": "v7-migrated-eth-genesis-testnet",
   "production": {
-    "VoidChainDeed": "0x6f1015edf539b9001421a0aaa428c818d2397fb7",
-    "VoidChainTreasury": "0xcf35e9f1da06fb8d4b6e449a6ee49f03b0b9e77c",
-    "VoidChainAppRuntime": "0x6675d410253745483612f5254289338f90255257",
-    "VoidPaymaster": "0x2978620017152eefcc6befde5490b5776dd995a2",
-    "VoidChainDaoFactory": "0xc1a15b5fc7362c0675332bf0dfeba49b004c12dc",
-    "VoidChainAppFactoryV3": "0x990273400533229c03726ce7097f1de66c6a54f6",
-    "VoidEthGenesisMintV6": "0x2b409eed516ca9b18d0aa4328ea9c0e3febfb60b"
+    "VoidChainDeed": "0xedf5855ee0cdbf28616db0c074be7ecd12f56b38",
+    "VoidChainTreasury": "0x792243bf2ff0610dbc2d27c325b832b9540ad262",
+    "VoidChainAppRuntime": "0xe42eb31583513552cde8dbd578698c3f88d3b04d",
+    "VoidPaymaster": "0x7ef30a8567e1258edca38d068e9fbac49b40bad2",
+    "VoidChainDaoFactory": "0x9bd84fa03384eb9e49a14ceafd738a2e925eea24",
+    "VoidChainAppFactoryV3": "0x2178074c70f11cf46ca7d5ab419f723207d4ab05",
+    "VoidEthGenesisMintV6": "0xeb841dcb2a2d8c14ab85dca4f781cc1980decf3a"
   },
   "governance": {
     "paymasterGovernor": "0x440D2340C907735632A5fa0070273AFeF3D26827",
     "protocolTreasury": "0x892F840aF9CFE78D4FF91D8e6D0F783264388A78"
   },
   "testnet": {
-    "VoidTestToken": "0x359958d13e830ddb7f9c2864c7da8cc282026a07",
-    "VoidGenesisEscrowV6": "0xbdb440cd69054cec7a1c32c2bfe0897f80bd0398",
-    "VoidEthPoolV6": "0xc69ed96ebc755e9a156e4a60e607261adb432b27",
-    "VoidTwapOracleV6": "0x66e043fd4ce7733ea8935a1d69fb0567e6c0c8ed",
-    "VoidTwapFreshnessGuardV6": "0x3108f7a4fd5d81e021914fb47c04e6fe7dc3cb2f",
-    "VoidGenesisNftAmmV6": "0x5bd7d98038625a155ac9a4bd1ede208e32c0722c"
+    "VoidTestToken": "0x87afe8d8c85f09345227127e610a20e732990456",
+    "VoidGenesisEscrowV6": "0x21bf2d855a40532ed90b9c71a71a968ed92502ea",
+    "VoidEthPoolV6": "0x81c84fee95e4de2817e47b4993a2185c80d24ee8",
+    "VoidTwapOracleV6": "0x9d502445a9d04efbe88f9a388d8c7447f85eb27d",
+    "VoidTwapFreshnessGuardV6": "0xba39e7b30b4d62375be31b0c5333c772d23dd65b",
+    "VoidGenesisNftAmmV6": "0x639f4192b355c48d32aceac71304ecff55605900"
   },
   "parameters": {
     "nfts": 1111,
@@ -33,7 +33,7 @@
     "specificFeeBps": 200,
     "protocolCutBps": 50,
     "tollUsd": "1000000000000000",
-    "inPool": 0
+    "inPool": 1
   },
   "chainIdBase": "46630000"
 }

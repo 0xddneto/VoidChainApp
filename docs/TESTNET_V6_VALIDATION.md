@@ -70,3 +70,7 @@ The launch is Anvil-inspired, not an Anvil factory deployment. Current VOID
 market fees are 1% pool buy, 2% selected buy and 1.5% sell, with the protocol's
 0.5% carved out of those fees, plus the runtime and Paymaster costs. These are
 not identical to an Anvil fee schedule that adds a protocol fee on top.
+# Superseded deployment
+
+V6 is archived. See [V7 validation](TESTNET_V7_VALIDATION.md) for the replacement
+genesis and new contract addresses. V6 token balances are not V7 balances.

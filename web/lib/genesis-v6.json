@@ -4,16 +4,16 @@
     "rpc": "https://robinhood-testnet.drpc.org",
     "label": "Robinhood Chain testnet"
   },
-  "status": "twap-warming",
+  "status": "active",
   "contracts": {
-    "deed": "0x6f1015edf539b9001421a0aaa428c818d2397fb7",
-    "token": "0x359958d13e830ddb7f9c2864c7da8cc282026a07",
-    "mint": "0x2b409eed516ca9b18d0aa4328ea9c0e3febfb60b",
-    "pool": "0xc69ed96ebc755e9a156e4a60e607261adb432b27",
-    "oracle": "0x3108f7a4fd5d81e021914fb47c04e6fe7dc3cb2f",
-    "twapSource": "0x66e043fd4ce7733ea8935a1d69fb0567e6c0c8ed",
-    "paymaster": "0x2978620017152eefcc6befde5490b5776dd995a2",
-    "nftAmm": "0x5bd7d98038625a155ac9a4bd1ede208e32c0722c"
+    "deed": "0xedf5855ee0cdbf28616db0c074be7ecd12f56b38",
+    "token": "0x87afe8d8c85f09345227127e610a20e732990456",
+    "mint": "0xeb841dcb2a2d8c14ab85dca4f781cc1980decf3a",
+    "pool": "0x81c84fee95e4de2817e47b4993a2185c80d24ee8",
+    "oracle": "0xba39e7b30b4d62375be31b0c5333c772d23dd65b",
+    "twapSource": "0x9d502445a9d04efbe88f9a388d8c7447f85eb27d",
+    "paymaster": "0x7ef30a8567e1258edca38d068e9fbac49b40bad2",
+    "nftAmm": "0x639f4192b355c48d32aceac71304ecff55605900"
   },
   "parameters": {
     "mintPriceWei": "1000000000000000",
@@ -21,6 +21,11 @@
     "voidPerDeed": "500000000000000000000000",
     "poolFeeBps": 30,
     "twapIntervalSeconds": 300,
-    "mintSplitBps": { "lockedLp": 4000, "paymaster": 2000, "protocol": 4000 }
-  }
+    "mintSplitBps": {
+      "lockedLp": 4000,
+      "paymaster": 2000,
+      "protocol": 4000
+    }
+  },
+  "version": "v7"
 }

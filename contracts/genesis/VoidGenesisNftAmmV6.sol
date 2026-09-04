@@ -101,6 +101,19 @@ contract VoidGenesisNftAmmV6 is ChainAppBase, ReentrancyGuard {
         return VOID_PER_DEED - _fee(VOID_PER_DEED, SELL_FEE_BPS);
     }
 
+    /// @notice Register an NFT already donated to this gateway. Used to move
+    /// legacy vault custody into the replacement pool without paying an
+    /// administrator. All backing remains in the pool; nobody gets a payout.
+    function acceptDonation(uint256 deedId) external onlyFromMyChain nonReentrant {
+        if (deedId == 0 || deedId > 1111) revert InvalidDeed(deedId);
+        if (inventoryIndexPlusOne[deedId] != 0) revert DeedAlreadyInVault(deedId);
+        address owner = deed.ownerOf(deedId);
+        if (owner != address(this)) revert NotDeedOwner(deedId, owner, address(this));
+        _add(deedId);
+        if (!escrow.deedReleased(deedId)) escrow.releaseNftValue(deedId, address(this));
+        emit Deposited(deedId, caller(), 0, 0);
+    }
+
     /// @notice Deposits a Deed into the pool using its ERC-4494 signature.
     /// @dev The permit approves the Runtime for this exact Deed and the Runtime
     /// immediately consumes it from the caller's signed NFT budget.

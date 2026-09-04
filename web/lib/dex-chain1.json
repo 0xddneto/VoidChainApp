@@ -1,26 +1,26 @@
 {
-  "version": "v6",
+  "version": "v7-migrated-eth-genesis-testnet",
   "chainTokenId": 1,
-  "runtime": "0x6675d410253745483612f5254289338f90255257",
-  "paymaster": "0x2978620017152eefcc6befde5490b5776dd995a2",
-  "appFactory": "0x990273400533229c03726ce7097f1de66c6a54f6",
-  "factory": "0xB559041a8D9e5EE50Ba6d107b16FBD8056579010",
-  "baseToken": "0x359958d13e830ddb7f9c2864c7da8cc282026a07",
+  "runtime": "0xe42eb31583513552cde8dbd578698c3f88d3b04d",
+  "paymaster": "0x7ef30a8567e1258edca38d068e9fbac49b40bad2",
+  "appFactory": "0x2178074c70f11cf46ca7d5ab419f723207d4ab05",
+  "factory": "0x2b69E20832bBf295347e5E3803D1186dcaDa6D09",
+  "baseToken": "0x87afe8d8c85f09345227127e610a20e732990456",
   "pools": [
     {
-      "address": "0x746Bb0b641bC2601137C3d2D81586f779285e293",
+      "address": "0x30Fd71c17A4d2e2c425bF259685c326d53fC640C",
       "label": "VOID / tUSD",
-      "asset": "0xe89d1b7217191a3abe1e041ef4382901feb3f654",
-      "token0": "0x359958d13E830DDb7F9c2864C7Da8cC282026a07",
-      "token1": "0xE89d1b7217191A3AbE1E041Ef4382901FeB3f654"
+      "asset": "0x40a13e56526e8b626fb3633e5f61d6731278a804",
+      "token0": "0x40A13e56526E8B626fb3633E5F61d6731278A804",
+      "token1": "0x87afE8D8c85F09345227127E610a20E732990456"
     },
     {
-      "address": "0xf1c8D8dCCBf3A3c01Fc840531d46373e2F0D3b78",
+      "address": "0x9aa77BEF37DCFBAa30a399EC181975832e422644",
       "label": "VOID / tLINK",
-      "asset": "0x37dbe5eb888e7a039410d53b46f92cf6f5e49b7f",
-      "token0": "0x359958d13E830DDb7F9c2864C7Da8cC282026a07",
-      "token1": "0x37dBe5EB888e7a039410D53b46f92CF6f5E49b7F"
+      "asset": "0xf4354657b33631a7c487e36fdf1a727e405ee947",
+      "token0": "0x87afE8D8c85F09345227127E610a20E732990456",
+      "token1": "0xf4354657b33631A7c487e36Fdf1A727E405eE947"
     }
   ],
-  "faucet": "0x54f98A1665FBE9cbB2A9E14Cd3836453eE3F6D81"
+  "faucet": "0xAdC3aE0f0999A87D10c686Ea064b18DE7C3A2663"
 }

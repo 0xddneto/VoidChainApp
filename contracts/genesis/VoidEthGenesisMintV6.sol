@@ -78,7 +78,7 @@ contract VoidEthGenesisMintV6 is ReentrancyGuard {
 
     /// @notice Normal ETH genesis purchase. All three ETH destinations and the
     /// matching VOID liquidity addition settle atomically in this call.
-    function mint() external payable nonReentrant returns (uint256 deedId) {
+    function mint() external payable virtual nonReentrant returns (uint256 deedId) {
         if (hasMinted[msg.sender]) revert MintLimitReached(msg.sender);
         if (totalMinted == maxSupply) revert SoldOut();
         if (msg.value != mintPriceWei) revert WrongMintPrice(msg.value, mintPriceWei);
