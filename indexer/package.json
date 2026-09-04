@@ -15,7 +15,7 @@
     "viem": "^2.56.0"
   },
   "devDependencies": {
-    "@types/node": "^20.19.43",
+    "@types/node": "^26.4.0",
     "@types/pg": "^8.23.1",
     "typescript": "^5.9.3"
   }
