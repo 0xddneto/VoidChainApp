@@ -129,7 +129,7 @@ export default function MintPage() {
   const soldOut = minted !== null && minted >= BigInt(P.maxSupply); const canMint = minted !== null && connected && !hasMinted && !soldOut && ethBalance >= mintPrice && busy === null;
 
   return <>
-    <header className={styles.header}><div className={styles.bar}><div className={styles.logo}>Void<span>Scan</span></div><a className={styles.back} href="/">← explorer</a><WalletProfileButton /></div></header>
+    <header className={styles.header}><div className={styles.bar}><div className={styles.logo}>Void<span>Scan</span></div><a className={styles.back} href="/">← explorer</a><a className={styles.docsLink} href="/docs">Docs</a><WalletProfileButton /></div></header>
     <main className={styles.wrap}>
       <div className={styles.hero}><div className={styles.testnet}>● Robinhood testnet · V7 genesis</div><h1>Mint a VOID Deed with ETH.</h1><p>Mint one Deed with ETH. Each mint locks VOID/ETH liquidity and funds the Paymaster. Apps and NFT trades use VOID.</p><a href="/market">Trade NFTs ↔ VOID →</a></div>
       <dl className={styles.facts}>

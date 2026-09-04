@@ -42,6 +42,7 @@ export default async function ProfileRoute({
         <div className={`${styles.wrap} ${styles.bar}`}>
           <div className={styles.logo}>VOID<span>SCAN</span></div>
           <a className={own.back} href="/">← explorer</a>
+          <a className={own.docsLink} href="/docs">Docs</a>
           <WalletProfileButton />
         </div>
       </header>

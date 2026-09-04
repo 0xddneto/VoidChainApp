@@ -4,11 +4,7 @@
   "type": "module",
   "scripts": {
     "build:contracts": "tsx compile-contracts.ts",
-    "deploy:testnet": "tsx deploy-testnet.ts",
-    "deploy:testnet-v2": "tsx deploy-testnet-v2.ts",
-    "deploy:testnet-v3": "tsx deploy-testnet-v3.ts",
-    "deploy:testnet-v4": "tsx deploy-testnet-v4.ts",
-    "deploy:testnet-v5": "tsx deploy-testnet-v5.ts",
+    "deploy:testnet": "tsx deploy-testnet-v7.ts",
     "deploy:testnet-v6": "tsx deploy-testnet-v6.ts",
     "snapshot:testnet-v7": "tsx snapshot-v7.ts",
     "deploy:testnet-v7": "tsx deploy-testnet-v7.ts",

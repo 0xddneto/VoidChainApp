@@ -10,6 +10,7 @@
 .logo span { color: var(--accent); }
 .back { margin-left: auto; font-size: 13px; color: var(--ink-2); text-decoration: none; }
 .back:hover { color: var(--accent); }
+.docsLink { color: var(--ink-2); font: 11px var(--mono); text-decoration: none; }.docsLink:hover { color: var(--accent); }
 
 .hero { padding: 8px 0 28px; }
 .hero h1 {

@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Profile, Social } from '@/lib/chains';
+import { canonicalProfile, profileMessage } from '@/lib/profile-signature';
 import styles from './editor.module.css';
 
 type State = 'idle' | 'connecting' | 'signing' | 'saving';
@@ -21,17 +22,6 @@ function fixedLinks(socials: Social[]): Social[] {
     platform,
     handle: socials.find((item) => item.platform.toLowerCase() === platform.toLowerCase())?.handle ?? '',
   }));
-}
-
-function profileMessage(address: string, nonce: string): string {
-  return [
-    'VoidScan — update profile',
-    '',
-    `address: ${address.toLowerCase()}`,
-    `nonce: ${nonce}`,
-    '',
-    'Signing this proves the wallet is yours. It costs no gas and moves nothing.',
-  ].join('\n');
 }
 
 export function ProfileEditor({ address, profile }: { address: string; profile: Profile }) {
@@ -78,9 +68,10 @@ export function ProfileEditor({ address, profile }: { address: string; profile: 
 
     try {
       setState('signing');
+      const payload = canonicalProfile({ displayName, avatarUri, bio, socials });
       const signature = await p.request({
         method: 'personal_sign',
-        params: [profileMessage(wallet, nonce), wallet],
+        params: [profileMessage(wallet, nonce, payload), wallet],
       });
 
       setState('saving');
@@ -89,8 +80,7 @@ export function ProfileEditor({ address, profile }: { address: string; profile: 
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           address: wallet, nonce, signature,
-          displayName, avatarUri, bio,
-          socials: socials.filter((s) => s.platform.trim() && s.handle.trim()),
+          ...payload,
         }),
       });
 

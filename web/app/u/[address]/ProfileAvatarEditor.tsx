@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Profile } from '@/lib/chains';
+import { canonicalProfile, profileMessage } from '@/lib/profile-signature';
 import { ProfileAvatar } from '../../ProfileAvatar';
 import styles from './page.module.css';
 
@@ -17,13 +18,6 @@ function wallet(): Provider | undefined {
 
 function accountFrom(accounts: unknown): string | null {
   return Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : null;
-}
-
-function profileMessage(address: string, nonce: string): string {
-  return [
-    'VoidScan — update profile', '', `address: ${address.toLowerCase()}`, `nonce: ${nonce}`, '',
-    'Signing this proves the wallet is yours. It costs no gas and moves nothing.',
-  ].join('\n');
 }
 
 /** The avatar itself is the upload control; there is no detached upload button. */
@@ -74,14 +68,18 @@ export function ProfileAvatarEditor({ address, profile }: { address: string; pro
       const provider = wallet();
       if (!provider) throw new Error('No browser wallet found.');
       const nonce = `${Date.now()}.${Math.random().toString(36).slice(2, 10)}`;
+      const payload = canonicalProfile({
+        displayName: profile.displayName ?? '', avatarUri: dataUri,
+        bio: profile.bio ?? '', socials: profile.socials,
+      });
       const signature = await provider.request({
-        method: 'personal_sign', params: [profileMessage(account, nonce), account],
+        method: 'personal_sign', params: [profileMessage(account, nonce, payload), account],
       });
       const response = await fetch('/api/profile', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           address: account, nonce, signature,
-          displayName: profile.displayName ?? '', avatarUri: dataUri, bio: profile.bio ?? '', socials: profile.socials,
+          ...payload,
         }),
       });
       if (!response.ok) throw new Error(((await response.json()) as { error?: string }).error ?? 'Could not save photo.');

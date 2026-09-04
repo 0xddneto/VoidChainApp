@@ -28,13 +28,16 @@ async function main(){
  if(stats[3]!==gross||stats[2]+flushed!==holder||(accrued as bigint)+swept!==protocol||stats[4]!==BigInt(revenue.length))throw Error('Runtime fee liabilities mismatch');
  const custody=await rpc.readContract({address:c.token,abi:abi('VoidTokenV6'),functionName:'balanceOf',args:[c.runtime]});
  if(custody!==gross-flushed-swept)throw Error('Fee custody does not back liabilities');
+ // Ownership is checked at the migration cutoff, not against today's owners.
+ // A successful marketplace transfer is expected to change ownerOf later and
+ // must never make the deployment audit fail.
+ const importedAt=(await rpc.getTransactionReceipt({hash:d.steps['owner:5']})).blockNumber;
  for(const nft of snapshot.deeds.filter((n:any)=>!n.inLegacyPool)){
-  for(const deed of [snapshot.source.production.VoidChainDeed,c.deed]){
-   const owner=await rpc.readContract({address:deed,abi:abi('VoidChainDeed'),functionName:'ownerOf',args:[BigInt(nft.id)]}) as string;
-   if(owner.toLowerCase()!==nft.owner.toLowerCase())throw Error(`Snapshot holder changed for #${nft.id}`);
-  }
+  const sourceOwner=await rpc.readContract({address:snapshot.source.production.VoidChainDeed,abi:abi('VoidChainDeed'),functionName:'ownerOf',args:[BigInt(nft.id)],blockNumber:BigInt(snapshot.block)}) as string;
+  const importedOwner=await rpc.readContract({address:c.deed,abi:abi('VoidChainDeed'),functionName:'ownerOf',args:[BigInt(nft.id)],blockNumber:importedAt}) as string;
+  if(sourceOwner.toLowerCase()!==nft.owner.toLowerCase()||importedOwner.toLowerCase()!==nft.owner.toLowerCase())throw Error(`Snapshot import mismatch for #${nft.id}`);
  }
- const proof={daoCount:ids.size,settlements:revenue.length,gross,holder,protocol,originalHoldersPreserved:true};
+ const proof={daoCount:ids.size,settlements:revenue.length,gross,holder,protocol,snapshotHoldersImported:true,ownershipTransfersAllowed:true};
  writeFileSync('deployments/testnet-v7-audit.json',JSON.stringify(proof,(_k,v)=>typeof v==='bigint'?v.toString():v,2)+'\n');console.log('PASS',JSON.stringify(proof,(_k,v)=>typeof v==='bigint'?v.toString():v));
 }
 main().catch(e=>{console.error('Audit stopped:',e?.shortMessage??e?.message??'unknown');process.exitCode=1;});

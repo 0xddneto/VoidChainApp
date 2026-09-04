@@ -98,7 +98,10 @@ export async function POST(httpRequest: Request) {
   }
   const expected = new Map<string, bigint>([[`${voidToken}:${paymaster}`.toLowerCase(), maxToll + maxGasVoid]]);
   for (const spend of spends) expected.set(`${spend.token}:${runtime}`.toLowerCase(), spend.amount);
-  if (permits.length !== expected.size || permits.some((permit) => permit.value !== expected.get(`${permit.token}:${permit.spender}`.toLowerCase()))) return reject('Permits differ from the signed VOID and app budgets.');
+  if (permits.some((permit) => {
+    const needed = expected.get(`${permit.token}:${permit.spender}`.toLowerCase());
+    return needed === undefined || permit.value < needed;
+  })) return reject('An asset permit does not cover a signed VOID or app budget.');
 
   const [chainNonce, currentFee, registered] = await Promise.all([
     publicClient.readContract({ address: paymaster, abi: PAYMASTER_ABI, functionName: 'nonces', args: [user] }),
@@ -112,6 +115,14 @@ export async function POST(httpRequest: Request) {
   try {
     const account = privateKeyToAccount(relayerKey as Hex);
     const wallet = createWalletClient({ account, transport: http(RH_TESTNET.rpcUrls[0]) });
+    const simulation = await publicClient.simulateContract({
+      account,
+      address: paymaster,
+      abi: PAYMASTER_ABI,
+      functionName: 'sponsorWithAssetPermits',
+      args: [request, signature, permits],
+    });
+    if (!simulation.result[0]) return reject('The application action would fail. No transaction was sent.', 409);
     const hash = await wallet.sendTransaction({
       account,
       chain: null,

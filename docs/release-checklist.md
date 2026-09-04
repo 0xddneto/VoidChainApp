@@ -4,13 +4,22 @@
 
 - [ ] Install exactly the locked Node and Solidity dependencies from a clean clone.
 - [ ] Run `forge build` and `forge test`, including `MegaLoadTest`.
-- [ ] Deploy with `script/deploy-testnet.ts` using a dedicated test-only key.
+- [ ] Snapshot the currently published supply, deploy with
+  `script/deploy-testnet-v7.ts`, and require every staged proof before updating
+  `web/lib/deployment.json`.
 - [ ] Confirm the deployment creates the runtime, fixes the DAO factory once,
   and creates all 1,111 deterministic DAO clones before user activation.
 - [ ] Verify deployed source and constructor arguments in the parent-chain
   explorer; compare the generated deployment file with the web configuration.
+- [ ] Run `npm run audit:testnet-v7` and reconcile supply, owners, 1,111 DAOs,
+  runtime custody, owner revenue, protocol revenue and Paymaster reserve.
 - [ ] Run the indexer against that deployment and exercise VoidScan's registry,
-  detail, profile and claim routes with a disposable wallet.
+  detail, profile, DAO and owner-claim routes with a disposable wallet.
+- [ ] Exercise mint, NFT buy/sell, swap, add/remove liquidity and refill. For
+  every application action, prove a Paymaster event, a VOID balance delta and
+  the matching indexed transaction; a wallet preview alone is not evidence.
+- [ ] From a fresh wallet, record the one-time token setup prompts. Repeat the
+  same action and require exactly one bounded `SponsoredCall` signature.
 
 ## Mainnet gate
 
@@ -20,9 +29,10 @@
   bytecode verification record.
 - [ ] Define ownership, oracle, relayer reserve, rate-limit, monitoring,
   incident-response and key-rotation procedures.
-- [ ] Create the real VOID/ETH liquidity, verify the matching 30-minute-TWAP
-  pool and fresh ETH/USD Chainlink feed, then have governance set the exact
-  router/WETH/pool-fee route and refill threshold/target.
+- [ ] Review the production TWAP interval and liquidity depth under manipulation
+  simulations; testnet's five-minute window is not a production recommendation.
+- [ ] Create the real VOID/ETH liquidity and verify every price/feed dependency,
+  then pin the exact refill pool and configure the threshold/target.
 - [ ] Run at least two independent low-funded permissionless keeper wallets;
   prove a bounded refill and alert on reserve, TWAP/feed failure and missed
   refill before admitting value-bearing sponsored transactions.

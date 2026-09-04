@@ -45,6 +45,7 @@ export default function ProfileDoor() {
         <div className={`${styles.wrap} ${styles.bar}`}>
           <div className={styles.logo}>VOID<span>SCAN</span></div>
           <a className={styles.note} style={{ marginLeft: 'auto' }} href="/">← explorer</a>
+          <a className={styles.note} href="/docs">Docs</a>
           <WalletProfileButton />
         </div>
       </header>

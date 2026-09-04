@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   createPublicClient, createWalletClient, custom, encodeFunctionData, formatEther,
-  getAddress, http, parseAbi, type Address, type Hex,
+  getAddress, http, maxUint256, parseAbi, type Address, type Hex,
 } from 'viem';
 import { DEPLOY, RH_TESTNET } from '@/lib/testnet';
 import { requireSponsoredSuccess } from '@/lib/sponsored-receipt';
@@ -19,7 +19,7 @@ const MAX_GAS_VOID = 10_000n * 10n ** 18n;
 const CALL_GAS_LIMIT = 1_500_000n;
 const rpc = createPublicClient({ transport: http(RH_TESTNET.rpcUrls[0]) });
 const marketAbi = parseAbi(['function buyRandom(uint256) returns(uint256)', 'function buySpecific(uint256,uint256)', 'function sellWithPermit(uint256,uint256,uint8,bytes32,bytes32)']);
-const nonceAbi = parseAbi(['function nonces(address) view returns(uint256)', 'function nonces(uint256) view returns(uint256)']);
+const nonceAbi = parseAbi(['function nonces(address) view returns(uint256)', 'function nonces(uint256) view returns(uint256)', 'function allowance(address,address) view returns(uint256)']);
 const permitTypes = { Permit: [
   { name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }, { name: 'value', type: 'uint256' },
   { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' },
@@ -112,7 +112,11 @@ export default function MarketPage() {
         const signedDeed = split(deedSignature);
         data = encodeFunctionData({ abi: marketAbi, functionName: 'sellWithPermit', args: [deedId, deadline, signedDeed.v, signedDeed.r, signedDeed.s] });
         nftSpends = [{ collection: DEED, tokenId: deedId }];
-        permits.push(await tokenPermit(client, PAYMASTER, fee + MAX_GAS_VOID, tokenNonce, deadline));
+        const paymasterAllowance = await rpc.readContract({ address: VOID, abi: nonceAbi, functionName: 'allowance', args: [account, PAYMASTER] });
+        if (paymasterAllowance < fee + MAX_GAS_VOID) {
+          setMessage('One-time VOID setup: authorize the Paymaster. This signature does not sell or transfer a Deed.');
+          permits.push(await tokenPermit(client, PAYMASTER, maxUint256, tokenNonce, deadline));
+        }
       } else {
         const quote = BigInt(kind === 'random' ? state.randomQuote : state.specificQuote);
         if (BigInt(state.balance) < quote + fee + MAX_GAS_VOID) throw new Error('Insufficient VOID for the NFT price and transaction budget.');
@@ -120,10 +124,22 @@ export default function MarketPage() {
           ? encodeFunctionData({ abi: marketAbi, functionName: 'buyRandom', args: [quote] })
           : encodeFunctionData({ abi: marketAbi, functionName: 'buySpecific', args: [BigInt(specificId), quote] });
         spends = [{ token: VOID, amount: quote }];
-        permits.push(await tokenPermit(client, PAYMASTER, fee + MAX_GAS_VOID, tokenNonce, deadline));
-        permits.push(await tokenPermit(client, RUNTIME, quote, tokenNonce + 1n, deadline));
+        const [paymasterAllowance, runtimeAllowance] = await Promise.all([
+          rpc.readContract({ address: VOID, abi: nonceAbi, functionName: 'allowance', args: [account, PAYMASTER] }),
+          rpc.readContract({ address: VOID, abi: nonceAbi, functionName: 'allowance', args: [account, RUNTIME] }),
+        ]);
+        let nextPermitNonce = tokenNonce;
+        if (paymasterAllowance < fee + MAX_GAS_VOID) {
+          setMessage('One-time VOID setup: authorize the Paymaster. This signature does not buy a Deed.');
+          permits.push(await tokenPermit(client, PAYMASTER, maxUint256, nextPermitNonce++, deadline));
+        }
+        if (runtimeAllowance < quote) {
+          setMessage('One-time VOID setup: authorize the Runtime. The signed action still limits every purchase amount.');
+          permits.push(await tokenPermit(client, RUNTIME, maxUint256, nextPermitNonce++, deadline));
+        }
       }
       const sponsored = { user: account, tokenId: 1n, target: MARKET, data, maxToll: fee, maxGasVoid: MAX_GAS_VOID, callGasLimit: CALL_GAS_LIMIT, spends, nftSpends, nonce: requestNonce, deadline };
+      setMessage('Sign this exact market action. Deed, price, chain, fee cap, gas cap and expiry are bound to it.');
       const signature = await client.signTypedData({ account, domain: { name: 'VoidPaymaster', version: '1', chainId: RH_TESTNET.chainId, verifyingContract: PAYMASTER }, types: sponsoredTypes, primaryType: 'SponsoredCall', message: sponsored });
       const serialise = (_key: string, value: unknown) => typeof value === 'bigint' ? value.toString() : value;
       const response = await fetch('/api/market/sponsor', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ request: sponsored, signature, permits }, serialise) });
@@ -138,7 +154,7 @@ export default function MarketPage() {
   }
 
   return <>
-    <header className={styles.header}><div className={styles.bar}><div className={styles.logo}>VOID<span>MARKET</span></div><a href="/">← VoidScan</a><WalletProfileButton /></div></header>
+    <header className={styles.header}><div className={styles.bar}><div className={styles.logo}>VOID<span>MARKET</span></div><a href="/">← VoidScan</a><a className={styles.docsLink} href="/docs">Docs</a><WalletProfileButton /></div></header>
     <main className={styles.wrap}>
       <section className={styles.hero}><p>CHAIN 1 · NFT / VOID AMM</p><h1>Trade Deeds directly in VOID.</h1><span>Every trade enters through the Chain 1 Runtime. Your wallet signs exact VOID and NFT budgets; the Paymaster submits the transaction and pays parent-chain gas.</span><p><a href="/mint#get-void">Get VOID →</a></p></section>
       <div className={styles.stats}>

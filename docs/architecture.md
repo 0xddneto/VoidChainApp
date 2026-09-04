@@ -42,13 +42,16 @@ VOID, and the paymaster charges a bounded VOID gas reimbursement. The user
 must never be routed by an official app to a bare token faucet, pool, or
 runtime call that bypasses the chain fee or asks them to supply ETH.
 
-For an application asset that moves during the call, the app must support
-EIP-2612 (or be integrated through a separately reviewed signature standard).
-The user signs an exact one-call permit to the frozen Runtime; there is no
-unlimited allowance and no approval transaction. Non-compliant ERC-20 assets
-are not eligible for the gasless official route until they receive a safe
-adapter. `sponsorWithAssetPermits` rejects any permit not tied to the signed
-app budget, the selected chain, and either the Runtime or Paymaster.
+For an application asset that moves during the call, the official interface
+first checks the existing allowance. On first use it may request an EIP-2612
+setup permit to the immutable Runtime or Paymaster; it does not request that
+permit again while sufficient allowance remains. Every actual action still
+requires a separate `SponsoredCall` signature containing an exact, one-call
+budget. The Runtime can spend an allowance only while executing that signed
+budget for the same user, chain and registered app. `sponsorWithAssetPermits`
+rejects any setup permit not tied to a token needed by that signed action and
+to either the Runtime or Paymaster. Non-compliant ERC-20 assets require a
+separately reviewed adapter or an ordinary one-time approval.
 
 ## Safety boundaries
 
@@ -75,20 +78,14 @@ made only by that same DAO after a passed five-day vote. There is no switch to
 return this power to a holder. Identity metadata remains holder-managed, since
 changing a label or social link does not rewrite execution rules or custody.
 
-The collection market is protocol infrastructure, outside every deed's runtime.
-That is intentional: a collection must be able to sell a deed before its buyer
-has activated a chain. A buyer first makes one exact ERC-20 approval of VOID to
-the Paymaster, then signs one `MarketPrepaidCall`. The signature contains the
-collection-market address, token address, signed symbol `VOID`, signed label
-`VOID deed mint`, pool-price cap, gas cap and expiry. It contains no chain fee:
-the purchased chain is still inactive and its first holder sets that fee later.
-`VoidCollectionMintPaymaster` accepts only the immutable collection-market
-address selected once during deployment, pulls only the exact total, gives that market a
-temporary one-call allowance, refunds unused VOID and clears the allowance
-when the call ends. `VoidCollectionMarket` accepts calls only from the
-Paymaster, buys only the next pool deed and transfers it only to the signed
-buyer. The market relay rejects every other route. All 1,111 deeds therefore
-start inactive.
+The collection genesis mint is protocol infrastructure, outside every deed's
+runtime. It takes ETH because it creates the Deed and starts the VOID economy;
+the chain is still inactive, so no chain transaction fee exists yet. The V7
+mint imported the verified ownership of the earlier test deployment and then
+continued a one-mint-per-wallet supply from the next Deed ID. Mint proceeds are
+split by the immutable genesis rules into liquidity and time-locked protocol
+or builder buckets. Once a Deed exists, its NFT/VOID market trades are ordinary
+Chain 1 app actions and therefore use the signed VOID Paymaster route.
 
 ## What a real independent chain would require
 

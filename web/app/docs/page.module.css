@@ -1,0 +1,19 @@
+.header { border-bottom: 1px solid var(--line); background: color-mix(in srgb,var(--ground) 92%,transparent); position: sticky; top: 0; z-index: 5; }
+.bar { align-items: center; display: flex; gap: 16px; height: 64px; margin: auto; max-width: 1180px; width: calc(100% - 32px); }
+.logo { color: var(--ink); font: 700 13px var(--mono); text-decoration: none; }.logo span { color: var(--accent); }
+.back { color: var(--ink-2); font: 11px var(--mono); margin-left: auto; text-decoration: none; }.back:hover { color: var(--accent); }
+.wrap { display: grid; gap: 56px; grid-template-columns: 190px minmax(0,760px); margin: 0 auto; max-width: 1180px; padding: 54px 16px 100px; }
+.nav { align-self: start; display: grid; gap: 9px; position: sticky; top: 94px; }
+.nav b { color: var(--ink-3); font: 9px var(--mono); letter-spacing: .12em; margin-bottom: 7px; }
+.nav a { border-left: 1px solid var(--line); color: var(--ink-2); font: 11px var(--mono); padding: 3px 0 3px 12px; text-decoration: none; }.nav a:hover { border-color: var(--accent); color: var(--accent); }
+.docs { min-width: 0; }
+.kicker { color: var(--accent); font: 10px var(--mono); letter-spacing: .11em; margin: 0 0 13px; }
+.docs h1 { font-size: clamp(36px,6vw,64px); letter-spacing: -.055em; line-height: 1; margin: 0 0 20px; max-width: 13ch; }
+.lead { color: var(--ink-2); font-size: 17px; line-height: 1.65; margin: 0 0 52px; max-width: 64ch; }
+.docs section { border-top: 1px solid var(--line); padding: 28px 0 34px; scroll-margin-top: 82px; }
+.docs h2 { font-size: 21px; letter-spacing: -.025em; margin: 0 0 12px; }
+.docs p { color: var(--ink-2); font-size: 14px; line-height: 1.72; margin: 0 0 12px; }
+.flow { border: 1px solid var(--line); color: var(--ink); font: 11px/1.7 var(--mono); margin-top: 18px; overflow-wrap: anywhere; padding: 14px; }.flow i { color: var(--accent); font-style: normal; padding: 0 6px; }
+.callout { border-left: 3px solid var(--accent); background: var(--surface-2); display: grid; gap: 5px; margin-top: 18px; padding: 13px 15px; }.callout b { color: var(--ink); font: 11px var(--mono); }.callout span { color: var(--ink-2); font-size: 13px; line-height: 1.6; }
+.contracts { border: 1px solid var(--line); margin: 18px 0; }.contracts div { border-bottom: 1px solid var(--line); display: grid; gap: 10px; grid-template-columns: 150px 1fr; padding: 10px 12px; }.contracts div:last-child { border: 0; }.contracts dt { color: var(--ink-3); font: 10px var(--mono); }.contracts dd { color: var(--ink); font: 10px var(--mono); margin: 0; overflow-wrap: anywhere; }
+@media(max-width:760px){.wrap{display:block;padding-top:32px}.nav{display:none}.docs h1{font-size:40px}.contracts div{grid-template-columns:1fr}.back{margin-left:auto}}

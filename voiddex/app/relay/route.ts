@@ -70,7 +70,10 @@ export async function POST(request: Request) {
   }
   const required = new Map<string, bigint>([[`${VOID}:${PAYMASTER}`.toLowerCase(), maxToll + maxGasVoid]]);
   for (const spend of spends) required.set(`${spend.token}:${RUNTIME}`.toLowerCase(), spend.amount);
-  if (permits.length !== required.size || permits.some((permit) => permit.value !== required.get(`${permit.token}:${permit.spender}`.toLowerCase()))) return reject('Permit does not match the displayed VOID and app budgets.');
+  if (permits.some((permit) => {
+    const needed = required.get(`${permit.token}:${permit.spender}`.toLowerCase());
+    return needed === undefined || permit.value < needed;
+  })) return reject('Permit does not cover a required VOID or app budget.');
 
   const [chainNonce, fee] = await Promise.all([
     rpc.readContract({ address: PAYMASTER, abi: readAbi, functionName: 'nonces', args: [user] }),

@@ -59,6 +59,7 @@ export default async function Home() {
           <ExplorerSearch />
 
           <div className={styles.actions}>
+            <a className={styles.btn} href="/docs">Docs</a>
             <WalletProfileButton />
           </div>
         </div>

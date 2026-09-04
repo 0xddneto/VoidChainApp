@@ -1,118 +1,145 @@
 # VoidChainApp
 
-**A testnet runtime for 1,111 NFT-bound execution spaces.**
+VoidChainApp is a Robinhood Chain Testnet protocol for **1,111 NFT-owned
+execution spaces**. Each `VoidChainDeed` owns a separate application registry,
+transaction-fee policy, revenue account, identity and DAO inside a shared EVM
+runtime.
 
-> **Current truth:** this is not 1,111 independent blockchains today. The
-> application executes in one `VoidChainAppRuntime` on Robinhood Chain testnet
-> (EIP-155 chain ID `46630`). A deed isolates an application registry, transaction fee,
-> revenue accounting and owner authority by `tokenId`. It does not yet provide
-> its own blocks, consensus, sequencer, RPC endpoint, bridge or native network
-> gas token.
+> This is pre-audit testnet software. The current spaces are not independent
+> blockchains: they share Robinhood Chain Testnet, one runtime and one RPC.
+> Separate sequencing, blocks, state, bridges and RPCs belong to the future L3
+> migration described below.
 
-That distinction is intentional and public. The runtime is a testable first
-product; an independent rollup is a separate future system, not a label applied
-to a shared contract.
+## Current testnet product
 
-## What a deed controls
+- **ETH genesis:** minting a Deed uses ETH because it creates the NFT and starts
+  the VOID token/liquidity economy. A wallet can mint only once.
+- **VOID application fees:** every official application action enters through
+  `VoidPaymaster`. A relayer pays parent-chain ETH and the user pays the measured
+  reimbursement and chain fee in VOID.
+- **Owner revenue:** 98% of each successful chain transaction fee belongs to the
+  Deed owner who generated it. The remaining 2% goes to the protocol. Gas
+  reimbursement is Paymaster operating capital, not revenue.
+- **Owner claim:** VoidScan displays pending, preserved and Treasury-ready
+  revenue and gives the connected owner a fixed Claim Revenue control.
+- **Permanent governance boundary:** the first owner sets the initial fee during
+  activation. Every later fee or app-publishing-policy change requires that
+  Deed's DAO; a later owner cannot bypass it.
+- **Wallet-balance voting:** the owner creates proposals, voting lasts exactly
+  five days, and each wallet votes with its previous-block VOID balance. Tokens
+  are never deposited or locked in the DAO.
+- **Permissionless apps:** an open chain accepts applications from any builder.
+  An app is registered only for its selected Deed and cannot execute as another
+  chain.
+- **NFT/VOID market and VoidDEX:** Chain 1 currently hosts the NFT market,
+  Uniswap-V2-style pools and a test-token faucet as registered applications.
 
-Each of the 1,111 `VoidChainDeed` NFTs binds its current holder to one isolated
-execution space in the runtime.
+The official frontend checks existing token permissions before asking the
+wallet for another one. A token's first use may require one-time EIP-2612 setup;
+after that, a normal app action requires only the single bounded
+`SponsoredCall` signature. That action binds the chain, app, calldata, exact
+spend limits, transaction-fee cap, gas cap, nonce and deadline. The contract,
+not the interface text, enforces those limits.
 
-- The first holder sets the original transaction fee when activating its space.
-  After activation, its own DAO is the only authority for fee and new-app
-  policy; it cannot reach other deeds or protocol roles.
-- Transactions only reach applications registered for the supplied `tokenId`; the
-  runtime accounts for fees and revenue per deed.
-- Anyone may publish an application to an open space. If the DAO closes new
-  publication, only that DAO can admit another app; it cannot seize a
-  publisher's contract or its withdrawal right.
-- Ownership is read from `ownerOf()` at execution time. A transfer moves the
-  right to propose and edit NFT identity metadata, never control of chain
-  policy outside the DAO.
-- Each deed has a deterministic DAO clone. The NFT holder creates a proposal
-  with a description and optional zero-ETH actions; every wallet votes with the
-  VOID it held at the previous-block snapshot. VOID stays in the wallet and the
-  vote lasts five days. Each target contract keeps the DAO scoped to that deed.
+## Architecture
 
-VOID pays runtime transaction fees. Robinhood testnet ETH remains the native
-asset used by a parent-chain transaction. `VoidPaymaster` sponsors a signed
-runtime transaction, charges the signer in VOID, and lets a relayer pay that
-ETH. The protocol's 2% share is sent directly to its configured public treasury
-address; the deed holder's 98% remains individually claimable.
+```text
+wallet signs one bounded action
+             |
+             v
+permissionless relayer -- pays ETH --> VoidPaymaster
+                                      | charges/refunds VOID gas budget
+                                      v
+                              VoidChainAppRuntime + Deed ID
+                                      | 98% owner / 2% protocol
+                                      v
+                              registered chain application
+```
 
-The test collection market is protocol infrastructure, not an app inside a
-deed. A buyer makes one exact VOID approval to the Paymaster, then signs one
-mint that names the collection market, VOID token, signed label “VOID deed
-mint”, deed price and gas cap. There is no transaction fee at mint because the
-deed remains inactive until its holder activates it and chooses that first fee.
-The Mint Paymaster gives the fixed collection market a temporary, one-call
-allowance; that market accepts only the Paymaster, buys only the next pool deed
-and transfers it only to the signing wallet. The route is closed to arbitrary
-targets. The DAO rule is permanent: the first holder sets the initial fee at
-activation, then every fee or new-app-policy change requires a DAO vote. The
-holder keeps proposal rights but cannot bypass that vote.
+The runtime provides application-level tenant separation. It does not create
+separate consensus domains. An independent L3 needs its own rollup stack, data
+availability, sequencer, proof or dispute system, RPC, explorer, bridge,
+monitoring and audit. The Deed owner may fund that migration; it is not a
+mandatory DAO proposal because the owner bears the deployment cost.
 
-Read the precise boundary and the requirements for a future rollup in
-[docs/architecture.md](docs/architecture.md). Operational gates live in
-[docs/release-checklist.md](docs/release-checklist.md), the DAO rules live in
-[docs/governance.md](docs/governance.md), and the tracked folder layout is
-documented in [docs/repository-map.md](docs/repository-map.md).
+## Repository map
 
-## Components
-
-| Path | Responsibility |
+| Path | Purpose |
 | --- | --- |
-| `contracts/parent/VoidChainDeed.sol` | The fixed 1,111-deed ERC-721 collection and holder authority. |
-| `contracts/parent/VoidChainAppRuntime.sol` | Token-scoped app registry, execution boundary, fee collection and revenue accounting. |
-| `contracts/parent/VoidChainDao*.sol` | Deterministic per-deed DAO factory and general, deed-scoped governance. |
-| `contracts/parent/VoidPaymaster.sol` | Signed, budgeted sponsorship of runtime transactions. |
-| `script/paymaster-keeper.ts` | Permissionless, separate reserve-refill keeper. |
-| `contracts/apps/` | Example permissionless chain apps (swap, market and launchpad). |
-| `contracts/testnet/VoidCollectionMarket.sol` | Testnet-only collection mint outside every deed, so all chains can start inactive. |
-| `indexer/` | Robinhood event indexer and Postgres projection. |
-| `infra/` | Versioned local Postgres infrastructure and operator instructions. |
-| `web/` | VoidScan explorer, profile and test-deed claim interface. |
-| `script/deploy-testnet.ts` | Reproducible testnet deployment, including all 1,111 DAO clones. |
+| `contracts/parent/` | Deed, runtime, Paymaster, Treasury, DAO and app factory. |
+| `contracts/genesis/` | VOID supply, ETH mint, escrow, permanent LP lock, NFT/VOID AMM and TWAP. |
+| `contracts/apps/` | Registered application gateways, including the V4 DEX. |
+| `contracts/child/` | Research scaffold for a future independent L3; not part of the live runtime. |
+| `test/` | Unit, fuzz, invariant, red-team, scale and integration tests. |
+| `script/` | V7 deployment, proof, snapshot, audit, DEX and keeper operations. |
+| `indexer/` | Event indexer and Postgres projection used by VoidScan. |
+| `db/` | Versioned database schema and migrations. |
+| `infra/` | Local Postgres/runtime infrastructure and operator notes. |
+| `web/` | VoidScan, mint, market, profiles, DAO, owner controls and `/docs`. |
+| `voiddex/` | Separately deployed VoidDEX frontend and relay endpoint. |
+| `docs/` | Architecture, governance, operations and live validation evidence. |
 
-## Local development
+The canonical public addresses live in `web/lib/deployment.json`; DEX addresses
+live in `web/lib/dex-chain1.json`. Deployment scripts stage manifests and never
+silently change the public frontend pointer.
 
-Prerequisites: Node.js, Foundry and Docker (only for Postgres/indexer work).
+## Local verification
+
+Prerequisites: Node.js, Foundry and Docker when running Postgres.
 
 ```bash
 npm ci
 forge install foundry-rs/forge-std --no-commit
 forge test
+
+cd script && npm ci && npm run typecheck
+cd ../indexer && npm ci && npm run typecheck
+cd ../web && npm ci && npm run build
+cd ../voiddex && npm ci && npm run build
 ```
 
-For the explorer:
+Run the local indexer and explorer:
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d
-cd indexer && npm ci && npm run dev
-cd ../web && npm ci && npm run dev
+cd indexer && npm run dev
+cd ../web && npm run dev
 ```
 
-Open `http://localhost:3000`. The frontend reads deployment addresses from
-`web/lib/deployment.json`; the deployment script refreshes that file when a
-testnet stack is deployed.
+V7 testnet operations are intentionally explicit:
 
-For deployment and recovery utilities, install the separately scoped script
-dependencies once with `cd script && npm install`. `npm run deploy:testnet`
-refuses an RPC whose chain ID is not `46630`. The ETH recovery utility starts
-as a dry run, requires explicit `--execute`, and likewise refuses any other
-network; it never prints a private key.
+```bash
+cd script
+npm run snapshot:testnet-v7
+npm run deploy:testnet-v7
+npm run audit:testnet-v7
+npm run paymaster:keeper -- --once
+```
 
-The `MegaLoadTest` deliberately constructs 100 spaces and executes 4,800
-signed sponsored calls in one test transaction. Its higher Foundry harness gas
-limit is only for test scaffolding, not a production block-size claim.
+Private keys and authenticated RPC endpoints belong only in ignored local or
+hosting environment variables. The repository contains examples with variable
+names, never secrets.
 
-## Status and safety
+## Documentation
 
-This repository is **pre-audit testnet software**. Testnet VOID has no value;
-the faucet and price oracle are test fixtures. Do not treat a passing local
-suite as an audit, a mainnet readiness claim or evidence of an independent
-network. The release checklist requires an external security audit, verified
-deployments and a real operations plan before any value-bearing launch.
+- [Architecture boundary](docs/architecture.md)
+- [DAO rules](docs/governance.md)
+- [Paymaster operations](docs/paymaster-operations.md)
+- [Repository map](docs/repository-map.md)
+- [Release checklist](docs/release-checklist.md)
+- [V7 live validation](docs/TESTNET_V7_VALIDATION.md)
+- [Full protocol review](docs/PROTOCOL_AUDIT.md)
+
+The same product explanation is available in the VoidScan `/docs` page from
+the header.
+
+## Safety status
+
+The local suite includes unit, fuzz, invariant, attack and high-load tests, and
+the current V7 deployment has live testnet acceptance evidence. Neither is an
+external audit. Before a value-bearing deployment the project still requires
+independent security review, multisig governance, dedicated RPC/indexer
+operations, monitoring, incident procedures and a fresh release audit.
 
 ## License
 

@@ -21,6 +21,7 @@ import { Copyable } from './Copyable';
 import { ChainActivationEditor } from './ChainActivationEditor';
 import { ChainL3Migration } from './ChainL3Migration';
 import { ChainNameEditor } from './ChainNameEditor';
+import { RevenueClaimButton } from './RevenueClaimButton';
 import { DaoPanel } from './DaoPanel';
 import styles from './page.module.css';
 
@@ -282,6 +283,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
         </dl>
 
         <ChainActivationEditor tokenId={chain.id} onActiveChanged={(next) => setStatus(next ? 'live' : 'paused')} />
+        <RevenueClaimButton tokenId={chain.id} owner={chain.owner} />
 
         <ChainL3Migration tokenId={chain.id} runtimeId={chain.chainId} />
         <DaoPanel tokenId={chain.id} />

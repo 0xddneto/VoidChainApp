@@ -7,15 +7,18 @@ explicit so a clean clone has the same layout as the working tree.
 
 | Path | What belongs there |
 | --- | --- |
-| `contracts/parent/` | Deed NFT, shared runtime, treasury, paymaster, and the deterministic per-deed DAO factory. |
-| `contracts/apps/` | Example permissionless applications that execute through the runtime. |
-| `contracts/child/` and `contracts/testnet/` | Test-only adapters and fixtures; they are not an independent chain deployment. |
+| `contracts/parent/` | Deed NFT, shared runtime, Treasury, Paymaster and deterministic per-deed DAO/app factories. |
+| `contracts/genesis/` | Current V7 ETH mint, VOID allocation, escrow, locked VOID/ETH pool, NFT AMM and TWAP components. |
+| `contracts/apps/` | Current and test application gateways which execute through the runtime. V4 names identify the live DEX generation. |
+| `contracts/child/` | Research scaffold for a future independent L3; not part of the current deployment. |
+| `contracts/testnet/` | Earlier test fixtures retained only for regression tests; not public V7 entrypoints. |
 | `test/` | Foundry security, unit, integration, and load tests. |
-| `script/` | Reproducible testnet deployment and proof scripts. Local `.env` keys and per-run records are deliberately ignored. |
+| `script/` | Reproducible V7 deployment, audit, proof, DEX and keeper scripts. Local `.env` keys are deliberately ignored. Versioned deployment evidence contains public data only. |
 | `infra/` | Runnable local infrastructure: the Postgres compose stack and its operator notes. |
 | `db/` | Postgres schema and ordered migrations, including the indexer’s projected call records. |
 | `indexer/` | The Robinhood testnet event-indexing service. |
-| `web/` | The VoidScan explorer, wallet flow, and profile interface. |
+| `web/` | VoidScan explorer, mint, NFT market, profiles, DAO, owner controls and documentation. |
+| `voiddex/` | Separately deployed Chain 1 DEX interface and relay endpoint. |
 | `docs/` | Architecture boundaries, governance rules, release gates, and this repository map. |
 | `.github/workflows/` | Build, contract-test, indexer-typecheck, and web-build gates. |
 

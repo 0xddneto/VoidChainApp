@@ -7,9 +7,7 @@
  */
 import deployment from './deployment.json';
 
-export const DEPLOY = deployment as typeof deployment & {
-  production: typeof deployment.production & { VoidCollectionMintPaymaster?: string };
-};
+export const DEPLOY = deployment;
 
 export const RH_TESTNET = {
   chainIdHex: '0xb626', // 46630
@@ -57,6 +55,12 @@ export const ABI = {
     { type: 'function', name: 'rename', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'string' }], outputs: [] },
   ],
   runtime: [
+    { type: 'function', name: 'apps', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [
+      { name: 'active', type: 'bool' }, { name: 'feePerCallUsd', type: 'uint256' },
+      { name: 'permissionlessDeploy', type: 'bool' }, { name: 'pending', type: 'uint256' },
+      { name: 'pendingOwner', type: 'address' }, { name: 'lifetimeRevenue', type: 'uint256' },
+      { name: 'callCount', type: 'uint256' },
+    ] },
     { type: 'function', name: 'statsOf', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'bool' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }] },
     { type: 'function', name: 'configured', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'bool' }] },
     { type: 'function', name: 'activate', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
@@ -65,7 +69,14 @@ export const ABI = {
     { type: 'function', name: 'setTollCeiling', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
     { type: 'function', name: 'setFee', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint256' }], outputs: [] },
     { type: 'function', name: 'setPermissionlessDeploy', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'bool' }], outputs: [] },
+    { type: 'function', name: 'owed', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
+    { type: 'function', name: 'flush', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }] },
+    { type: 'function', name: 'claimOwed', stateMutability: 'nonpayable', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
     { type: 'function', name: 'execute', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'address' }, { type: 'bytes' }, { type: 'uint256' }], outputs: [{ type: 'bytes' }] },
+  ],
+  treasury: [
+    { type: 'function', name: 'claimable', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
+    { type: 'function', name: 'claim', stateMutability: 'nonpayable', inputs: [], outputs: [] },
   ],
   paymaster: [
     { type: 'function', name: 'nonces', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
