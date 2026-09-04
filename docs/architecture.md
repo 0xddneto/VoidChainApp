@@ -42,16 +42,12 @@ VOID, and the paymaster charges a bounded VOID gas reimbursement. The user
 must never be routed by an official app to a bare token faucet, pool, or
 runtime call that bypasses the chain fee or asks them to supply ETH.
 
-For an application asset that moves during the call, the official interface
-first checks the existing allowance. On first use it may request an EIP-2612
-setup permit to the immutable Runtime or Paymaster; it does not request that
-permit again while sufficient allowance remains. Every actual action still
-requires a separate `SponsoredCall` signature containing an exact, one-call
-budget. The Runtime can spend an allowance only while executing that signed
-budget for the same user, chain and registered app. `sponsorWithAssetPermits`
-rejects any setup permit not tied to a token needed by that signed action and
-to either the Runtime or Paymaster. Non-compliant ERC-20 assets require a
-separately reviewed adapter or an ordinary one-time approval.
+VOID-only actions need no allowance: V10 permanently freezes the Runtime and
+Paymaster as token operators, while the signed `SponsoredCall` supplies the
+exact one-call budget. External assets retain their own authorization rules. An
+EIP-2612 asset can supply a permit; a non-compliant ERC-20 needs an ordinary
+allowance or a separately reviewed adapter. The protocol cannot make an
+arbitrary third-party token transferable with its own signature.
 
 ## Safety boundaries
 
@@ -80,8 +76,8 @@ changing a label or social link does not rewrite execution rules or custody.
 
 The collection genesis mint is protocol infrastructure, outside every deed's
 runtime. It takes ETH because it creates the Deed and starts the VOID economy;
-the chain is still inactive, so no chain transaction fee exists yet. The V8
-mint imported the verified ownership of the earlier test deployment and then
+the chain is still inactive, so no chain transaction fee exists yet. The V10
+mint imported block-pinned ownership and the exact prior VOID ledger, then
 continued a one-mint-per-wallet supply from the next Deed ID. Mint proceeds are
 split by the immutable genesis rules into liquidity and time-locked protocol
 or builder buckets. Once a Deed exists, its NFT/VOID market trades are ordinary

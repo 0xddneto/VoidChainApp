@@ -16,14 +16,7 @@ interface IVoidGenesisTokenV6 {
 interface IVoidGenesisDeedV6 {
     function ownerOf(uint256 tokenId) external view returns (address);
     function transferFrom(address from, address to, uint256 tokenId) external;
-    function permit(
-        address spender,
-        uint256 tokenId,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external;
+    function permit(address spender, uint256 tokenId, uint256 deadline, bytes calldata signature) external;
 }
 
 /// @title VoidGenesisNftAmmV6
@@ -42,14 +35,18 @@ contract VoidGenesisNftAmmV6 is ChainAppBase, ReentrancyGuard {
     uint256 public constant RANDOM_FEE_BPS = 100; // 1.00%
     uint256 public constant SPECIFIC_FEE_BPS = 200; // 2.00%
     uint256 public constant PROTOCOL_CUT_BPS = 50; // 0.50%
-    uint256 public constant SELL_FEE_BPS = 150; // 1.50%
 
     IVoidGenesisTokenV6 public immutable voidToken;
     IVoidGenesisDeedV6 public immutable deed;
     IVoidGenesisEscrowV6 public immutable escrow;
     address public immutable protocolTreasury;
+    address public stakerRewards;
 
-    uint256[] private _inventory;
+    uint256 private _inventoryCount;
+    uint256 public inventoryHead;
+    uint256 public inventoryTail;
+    mapping(uint256 deedId => uint256 nextDeed) private _next;
+    mapping(uint256 deedId => uint256 previousDeed) private _previous;
     mapping(uint256 deedId => uint256 inventoryIndexPlusOne) public inventoryIndexPlusOne;
 
     event Deposited(uint256 indexed deedId, address indexed seller, uint256 sellerReceives, uint256 protocolCut);
@@ -81,24 +78,37 @@ contract VoidGenesisNftAmmV6 is ChainAppBase, ReentrancyGuard {
         protocolTreasury = protocolTreasury_;
     }
 
+    /// @dev CREATE2 gateway initialization. This can execute only while the
+    ///      gateway is being constructed; direct calls to the implementation and
+    ///      every later attempt are rejected.
+    function initializeStakerRewards(address rewards) external {
+        if (address(this).code.length != 0 || stakerRewards != address(0) || rewards == address(0)) {
+            revert ZeroAddress();
+        }
+        stakerRewards = rewards;
+    }
+
     function inventoryCount() external view returns (uint256) {
-        return _inventory.length;
+        return _inventoryCount;
     }
 
     function inventoryAt(uint256 index) external view returns (uint256) {
-        return _inventory[index];
+        if (index >= _inventoryCount) revert DeedNotInVault(index);
+        uint256 deedId = inventoryHead;
+        for (uint256 i; i < index; ++i) deedId = _next[deedId];
+        return deedId;
     }
 
     function randomBuyQuote() public pure returns (uint256) {
-        return VOID_PER_DEED + _fee(VOID_PER_DEED, RANDOM_FEE_BPS);
+        return VOID_PER_DEED + _fee(VOID_PER_DEED, RANDOM_FEE_BPS + PROTOCOL_CUT_BPS);
     }
 
     function specificBuyQuote() public pure returns (uint256) {
-        return VOID_PER_DEED + _fee(VOID_PER_DEED, SPECIFIC_FEE_BPS);
+        return VOID_PER_DEED + _fee(VOID_PER_DEED, SPECIFIC_FEE_BPS + PROTOCOL_CUT_BPS);
     }
 
     function sellQuote() public pure returns (uint256) {
-        return VOID_PER_DEED - _fee(VOID_PER_DEED, SELL_FEE_BPS);
+        return VOID_PER_DEED - _fee(VOID_PER_DEED, RANDOM_FEE_BPS + PROTOCOL_CUT_BPS);
     }
 
     /// @notice Register an NFT already donated to this gateway. Used to move
@@ -120,16 +130,14 @@ contract VoidGenesisNftAmmV6 is ChainAppBase, ReentrancyGuard {
     function sellWithPermit(
         uint256 deedId,
         uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
+        bytes calldata signature
     ) external onlyFromMyChain nonReentrant {
         if (deedId == 0 || deedId > 1111) revert InvalidDeed(deedId);
         if (inventoryIndexPlusOne[deedId] != 0) revert DeedAlreadyInVault(deedId);
         address owner = deed.ownerOf(deedId);
         if (owner != caller()) revert NotDeedOwner(deedId, owner, caller());
 
-        deed.permit(address(runtime), deedId, deadline, v, r, s);
+        deed.permit(address(runtime), deedId, deadline, signature);
         spendNft(address(deed), address(this), deedId);
         _add(deedId);
 
@@ -141,26 +149,27 @@ contract VoidGenesisNftAmmV6 is ChainAppBase, ReentrancyGuard {
         }
 
         uint256 protocolCut = _fee(VOID_PER_DEED, PROTOCOL_CUT_BPS);
+        uint256 stakerCut = _fee(VOID_PER_DEED, RANDOM_FEE_BPS);
         uint256 payout = sellQuote();
         if (!voidToken.transfer(caller(), payout)) revert TokenTransferFailed();
         if (protocolCut != 0 && !voidToken.transfer(protocolTreasury, protocolCut)) {
             revert TokenTransferFailed();
         }
+        _sendStakerCut(stakerCut);
         emit Deposited(deedId, caller(), payout, protocolCut);
     }
 
     /// @notice Buys a pseudo-random vault Deed. The client reads the current
     /// quote and signs this maximum; no random selection is used as an oracle.
     function buyRandom(uint256 maxVoidIn) external onlyFromMyChain nonReentrant returns (uint256 deedId) {
-        uint256 length = _inventory.length;
-        if (length == 0) revert DeedNotInVault(0);
+        if (_inventoryCount == 0) revert DeedNotInVault(0);
         uint256 quote = randomBuyQuote();
         if (quote > maxVoidIn) revert PriceAboveLimit(quote, maxVoidIn);
 
-        // It is intentionally only a distribution mechanism, not a source of
-        // economic randomness. The current sender cannot choose the result.
-        uint256 index = uint256(keccak256(abi.encodePacked(block.prevrandao, block.number, caller()))) % length;
-        deedId = _inventory[index];
+        // Anvil-compatible deterministic inventory ordering: the oldest Deed
+        // deposited is the next random-floor purchase. No miner randomness and
+        // no rarity oracle can influence the selection.
+        deedId = inventoryHead;
         _remove(deedId);
         spend(address(voidToken), address(this), quote);
         _sendDeedAndProtocolCut(deedId, quote, caller(), RANDOM_FEE_BPS);
@@ -183,32 +192,42 @@ contract VoidGenesisNftAmmV6 is ChainAppBase, ReentrancyGuard {
         // The protocol cut is carved out of the published trade fee. The rest
         // stays as VOID liquidity in this market, not in an admin wallet.
         uint256 protocolCut = _fee(VOID_PER_DEED, PROTOCOL_CUT_BPS);
+        uint256 stakerCut = _fee(VOID_PER_DEED, feeBps);
         if (protocolCut != 0 && !voidToken.transfer(protocolTreasury, protocolCut)) {
             revert TokenTransferFailed();
         }
+        _sendStakerCut(stakerCut);
         deed.transferFrom(address(this), buyer, deedId);
         // `feeBps` is deliberately consumed in the function signature to make
         // the selected published fee explicit in the execution trace.
-        feeBps;
         quote;
     }
 
+    function _sendStakerCut(uint256 amount) private {
+        if (amount == 0) return;
+        if (stakerRewards == address(0)) revert ZeroAddress();
+        if (!voidToken.transfer(stakerRewards, amount)) revert TokenTransferFailed();
+    }
+
     function _add(uint256 deedId) private {
-        _inventory.push(deedId);
-        inventoryIndexPlusOne[deedId] = _inventory.length;
+        if (inventoryTail == 0) inventoryHead = deedId;
+        else { _next[inventoryTail] = deedId; _previous[deedId] = inventoryTail; }
+        inventoryTail = deedId;
+        ++_inventoryCount;
+        inventoryIndexPlusOne[deedId] = 1;
     }
 
     function _remove(uint256 deedId) private {
-        uint256 indexPlusOne = inventoryIndexPlusOne[deedId];
-        if (indexPlusOne == 0) revert DeedNotInVault(deedId);
-        uint256 index = indexPlusOne - 1;
-        uint256 last = _inventory.length - 1;
-        if (index != last) {
-            uint256 moved = _inventory[last];
-            _inventory[index] = moved;
-            inventoryIndexPlusOne[moved] = index + 1;
-        }
-        _inventory.pop();
+        if (inventoryIndexPlusOne[deedId] == 0) revert DeedNotInVault(deedId);
+        uint256 previous = _previous[deedId];
+        uint256 next = _next[deedId];
+        if (previous == 0) inventoryHead = next;
+        else _next[previous] = next;
+        if (next == 0) inventoryTail = previous;
+        else _previous[next] = previous;
+        delete _next[deedId];
+        delete _previous[deedId];
+        --_inventoryCount;
         delete inventoryIndexPlusOne[deedId];
     }
 

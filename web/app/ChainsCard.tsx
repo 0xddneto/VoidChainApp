@@ -15,12 +15,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChainDetail, ChainRow, ChainStatus } from '@/lib/chains';
 import { DEPLOY } from '@/lib/testnet';
-import chainOneDex from '@/lib/dex-chain1.json';
-import genesis from '@/lib/genesis-v6.json';
+import chainOneDex from '@/lib/dex-chain1-v10.json';
+import genesis from '@/lib/genesis-v10.json';
 import { Copyable } from './Copyable';
 import { ChainActivationEditor } from './ChainActivationEditor';
 import { ChainL3Migration } from './ChainL3Migration';
 import { ChainNameEditor } from './ChainNameEditor';
+import { ChainIdentityEditor } from './ChainIdentityEditor';
 import { RevenueClaimButton } from './RevenueClaimButton';
 import { DaoPanel } from './DaoPanel';
 import styles from './page.module.css';
@@ -283,6 +284,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
         </dl>
 
         <ChainActivationEditor tokenId={chain.id} onActiveChanged={(next) => setStatus(next ? 'live' : 'paused')} />
+        <ChainIdentityEditor tokenId={chain.id} />
         <RevenueClaimButton tokenId={chain.id} owner={chain.owner} />
 
         <ChainL3Migration tokenId={chain.id} runtimeId={chain.chainId} />

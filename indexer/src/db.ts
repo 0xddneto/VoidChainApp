@@ -121,6 +121,8 @@ export interface OwnerRow {
   chain: number;
   owner: string;
 }
+export interface RemovedAppRow { chain: number; app: string; }
+export interface RevenueRow { chain: number; holder: string; gross: bigint; protocolFee: bigint; holderShare: bigint; hash: string; logIndex: number; timestamp: number; }
 export interface NameRow {
   chain: number;
   name: string;
@@ -171,10 +173,13 @@ export async function cursor(): Promise<bigint> {
 export async function writePass(
   statuses: StatusRow[],
   calls: CallRow[],
-  apps: AppRow[],
+    apps: AppRow[],
+    removedApps: RemovedAppRow[],
+    revenueRows: RevenueRow[],
   owners: OwnerRow[],
   names: NameRow[],
   newHead: bigint,
+  newHeadHash: string,
 ): Promise<void> {
   const client = await pool.connect();
   try {
@@ -224,18 +229,30 @@ export async function writePass(
         [a.chain, toBytes(a.app), toBytes(a.publisher), a.timestamp, toBytes(a.hash)],
       );
     }
+    for (const app of removedApps) {
+      await client.query('DELETE FROM contracts WHERE chain_id = $1 AND address = $2', [app.chain, toBytes(app.app)]);
+    }
+    for (const revenue of revenueRows) {
+      await client.query(
+        `INSERT INTO chain_revenue (chain_id, settled_at, tx_hash, log_index, gross, aep_fee, protocol_fee, holder_share, holder_address)
+         VALUES ($1,to_timestamp($2),$3,$4,$5,0,$6,$7,$8)
+         ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING`,
+        [revenue.chain, revenue.timestamp, toBytes(revenue.hash), revenue.logIndex, revenue.gross.toString(), revenue.protocolFee.toString(), revenue.holderShare.toString(), toBytes(revenue.holder)],
+      );
+    }
 
     await writeBlocks(client, calls);
 
     await client.query(
-      `UPDATE indexer_state SET last_indexed_block = $1, updated_at = now() WHERE id = TRUE`,
-      [newHead.toString()],
+      `UPDATE indexer_state SET last_indexed_block = $1, last_indexed_hash = $2, updated_at = now() WHERE id = TRUE`,
+      [newHead.toString(), toBytes(newHeadHash)],
     );
 
     for (const chain of new Set([
       ...statuses.map((change) => change.chain),
       ...calls.map((c) => c.chain),
       ...apps.map((a) => a.chain),
+      ...removedApps.map((a) => a.chain),
     ])) {
       await refreshSummary(client, chain);
     }
@@ -291,7 +308,8 @@ async function writeBlocks(client: pg.PoolClient, calls: CallRow[]): Promise<voi
 async function refreshSummary(client: pg.PoolClient, chainId: number): Promise<void> {
   await client.query(
     `UPDATE chain_summary s SET
-       total_txs = (SELECT count(*) FROM transactions WHERE chain_id = $1),
+       total_txs = COALESCE((SELECT tx_count FROM chain_migration_baseline WHERE chain_id = $1), 0)
+                   + (SELECT count(*) FROM transactions WHERE chain_id = $1),
        total_contracts = (SELECT count(*) FROM contracts WHERE chain_id = $1),
        total_addresses = (SELECT count(DISTINCT from_address) FROM transactions WHERE chain_id = $1),
        txs_24h = (SELECT count(*) FROM transactions

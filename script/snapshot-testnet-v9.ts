@@ -3,8 +3,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createPublicClient, fallback, http, parseAbi } from 'viem';
 
 const source = JSON.parse(readFileSync('../web/lib/deployment.json', 'utf8'));
-const path = 'deployments/testnet-v8-snapshot.json';
-if (existsSync(path)) throw Error('V8 snapshot already exists; never replace an ownership cutoff.');
+const path = 'deployments/testnet-v9-snapshot.json';
+if (existsSync(path)) throw Error('V9 snapshot already exists; never replace an ownership cutoff.');
 const urls = [process.env.PARENT_RPC, source.network.rpc, 'https://rpc.testnet.chain.robinhood.com'].filter(Boolean) as string[];
 const rpc = createPublicClient({ transport: fallback(urls.map((url) => http(url))) });
 if (await rpc.getChainId() !== 46630) throw Error('Testnet only');
@@ -36,7 +36,7 @@ for (let id = 1n; id <= minted; id++) {
 }
 
 const snapshot = {
-  version: 'v8-security-migration',
+  version: 'v9-chainapp-genesis-migration',
   network: 46630,
   block: block.number,
   blockHash: block.hash,

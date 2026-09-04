@@ -13,10 +13,10 @@ gas cap, expiry and exact per-token budgets. The Runtime then splits the
 actual chain fee on every successful call: 98% is accrued to that deed's
 current holder and 2% to the protocol treasury.
 
-The official frontend checks allowances and requests setup only when needed.
-For EIP-2612 assets, setup is a gasless permit to the immutable Paymaster or
-Runtime. Once sufficient allowance exists, each later action needs only its
-single `SponsoredCall` signature. The exact per-action budget is never inferred
+VOID needs no allowance on V10: only the permanently frozen Paymaster and
+Runtime can use the token's protocol transfer path, and only the signed request
+opens an exact budget. External EIP-2612 assets may still need a permit to the
+Runtime. The exact per-action budget is never inferred
 from a broad allowance: it is signed independently and exists inside the
 Runtime only for that call. `sponsorWithAssetPermits` rejects arbitrary
 spenders, duplicate permits and insufficient limits. Do not add a direct-wallet
@@ -30,7 +30,7 @@ checks a signed cap, charges VOID and reimburses the relayer. A swap there
 would put DEX availability, price movement and sandwich risk on every user.
 
 Protocol governance configures four things only after the real VOID/ETH market
-exists. In V8 these calls must first be scheduled in the public 48-hour
+exists. In V10 these calls must first be scheduled in the public 48-hour
 `VoidProtocolTimelock`; the proposer cannot execute them immediately:
 
 1. A `VoidTwapOracleV6` for the permanently locked VOID/ETH pool, wrapped by a
@@ -61,11 +61,11 @@ separate `KEEPER_PRIVATE_KEY` is set.
 
 ## Current testnet boundary
 
-The V8 Robinhood **testnet** deployment uses its permanently locked genesis
+The V10 Robinhood **testnet** deployment uses its permanently locked genesis
 VOID/ETH pool, a TWAP oracle and a freshness guard. The Paymaster exit route is
 pinned once to that pool; governance cannot redirect it later. A permissionless
 keeper calls `refill` only below the configured reserve threshold and must use
 the contract's bounded plan. This proves the route mechanics with valueless
 test assets; it does not prove production liquidity depth, oracle economics or
-mainnet solvency. The V8 testnet timelock proposer is still one project wallet;
+mainnet solvency. The V10 testnet timelock proposer is still one project wallet;
 mainnet requires a hardware-backed multisig.

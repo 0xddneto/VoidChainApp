@@ -60,6 +60,10 @@ export const ABI = {
     { type: 'function', name: 'isApprovedForAll', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'bool' }] },
     { type: 'function', name: 'setApprovalForAll', stateMutability: 'nonpayable', inputs: [{ type: 'address' }, { type: 'bool' }], outputs: [] },
     { type: 'function', name: 'rename', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'string' }], outputs: [] },
+    { type: 'function', name: 'setIdentity', stateMutability: 'nonpayable', inputs: [
+      { type: 'uint256' }, { type: 'string' }, { type: 'string' }, { type: 'string' }, { type: 'string[]' },
+    ], outputs: [] },
+    { type: 'function', name: 'tokenURI', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'string' }] },
   ],
   runtime: [
     { type: 'function', name: 'apps', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [

@@ -34,12 +34,13 @@ runtime.
 - **NFT/VOID market and VoidDEX:** Chain 1 currently hosts the NFT market,
   Uniswap-V2-style pools and a test-token faucet as registered applications.
 
-The official frontend checks existing token permissions before asking the
-wallet for another one. A token's first use may require one-time EIP-2612 setup;
-after that, a normal app action requires only the single bounded
-`SponsoredCall` signature. That action binds the chain, app, calldata, exact
-spend limits, transaction-fee cap, gas cap, nonce and deadline. The contract,
-not the interface text, enforces those limits.
+VOID-only actions require one bounded `SponsoredCall` signature even on first
+use; the V10 token grants the frozen Runtime and Paymaster exact, request-scoped
+movement instead of asking for an allowance. External ERC-20 assets still need
+their own permit or allowance because this protocol cannot rewrite another
+token's authorization rules. An NFT sale uses its ERC-4494 permit plus the
+sponsored action. The signed action binds the chain, app, calldata, exact spend
+limits, transaction-fee cap, gas cap, nonce and deadline.
 
 ## Architecture
 
@@ -68,20 +69,19 @@ mandatory DAO proposal because the owner bears the deployment cost.
 | --- | --- |
 | `contracts/parent/` | Deed, runtime, Paymaster, Treasury, DAO and app factory. |
 | `contracts/genesis/` | VOID supply, ETH mint, escrow, permanent LP lock, NFT/VOID AMM and TWAP. |
-| `contracts/apps/` | Registered application gateways, including the V4 DEX. |
+| `contracts/apps/` | Protocol examples and generic registered application gateways. |
 | `contracts/child/` | Research scaffold for a future independent L3; not part of the live runtime. |
 | `test/` | Unit, fuzz, invariant, red-team, scale and integration tests. |
-| `script/` | V8 deployment, verification, snapshot, audit, DEX and keeper operations. |
+| `script/` | V10 deployment, verification, snapshot, audit and keeper operations. |
 | `indexer/` | Event indexer and Postgres projection used by VoidScan. |
 | `db/` | Versioned database schema and migrations. |
 | `infra/` | Local Postgres/runtime infrastructure and operator notes. |
 | `web/` | VoidScan, mint, market, profiles, DAO, owner controls and `/docs`. |
-| `voiddex/` | Separately deployed VoidDEX frontend and relay endpoint. |
 | `docs/` | Architecture, governance, operations and live validation evidence. |
 
-The canonical public addresses live in `web/lib/deployment.json`; DEX addresses
-live in `web/lib/dex-chain1.json`. Deployment scripts stage manifests and never
-silently change the public frontend pointer.
+The canonical public addresses live in `web/lib/deployment.json`. VoidDEX is
+maintained and deployed from the independent `0xddneto/VoidDEX` repository.
+Deployment scripts stage manifests and never silently change the public pointer.
 
 ## Local verification
 
@@ -95,7 +95,6 @@ forge test
 cd script && npm ci && npm run typecheck
 cd ../indexer && npm ci && npm run typecheck
 cd ../web && npm ci && npm run build
-cd ../voiddex && npm ci && npm run build
 ```
 
 Run the local indexer and explorer:
@@ -106,16 +105,15 @@ cd indexer && npm run dev
 cd ../web && npm run dev
 ```
 
-V8 testnet operations are intentionally explicit and fail closed before a
+V10 testnet operations are intentionally explicit and fail closed before a
 public manifest is changed:
 
 ```bash
 cd script
-npm run snapshot:testnet-v8
-npm run deploy:testnet-v8
-npm run verify:testnet-v8
-npm run finalize:testnet-v8
-npm run audit:testnet-v8
+npm run snapshot:testnet-v10
+npm run deploy:testnet-v10
+npm run verify:testnet-v10
+npm run finalize:testnet-v10
 npm run paymaster:keeper -- --once
 ```
 
@@ -143,7 +141,7 @@ uses no project wallet.
 - [Paymaster operations](docs/paymaster-operations.md)
 - [Repository map](docs/repository-map.md)
 - [Release checklist](docs/release-checklist.md)
-- [V8 live validation](docs/TESTNET_V8_VALIDATION.md)
+- [V10 release checklist](docs/release-checklist.md)
 - [Security policy](SECURITY.md)
 - [Incident response](docs/incident-response.md)
 - [Full protocol review](docs/PROTOCOL_AUDIT.md)
@@ -154,7 +152,7 @@ the header.
 ## Safety status
 
 The local suite includes unit, fuzz, invariant, attack and high-load tests, and
-the current V8 deployment has live testnet acceptance evidence. V8 freezes the
+the current V10 deployment has live testnet acceptance evidence. V10 freezes the
 runtime oracle after initial configuration and places Paymaster and Treasury
 administration behind a public 48-hour timelock. Neither this evidence nor the
 timelock is an external audit. Before a value-bearing deployment the project

@@ -20,10 +20,14 @@ const bytes = (hex: string): Buffer => Buffer.from(hex.slice(2), 'hex');
 const digest = (value: string): Buffer => createHash('sha256').update(value).digest();
 
 export function relayClientId(request: Request): string {
-  return request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim()
-    ?? request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    ?? request.headers.get('x-real-ip')
-    ?? 'unknown';
+  const vercel = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim();
+  if (vercel) return vercel;
+  if (process.env.TRUST_PROXY_HEADERS === 'true') {
+    return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+      ?? request.headers.get('x-real-ip')
+      ?? 'trusted-proxy-unknown';
+  }
+  return 'untrusted-network';
 }
 
 /** Atomically reserves one signed user nonce across every serverless instance. */
@@ -42,6 +46,7 @@ export async function reserveRelay(
   const requestHash = digest(signature);
   try {
     await client.query('BEGIN');
+    await client.query("DELETE FROM relay_requests WHERE created_at < now() - interval '7 days'");
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`${surface}:${user.toLowerCase()}:${clientHash.toString('hex')}`]);
     const { rows } = await client.query<{ requests: string }>(
       `SELECT count(*) AS requests FROM relay_requests
@@ -83,7 +88,8 @@ export async function reserveRelay(
 
   const update = async (status: 'submitted' | 'failed', hash?: Hex) => {
     await pool.query(
-      `UPDATE relay_requests SET status = $4, tx_hash = $5, updated_at = now()
+      `UPDATE relay_requests SET status = $4, tx_hash = $5, updated_at = now(),
+         expires_at = CASE WHEN $4 = 'failed' THEN now() ELSE expires_at END
        WHERE surface = $1 AND user_address = $2 AND user_nonce = $3 AND request_hash = $6`,
       [surface, userBytes, nonce.toString(), status, hash ? bytes(hash) : null, requestHash],
     );

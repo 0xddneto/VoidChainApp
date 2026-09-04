@@ -1,14 +1,14 @@
-/** Finalize staged V8 inventory through the same sponsored path users invoke. */
+/** Finalize staged V10 inventory through the same one-signature path users invoke. */
 import 'dotenv/config';
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
   createPublicClient, createWalletClient, decodeFunctionResult, encodeFunctionData,
-  fallback, http, parseEther, type Abi, type Address, type Hex,
+  fallback, http, parseAbi, parseEther, type Abi, type Address, type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { requireSponsoredSuccess } from '../web/lib/sponsored-receipt';
 
-const path = 'deployments/testnet-v8-pending.json';
+const path = 'deployments/testnet-v10-pending.json';
 const deployment = JSON.parse(readFileSync(path, 'utf8'));
 const c = deployment.contracts as Record<string, Address>;
 const key = process.env.DEPLOYER_PRIVATE_KEY;
@@ -24,14 +24,8 @@ const abi = (name: string): Abi => JSON.parse(readFileSync(
     : `../out/${name}.sol/${name}.json`, 'utf8')).abi;
 const marketAbi = abi('VoidGenesisNftAmmV6');
 const paymasterAbi = abi('VoidPaymaster');
-const tokenAbi = abi('VoidTokenV6');
-const runtimeAbi = abi('VoidChainAppRuntimeV5');
+const runtimeAbi = abi('VoidChainAppRuntimeV6');
 const gatewayAbi = abi('VoidChainAppGateway');
-const permitTypes = { Permit: [
-  { name: 'owner', type: 'address' }, { name: 'spender', type: 'address' },
-  { name: 'value', type: 'uint256' }, { name: 'nonce', type: 'uint256' },
-  { name: 'deadline', type: 'uint256' },
-] } as const;
 const sponsoredTypes = {
   Spend: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }],
   SpendNft: [{ name: 'collection', type: 'address' }, { name: 'tokenId', type: 'uint256' }],
@@ -44,10 +38,6 @@ const sponsoredTypes = {
     { name: 'deadline', type: 'uint256' },
   ],
 } as const;
-const split = (signature: Hex) => ({
-  v: Number.parseInt(signature.slice(130, 132), 16),
-  r: signature.slice(0, 66) as Hex, s: `0x${signature.slice(66, 130)}` as Hex,
-});
 const save = () => writeFileSync(path, JSON.stringify(deployment, null, 2) + '\n');
 
 async function inventoryIndex(id: bigint): Promise<bigint> {
@@ -61,39 +51,29 @@ async function acceptDonation(id: bigint) {
   if (await inventoryIndex(id) !== 0n) return console.log(`inventory #${id} already active`);
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
   const maxGasVoid = parseEther('10000');
-  const [fee, nonce, permitNonce] = await Promise.all([
+  const [fee, nonce] = await Promise.all([
     rpc.readContract({ address: c.runtime, abi: runtimeAbi, functionName: 'feeOf', args: [1n] }),
     rpc.readContract({ address: c.paymaster, abi: paymasterAbi, functionName: 'nonces', args: [account.address] }),
-    rpc.readContract({ address: c.token, abi: tokenAbi, functionName: 'nonces', args: [account.address] }),
-  ]) as [bigint, bigint, bigint];
+  ]) as [bigint, bigint];
   const request = {
     user: account.address, tokenId: 1n, target: c.nftAmm,
     data: encodeFunctionData({ abi: marketAbi, functionName: 'acceptDonation', args: [id] }),
     maxToll: fee, maxGasVoid, callGasLimit: 1_500_000n,
     spends: [], nftSpends: [], nonce, deadline,
   };
-  const value = fee + maxGasVoid;
-  const permit = {
-    token: c.token, spender: c.paymaster, value, deadline,
-    ...split(await account.signTypedData({
-      domain: { name: 'VOID', version: '1', chainId: 46630, verifyingContract: c.token },
-      types: permitTypes, primaryType: 'Permit',
-      message: { owner: account.address, spender: c.paymaster, value, nonce: permitNonce, deadline },
-    })),
-  };
   const signature = await account.signTypedData({
     domain: { name: 'VoidPaymaster', version: '1', chainId: 46630, verifyingContract: c.paymaster },
     types: sponsoredTypes, primaryType: 'SponsoredCall', message: request,
   });
-  const args = [request, signature, [permit]] as const;
+  const args = [request, signature] as const;
   const simulation = await rpc.simulateContract({
     account, address: c.paymaster, abi: paymasterAbi,
-    functionName: 'sponsorWithAssetPermits', args,
+    functionName: 'sponsor', args,
   });
   if (!(simulation.result as readonly [boolean, Hex])[0]) throw Error(`Donation #${id} would fail`);
   const hash = await wallet.writeContract({
     account, chain: null, address: c.paymaster, abi: paymasterAbi,
-    functionName: 'sponsorWithAssetPermits', args,
+    functionName: 'sponsor', args,
   });
   const receipt = await rpc.waitForTransactionReceipt({ hash });
   requireSponsoredSuccess(receipt, c.paymaster, account.address, 1n);
@@ -105,6 +85,17 @@ async function acceptDonation(id: bigint) {
 if (await rpc.getChainId() !== 46630) throw Error('Testnet only');
 // Refresh the permissionless TWAP before asking the guard for a VOID quote.
 // This is also the exact operation the production cron/keeper performs.
+const twapReadAbi = parseAbi(['function lastTimestamp() view returns(uint32)', 'function minInterval() view returns(uint32)']);
+const [lastTimestamp, minInterval, latestBlock] = await Promise.all([
+  rpc.readContract({ address: c.twap, abi: twapReadAbi, functionName: 'lastTimestamp' }),
+  rpc.readContract({ address: c.twap, abi: twapReadAbi, functionName: 'minInterval' }),
+  rpc.getBlock(),
+]);
+const remaining = Number(lastTimestamp) + Number(minInterval) - Number(latestBlock.timestamp);
+if (remaining > 0) {
+  if (remaining > 60) throw Error(`TWAP observation needs ${remaining} more chain seconds; rerun later.`);
+  await new Promise((resolve) => setTimeout(resolve, (remaining + 2) * 1000));
+}
 const twapHash = await wallet.writeContract({
   account, chain: null, address: c.twap, abi: abi('VoidTwapOracleV6'), functionName: 'update',
 });

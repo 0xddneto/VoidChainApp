@@ -16,11 +16,17 @@ const INDEXER_LOCK = 4_662_011;
 
 const RUNTIME = deployment.production.VoidChainAppRuntime as Address;
 const DEED = deployment.production.VoidChainDeed as Address;
+const TREASURY = deployment.production.VoidChainTreasury as Address;
 const FIRST_BLOCK = BigInt(deployment.network.deployBlock ?? 0);
 const CHAIN_ID_BASE = BigInt(deployment.chainIdBase);
 const DEED_ABI = parseAbi([
+  'function totalSupply() view returns(uint256)',
   'function ownerOf(uint256) view returns(address)',
   'function identityOf(uint256) view returns((string name,string description,string imageURI,string externalURL,string[] socials))',
+]);
+const RUNTIME_STATE_ABI = parseAbi([
+  'function configured(uint256) view returns(bool)',
+  'function statsOf(uint256) view returns(bool active,uint256 feePerCallUsd,uint256 pending,uint256 lifetimeRevenue,uint256 callCount)',
 ]);
 
 const EVENTS = {
@@ -31,6 +37,8 @@ const EVENTS = {
     'event Executed(uint256 indexed tokenId, address indexed caller, address target, uint256 fee)',
   ),
   registered: parseAbiItem('event AppRegistered(uint256 indexed tokenId, address app, address publisher)'),
+  unregistered: parseAbiItem('event AppUnregistered(uint256 indexed tokenId, address app)'),
+  revenue: parseAbiItem('event RevenueSettled(uint256 indexed tokenId, address indexed deedHolder, uint256 gross, uint256 protocolFee, uint256 holderShare)'),
   transfer: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
   renamed: parseAbiItem('event VoidChainRenamed(uint256 indexed tokenId, string previousName, string newName)'),
 } as const;
@@ -51,7 +59,7 @@ export interface IndexerResult {
   events?: number;
 }
 
-async function alignDeployment(): Promise<void> {
+async function alignDeployment(): Promise<boolean> {
   await pool.query(
     `CREATE TABLE IF NOT EXISTS indexer_deployment (
        id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
@@ -73,7 +81,7 @@ async function alignDeployment(): Promise<void> {
     && current.deed_address.equals(bytes(DEED)!)
     && current.deploy_block === FIRST_BLOCK.toString();
 
-  if (matches) return;
+  if (matches) return false;
 
   const client = await pool.connect();
   try {
@@ -91,11 +99,49 @@ async function alignDeployment(): Promise<void> {
       [bytes(RUNTIME), bytes(DEED), FIRST_BLOCK.toString()],
     );
     await client.query('COMMIT');
+    return true;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Constructor-imported chains have no post-deployment activation event.  Read
+ * the canonical Runtime once on deployment cutover so the explorer cannot
+ * accidentally present an active migrated chain as reserved.
+ */
+async function hydrateImportedRuntimeState(client: PublicClient): Promise<void> {
+  const configuredIds: number[] = [];
+  const batchSize = 64;
+  for (let start = 1; start <= TOTAL_CHAINS; start += batchSize) {
+    const ids = Array.from({ length: Math.min(batchSize, TOTAL_CHAINS - start + 1) }, (_, i) => start + i);
+    const results = await client.multicall({
+      allowFailure: true,
+      contracts: ids.map((id) => ({ address: RUNTIME, abi: RUNTIME_STATE_ABI, functionName: 'configured' as const, args: [BigInt(id)] })),
+    });
+    results.forEach((result, i) => {
+      if (result.status === 'success' && result.result === true) configuredIds.push(ids[i]);
+    });
+  }
+
+  for (let start = 0; start < configuredIds.length; start += batchSize) {
+    const ids = configuredIds.slice(start, start + batchSize);
+    const results = await client.multicall({
+      allowFailure: true,
+      contracts: ids.map((id) => ({ address: RUNTIME, abi: RUNTIME_STATE_ABI, functionName: 'statsOf' as const, args: [BigInt(id)] })),
+    });
+    for (let i = 0; i < results.length; i += 1) {
+      const result = results[i];
+      if (result.status !== 'success') throw new Error(`Could not hydrate imported Runtime state for chain ${ids[i]}.`);
+      const [active] = result.result as readonly [boolean, bigint, bigint, bigint, bigint];
+      await pool.query(
+        `UPDATE chains SET status = $2, updated_at = now() WHERE id = $1`,
+        [ids[i], active ? 'live' : 'paused'],
+      );
+    }
   }
 }
 
@@ -121,6 +167,31 @@ async function cursor(): Promise<bigint> {
   return BigInt(rows[0].last_indexed_block);
 }
 
+async function ensureCanonicalCursor(client: PublicClient): Promise<boolean> {
+  const { rows } = await pool.query<{ last_indexed_block: string; last_indexed_hash: Buffer | null }>(
+    'SELECT last_indexed_block, last_indexed_hash FROM indexer_state WHERE id = TRUE',
+  );
+  const row = rows[0];
+  if (!row || BigInt(row.last_indexed_block) < FIRST_BLOCK) return false;
+  const block = await client.getBlock({ blockNumber: BigInt(row.last_indexed_block) });
+  const canonical = bytes(block.hash)!;
+  if (!row.last_indexed_hash) {
+    await pool.query('UPDATE indexer_state SET last_indexed_hash = $1 WHERE id = TRUE', [canonical]);
+    return false;
+  }
+  if (row.last_indexed_hash.equals(canonical)) return false;
+  const reset = await pool.connect();
+  try {
+    await reset.query('BEGIN');
+    await reset.query('TRUNCATE TABLE chains CASCADE');
+    await reset.query('DELETE FROM indexer_state WHERE id = TRUE');
+    await reset.query('COMMIT');
+  } catch (error) {
+    await reset.query('ROLLBACK'); throw error;
+  } finally { reset.release(); }
+  return true;
+}
+
 async function blocks(client: PublicClient, logs: Log[]): Promise<Map<bigint, BlockInfo>> {
   const out = new Map<bigint, BlockInfo>();
   for (const number of new Set(logs.map((log) => log.blockNumber!))) {
@@ -133,7 +204,8 @@ async function blocks(client: PublicClient, logs: Log[]): Promise<Map<bigint, Bl
 async function refreshSummary(client: pg.PoolClient, chainId: number): Promise<void> {
   await client.query(
     `UPDATE chain_summary s SET
-       total_txs = (SELECT count(*) FROM transactions WHERE chain_id = $1),
+       total_txs = COALESCE((SELECT tx_count FROM chain_migration_baseline WHERE chain_id = $1), 0)
+                   + (SELECT count(*) FROM transactions WHERE chain_id = $1),
        total_contracts = (SELECT count(*) FROM contracts WHERE chain_id = $1),
        total_addresses = (SELECT count(DISTINCT from_address) FROM transactions WHERE chain_id = $1),
        txs_24h = (SELECT count(*) FROM transactions WHERE chain_id = $1 AND timestamp > now() - interval '24 hours'),
@@ -153,7 +225,7 @@ async function refreshSummary(client: pg.PoolClient, chainId: number): Promise<v
 async function hydrateDeedMetadata(client: PublicClient): Promise<void> {
   const { rows } = await pool.query<{ id: number }>(
     `SELECT id FROM chains
-     WHERE status = 'live' AND (owner_address IS NULL OR name IS NULL)`,
+     WHERE status <> 'reserved' AND (owner_address IS NULL OR name IS NULL)`,
   );
   for (const row of rows) {
     const [owner, identity] = await Promise.all([
@@ -173,9 +245,12 @@ async function writePass(args: {
   statuses: Array<{ chain: number; status: 'live' | 'paused'; initial: boolean; timestamp: number; blockNumber: bigint; logIndex: number }>;
   calls: Array<{ chain: number; hash: string; blockNumber: bigint; txIndex: number; logIndex: number; caller: string; target: string; toll: bigint; block: BlockInfo }>;
   apps: Array<{ chain: number; app: string; publisher: string; hash: string; timestamp: number }>;
+  removedApps: Array<{ chain: number; app: string }>;
+  revenue: Array<{ chain: number; holder: string; gross: bigint; protocolFee: bigint; holderShare: bigint; hash: string; logIndex: number; timestamp: number }>;
   owners: Array<{ chain: number; owner: string }>;
   names: Array<{ chain: number; name: string }>;
   head: bigint;
+  headHash: string;
 }): Promise<void> {
   const client = await pool.connect();
   try {
@@ -212,6 +287,17 @@ async function writePass(args: {
         [app.chain, bytes(app.app), bytes(app.publisher), app.timestamp, bytes(app.hash)],
       );
     }
+    for (const app of args.removedApps) {
+      await client.query('DELETE FROM contracts WHERE chain_id = $1 AND address = $2', [app.chain, bytes(app.app)]);
+    }
+    for (const revenue of args.revenue) {
+      await client.query(
+        `INSERT INTO chain_revenue (chain_id, settled_at, tx_hash, log_index, gross, aep_fee, protocol_fee, holder_share, holder_address)
+         VALUES ($1,to_timestamp($2),$3,$4,$5,0,$6,$7,$8)
+         ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING`,
+        [revenue.chain, revenue.timestamp, bytes(revenue.hash), revenue.logIndex, revenue.gross.toString(), revenue.protocolFee.toString(), revenue.holderShare.toString(), bytes(revenue.holder)],
+      );
+    }
 
     const blockCounts = new Map<string, { chain: number; number: bigint; block: BlockInfo; count: number }>();
     for (const call of args.calls) {
@@ -229,8 +315,8 @@ async function writePass(args: {
       );
     }
 
-    await client.query('UPDATE indexer_state SET last_indexed_block = $1, updated_at = now() WHERE id = TRUE', [args.head.toString()]);
-    for (const chainId of new Set([...args.statuses.map((row) => row.chain), ...args.calls.map((row) => row.chain), ...args.apps.map((row) => row.chain)])) {
+    await client.query('UPDATE indexer_state SET last_indexed_block = $1, last_indexed_hash = $2, updated_at = now() WHERE id = TRUE', [args.head.toString(), bytes(args.headHash)]);
+    for (const chainId of new Set([...args.statuses.map((row) => row.chain), ...args.calls.map((row) => row.chain), ...args.apps.map((row) => row.chain), ...args.removedApps.map((row) => row.chain)])) {
       await refreshSummary(client, chainId);
     }
     await client.query('COMMIT');
@@ -249,13 +335,18 @@ export async function indexOnePass(): Promise<IndexerResult> {
     const acquired = (await lock.query<{ locked: boolean }>('SELECT pg_try_advisory_lock($1) AS locked', [INDEXER_LOCK])).rows[0].locked;
     if (!acquired) return { status: 'busy' };
 
-    await alignDeployment();
-    await seedChains();
-    const from = (await cursor()) + 1n;
     const rpc = process.env.PARENT_RPC ?? deployment.network.rpc;
     const client = createPublicClient({
       transport: fallback([http(rpc), http('https://rpc.testnet.chain.robinhood.com')]),
     }) as PublicClient;
+    const deploymentChanged = await alignDeployment();
+    await seedChains();
+    if (deploymentChanged) await hydrateImportedRuntimeState(client);
+    if (await ensureCanonicalCursor(client)) {
+      await seedChains();
+      await hydrateImportedRuntimeState(client);
+    }
+    const from = (await cursor()) + 1n;
     const tip = await client.getBlockNumber();
     if (tip < CONFIRMATIONS) {
       return { status: 'caught-up', from: from.toString(), to: '0', events: 0 };
@@ -270,9 +361,11 @@ export async function indexOnePass(): Promise<IndexerResult> {
     const reactivated = await client.getLogs({ address: RUNTIME, event: EVENTS.reactivated, ...range });
     const executed = await client.getLogs({ address: RUNTIME, event: EVENTS.executed, ...range });
     const registered = await client.getLogs({ address: RUNTIME, event: EVENTS.registered, ...range });
+    const unregistered = await client.getLogs({ address: RUNTIME, event: EVENTS.unregistered, ...range });
+    const revenue = await client.getLogs({ address: TREASURY, event: EVENTS.revenue, ...range });
     const transfers = await client.getLogs({ address: DEED, event: EVENTS.transfer, ...range });
     const renamed = await client.getLogs({ address: DEED, event: EVENTS.renamed, ...range });
-    const all = [...activated, ...deactivated, ...reactivated, ...executed, ...registered, ...transfers, ...renamed];
+    const all = [...activated, ...deactivated, ...reactivated, ...executed, ...registered, ...unregistered, ...revenue, ...transfers, ...renamed];
     const info = all.length === 0 ? new Map<bigint, BlockInfo>() : await blocks(client, all);
     await writePass({
       statuses: [
@@ -287,9 +380,12 @@ export async function indexOnePass(): Promise<IndexerResult> {
       apps: registered.map((log) => ({
         chain: Number(log.args.tokenId!), app: log.args.app!, publisher: log.args.publisher!, hash: log.transactionHash!, timestamp: info.get(log.blockNumber!)!.timestamp,
       })),
+      removedApps: unregistered.map((log) => ({ chain: Number(log.args.tokenId!), app: log.args.app! })),
+      revenue: revenue.map((log) => ({ chain: Number(log.args.tokenId!), holder: log.args.deedHolder!, gross: log.args.gross!, protocolFee: log.args.protocolFee!, holderShare: log.args.holderShare!, hash: log.transactionHash!, logIndex: log.logIndex!, timestamp: info.get(log.blockNumber!)!.timestamp })),
       owners: transfers.map((log) => ({ chain: Number(log.args.tokenId!), owner: log.args.to! })),
       names: renamed.map((log) => ({ chain: Number(log.args.tokenId!), name: log.args.newName! })),
       head: to,
+      headHash: (await client.getBlock({ blockNumber: to })).hash,
     });
     return { status: all.length === 0 ? 'caught-up' : 'indexed', from: from.toString(), to: to.toString(), events: all.length };
   } finally {

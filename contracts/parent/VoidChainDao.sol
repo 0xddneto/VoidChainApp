@@ -7,6 +7,7 @@ interface IVoidChainAppRuntime {
 
 interface IVoidChainDeed {
     function ownerOf(uint256 tokenId) external view returns (address);
+    function ownershipEpoch(uint256 tokenId) external view returns (uint256);
 }
 
 /// @notice ERC-20 voting snapshots without custody or token locking.
@@ -66,6 +67,7 @@ contract VoidChainDao {
     mapping(uint256 proposalId => mapping(address voter => bool)) public hasVoted;
     mapping(uint256 proposalId => string description) private _descriptions;
     mapping(uint256 proposalId => Action[]) private _actions;
+    mapping(uint256 proposalId => uint256) public proposalOwnershipEpoch;
     uint256 public proposalCount;
 
     event ProposalCreated(
@@ -157,6 +159,7 @@ contract VoidChainDao {
             actionCount: actions.length,
             executed: false
         });
+        proposalOwnershipEpoch[proposalId] = deed.ownershipEpoch(tokenId);
         _descriptions[proposalId] = description;
         for (uint256 i; i < actions.length; ++i) _actions[proposalId].push(actions[i]);
 
@@ -191,6 +194,7 @@ contract VoidChainDao {
         Proposal storage p = proposals[proposalId];
         if (p.deadline == 0) return State.Pending;
         if (p.executed) return State.Executed;
+        if (deed.ownershipEpoch(tokenId) != proposalOwnershipEpoch[proposalId]) return State.Defeated;
         if (block.timestamp <= p.deadline) return State.Active;
 
         uint256 turnout = p.forVotes + p.againstVotes;
