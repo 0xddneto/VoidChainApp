@@ -118,7 +118,7 @@ export default async function Home() {
 
         <Ticker events={events} />
 
-        <section className={styles.panel}>
+        <section className={`${styles.panel} ${styles.atlasPanel}`}>
           <div className={styles.panelHead}>
             <h2><span className={styles.sectionIndex}>01</span> Registry atlas</h2>
             <span className={styles.note}>

@@ -313,13 +313,22 @@
 .sectionIndex { color: var(--accent); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.08em; }
 .note { color: var(--ink-3); font-family: var(--mono); font-size: 10px; letter-spacing: -0.015em; }
 .panelBody { padding: 21px; }
-.registryBody { align-items: center; display: flex; gap: 22px; padding: 14px 18px; }
+.atlasPanel { margin-left: auto; margin-right: auto; max-width: 980px; }
+.atlasPanel .panelHead { min-height: 46px; padding: 9px 16px; }
+.registryBody {
+  align-items: center;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 574px 180px;
+  justify-content: center;
+  padding: 10px 16px 12px;
+}
 
 /* ---- atlas ------------------------------------------------------------- */
 .constellation {
   display: grid;
   flex: 0 0 auto;
-  grid-template-columns: repeat(53, 6px);
+  grid-template-columns: repeat(70, 6px);
   gap: 2px;
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
@@ -331,7 +340,7 @@
 .cellCreated { background: var(--created); }
 .cellLive { background: var(--live); box-shadow: 0 0 7px color-mix(in srgb, var(--live) 42%, transparent); }
 .cellPaused { background: var(--dormant); }
-.legend { display: grid; gap: 8px; margin: 0; padding: 0; }
+.legend { border-left: 1px solid var(--line); display: grid; gap: 9px; margin: 0; padding: 3px 0 3px 20px; }
 .legendItem { display: flex; align-items: center; gap: 7px; color: var(--ink-2); font: 10px var(--mono); }
 .swatch { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .swatchReserved { border: 1px solid var(--line-strong); background: transparent; }
@@ -701,6 +710,11 @@
   .cardSearch input { width: 100%; }
   .sortControl { margin-left: auto; }
   .panelHead { flex-wrap: wrap; }
+  .atlasPanel { max-width: none; }
+  .registryBody { gap: 16px; grid-template-columns: 478px 160px; }
+  .constellation { grid-template-columns: repeat(58, 6px); }
+  .legend { padding-left: 12px; }
+  .legendItem { font-size: 9px; white-space: nowrap; }
   .daoFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .l3Facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .daoCompose { grid-template-columns: 1fr 1fr; }
@@ -720,9 +734,9 @@
   .stat { min-height: 96px; padding: 16px; }
   .statValue { font-size: 21px; }
   .panelBody { padding: 12px; }
-  .registryBody { align-items: flex-start; display: grid; overflow-x: auto; }
+  .registryBody { align-items: flex-start; display: grid; gap: 12px; grid-template-columns: max-content; justify-content: start; overflow-x: auto; }
   .constellation { gap: 2px; padding: 8px; }
-  .legend { gap: 10px; }
+  .legend { border-left: 0; border-top: 1px solid var(--line); gap: 18px; grid-template-columns: repeat(3, max-content); padding: 10px 0 0; }
   .note { font-size: 9px; }
   .pager { margin-left: auto; }
   .table th, .table td { padding-left: 12px; padding-right: 12px; }
