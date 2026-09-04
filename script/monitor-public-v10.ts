@@ -114,7 +114,6 @@ async function main() {
     const gateway = getAddress(app.address);
     const code = await rpc.getCode({ address: gateway });
     requireState(code && code !== '0x', `Registered app has no bytecode at ${gateway}`);
-    await requireVerified(gateway);
     try {
       const implementation = await rpc.readContract({
         address: gateway,
@@ -123,6 +122,12 @@ async function main() {
       });
       requireState((await rpc.getCode({ address: implementation })) !== '0x', `App implementation missing at ${implementation}`);
       await requireVerified(implementation);
+      const response = await fetch(`${explorer}/api/v2/addresses/${gateway}`, { signal: AbortSignal.timeout(15_000) });
+      const record = response.ok ? await response.json() as { implementations?: Array<{ address_hash: string }> } : {};
+      requireState(
+        record.implementations?.some((item) => item.address_hash.toLowerCase() === implementation.toLowerCase()),
+        `Explorer proxy link is missing or wrong for app ${gateway}`,
+      );
     } catch (error) {
       throw new Error(`Registered app ${gateway} is not an inspectable verified gateway: ${error instanceof Error ? error.message : 'unknown'}`);
     }
