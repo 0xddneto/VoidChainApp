@@ -139,37 +139,49 @@ async function alignDeployment(): Promise<boolean> {
  * projection on every bounded pass.
  */
 async function hydrateImportedRuntimeState(client: PublicClient): Promise<void> {
-  const configuredIds: number[] = [];
-  const batchSize = 64;
-  for (let start = 1; start <= TOTAL_CHAINS; start += batchSize) {
-    const ids = Array.from({ length: Math.min(batchSize, TOTAL_CHAINS - start + 1) }, (_, i) => start + i);
-    const results = await client.multicall({
-      allowFailure: true,
-      multicallAddress: MULTICALL3,
-      contracts: ids.map((id) => ({ address: RUNTIME, abi: RUNTIME_STATE_ABI, functionName: 'configured' as const, args: [BigInt(id)] })),
-    });
-    results.forEach((result, i) => {
-      if (result.status === 'success' && result.result === true) configuredIds.push(ids[i]);
-    });
+  const totalSupply = Number(await client.readContract({
+    address: DEED,
+    abi: DEED_ABI,
+    functionName: 'totalSupply',
+  }));
+  if (!Number.isSafeInteger(totalSupply) || totalSupply < 0 || totalSupply > TOTAL_CHAINS) {
+    throw new Error(`Invalid Deed supply returned by the canonical contract: ${totalSupply}.`);
   }
+  if (totalSupply === 0) return;
 
-  for (let start = 0; start < configuredIds.length; start += batchSize) {
-    const ids = configuredIds.slice(start, start + batchSize);
-    const results = await client.multicall({
-      allowFailure: true,
-      multicallAddress: MULTICALL3,
-      contracts: ids.map((id) => ({ address: RUNTIME, abi: RUNTIME_STATE_ABI, functionName: 'statsOf' as const, args: [BigInt(id)] })),
-    });
-    for (let i = 0; i < results.length; i += 1) {
-      const result = results[i];
-      if (result.status !== 'success') throw new Error(`Could not hydrate imported Runtime state for chain ${ids[i]}.`);
-      const [active] = result.result as readonly [boolean, bigint, bigint, bigint, bigint];
-      await pool.query(
-        `UPDATE chains SET status = $2, updated_at = now() WHERE id = $1`,
-        [ids[i], active ? 'live' : 'paused'],
-      );
-    }
+  const ids = Array.from({ length: totalSupply }, (_, i) => i + 1);
+  const configuredIds: number[] = [];
+  const configured = await client.multicall({
+    allowFailure: true,
+    multicallAddress: MULTICALL3,
+    contracts: ids.map((id) => ({ address: RUNTIME, abi: RUNTIME_STATE_ABI, functionName: 'configured' as const, args: [BigInt(id)] })),
+  });
+  configured.forEach((result, i) => {
+    if (result.status === 'success' && result.result === true) configuredIds.push(ids[i]);
+  });
+  if (configuredIds.length === 0) return;
+
+  const stats = await client.multicall({
+    allowFailure: true,
+    multicallAddress: MULTICALL3,
+    contracts: configuredIds.map((id) => ({ address: RUNTIME, abi: RUNTIME_STATE_ABI, functionName: 'statsOf' as const, args: [BigInt(id)] })),
+  });
+  const liveIds: number[] = [];
+  const pausedIds: number[] = [];
+  for (let i = 0; i < stats.length; i += 1) {
+    const result = stats[i];
+    if (result.status !== 'success') throw new Error(`Could not hydrate imported Runtime state for chain ${configuredIds[i]}.`);
+    const [active] = result.result as readonly [boolean, bigint, bigint, bigint, bigint];
+    (active ? liveIds : pausedIds).push(configuredIds[i]);
   }
+  await Promise.all([
+    liveIds.length > 0
+      ? pool.query(`UPDATE chains SET status = 'live', updated_at = now() WHERE id = ANY($1::int[])`, [liveIds])
+      : Promise.resolve(),
+    pausedIds.length > 0
+      ? pool.query(`UPDATE chains SET status = 'paused', updated_at = now() WHERE id = ANY($1::int[])`, [pausedIds])
+      : Promise.resolve(),
+  ]);
 }
 
 async function seedChains(): Promise<void> {
