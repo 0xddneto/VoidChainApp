@@ -21,7 +21,7 @@
     "finalize:testnet": "tsx finalize-testnet-v11.ts",
     "verify:testnet-v10": "tsx verify-testnet-v10.ts",
     "finalize:testnet-v10": "tsx finalize-testnet-v10.ts",
-    "monitor:testnet-v10": "tsx monitor-public-v10.ts",
+    "monitor:testnet-v11": "tsx monitor-public-v11.ts",
     "canary:testnet-v10": "tsx canary-users-v10.ts",
     "audit:testnet-v7": "tsx audit-v7.ts",
     "prove:testnet-v7-market": "tsx prove-v7-market.ts",
