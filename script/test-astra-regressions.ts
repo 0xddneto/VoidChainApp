@@ -15,7 +15,8 @@ const signature = await signer.signTypedData({domain:{name:'VoidPaymaster',versi
 assert(await authenticSponsored(action,signature,paymaster));
 assert(!await authenticSponsored({...action,user:paymaster},signature,paymaster));
 assert(!await authenticSponsored({...action,tokenId:2n},signature,paymaster));
-assert.equal(CONTRACTS['ETH mint'].toLowerCase(), '0x4eaa37e811af0dd2405447e64065f57e0b4dd08b');
+assert.equal(CONTRACTS['ETH mint'].toLowerCase(), '0xb568224ee6a427f6e6e978b668fa45f46d4efbbe');
+assert.equal(CONTRACTS['Oracle freshness guard'].toLowerCase(), '0x79f9d7b523e08604b3f04da95d8d206c214ad3c7');
 const route = readFileSync('../web/app/api/market/sponsor/route.ts', 'utf8');
 assert(route.includes('function sellWithPermit(uint256,uint256,bytes)'));
 assert(!route.includes('function sellWithPermit(uint256,uint256,uint8,bytes32,bytes32)'));
