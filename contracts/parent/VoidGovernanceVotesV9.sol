@@ -11,9 +11,9 @@ interface IVoidHistoricalVotesV9 {
 /// @dev Voting power remains the VOID held in a wallet. Only protocol reserves
 ///      that cannot participate in voting are removed from the quorum denominator.
 ///      The exclusion list is constructor-fixed so governance cannot lower quorum
-///      immediately before a vote. DAOs can keep their familiar 10% quorum while
-///      measuring 10% of eligible circulation instead of 10% of the billion-token
-///      genesis supply.
+///      immediately before a vote. DAOs measure their separately configured
+///      quorum against eligible circulation instead of the billion-token genesis
+///      supply. The canonical V11 DAO uses 1%.
 contract VoidGovernanceVotesV9 {
     IVoidHistoricalVotesV9 public immutable token;
     address[] private _excluded;

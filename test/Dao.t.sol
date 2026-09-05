@@ -46,6 +46,22 @@ contract ProposalTarget {
     }
 }
 
+contract ProtocolAuthorityTarget {
+    address public immutable governor;
+    uint256 public value;
+
+    error NotGovernor(address caller);
+
+    constructor(address governor_) {
+        governor = governor_;
+    }
+
+    function setValue(uint256 next) external {
+        if (msg.sender != governor) revert NotGovernor(msg.sender);
+        value = next;
+    }
+}
+
 /// @notice The DAO's essential invariant: voting never takes custody of VOID.
 contract DaoTest is Test {
     VoidChainDaoFactory factory;
@@ -234,6 +250,24 @@ contract DaoTest is Test {
         vm.expectRevert();
         dao.execute(id);
         assertFalse(runtime.wasSet(CHAIN + 1));
+    }
+
+    function test_DaoProposalDoesNotGrantProtocolWideAuthority() public {
+        ProtocolAuthorityTarget protocolTarget = new ProtocolAuthorityTarget(address(0x6009));
+        VoidChainDao.Action[] memory actions = new VoidChainDao.Action[](1);
+        actions[0] = VoidChainDao.Action({
+            target: address(protocolTarget),
+            data: abi.encodeCall(ProtocolAuthorityTarget.setValue, (42))
+        });
+        vm.prank(holder);
+        uint256 id = dao.propose(actions, "Attempt a protocol-governed action");
+        _vote(id, alice, true);
+        _closeVoting();
+
+        vm.expectRevert();
+        dao.execute(id);
+        assertEq(protocolTarget.value(), 0);
+        assertEq(uint256(dao.state(id)), uint256(VoidChainDao.State.Succeeded));
     }
 
     function test_BelowQuorumIsDefeated() public {

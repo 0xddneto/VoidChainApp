@@ -12,6 +12,12 @@ runtime.
 
 ## Current testnet product
 
+Public surfaces: [VoidScan](https://voidscan.voidshub.com),
+[contracts](https://voidscan.voidshub.com/contracts),
+[live security state](https://voidscan.voidshub.com/security), and
+[VoidDEX](https://voiddex.voidshub.com). The legacy `*.vercel.app` addresses are
+deployment aliases, not the canonical addresses users should trust before signing.
+
 - **ETH genesis:** minting a Deed uses ETH because it creates the NFT and starts
   the VOID token/liquidity economy. A wallet can mint only once.
 - **VOID application fees:** every official application action enters through
@@ -151,9 +157,11 @@ uses no project wallet.
 - [2026-09-05 follow-up review and remaining work](docs/ASTRA_REVIEW_2026_09_05.md)
 
 Public transaction pages show the checksummed destination, chain ID, value and
-release fingerprint. `/contracts` links active addresses to the explorer;
-`/security` documents current trust limits; `/api/release` identifies the
-manifest and hosting commit. Failed or stale price reads disable transactions.
+release fingerprint. `/contracts` links every active address to the explorer and
+the exact public source revision; `/security` reads the active authority graph
+and deployed bytecode on-chain; `/api/release` identifies the manifest, source
+repository and hosting commit. Failed or stale price, reserve, registration,
+quote or release reads disable transactions.
 
 The same product explanation is available in the VoidScan `/docs` page from
 the header.

@@ -46,7 +46,8 @@ export async function GET(request: NextRequest) {
       rpc.getBalance({ address: getAddress(DEPLOY.production.VoidPaymaster) }),
       rpc.readContract({ address: getAddress(DEPLOY.production.VoidPaymaster), abi: parseAbi(['function refillThreshold() view returns(uint256)']), functionName: 'refillThreshold' }),
     ]);
-    const ready = fee !== null && chain[0] && registered && reserve > 0n && reserve >= threshold;
+    const ready = fee !== null && chain[0] && registered && reserve > 0n && reserve >= threshold
+      && randomQuote > 0n && specificQuote > 0n && sellQuote > 0n;
     let balance = 0n;
     let owned: bigint[] = [];
     if (account) {

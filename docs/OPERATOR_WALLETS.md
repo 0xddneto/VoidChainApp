@@ -17,8 +17,8 @@ support messages. The addresses below are public testnet identities only.
 Each relayer is serialized independently in Postgres. A compromise therefore
 does not grant governance, treasury, oracle or another relayer role. The
 live Paymaster enforces signed user caps, gas-price ceiling and per-block
-budget. The additional per-chain daily budget is implemented in V11 source
-and will only apply after the verified contract migration.
+budget. The per-chain daily budget is active in the canonical verified V11
+testnet Paymaster.
 
 ## Mainnet recommendation
 
