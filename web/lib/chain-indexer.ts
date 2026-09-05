@@ -131,9 +131,11 @@ async function alignDeployment(): Promise<boolean> {
 }
 
 /**
- * Constructor-imported chains have no post-deployment activation event.  Read
- * the canonical Runtime once on deployment cutover so the explorer cannot
- * accidentally present an active migrated chain as reserved.
+ * Reconcile configured chain status with the canonical Runtime. Imported
+ * chains have no activation event inside the current deployment range, and a
+ * projection reset can otherwise leave them marked as reserved forever. The
+ * event sweep remains the history source; this read repairs the current-state
+ * projection on every bounded pass.
  */
 async function hydrateImportedRuntimeState(client: PublicClient): Promise<void> {
   const configuredIds: number[] = [];
@@ -375,13 +377,12 @@ export async function indexOnePass(): Promise<IndexerResult> {
     const client = createPublicClient({
       transport: fallback([http(rpc), http('https://rpc.testnet.chain.robinhood.com')]),
     }) as PublicClient;
-    const deploymentChanged = await alignDeployment();
+    await alignDeployment();
     await seedChains();
-    if (deploymentChanged) await hydrateImportedRuntimeState(client);
     if (await ensureCanonicalCursor(client)) {
       await seedChains();
-      await hydrateImportedRuntimeState(client);
     }
+    await hydrateImportedRuntimeState(client);
     const from = (await cursor()) + 1n;
     const tip = await client.getBlockNumber();
     if (tip < CONFIRMATIONS) {
