@@ -120,23 +120,6 @@ export const ABI = {
     { type: 'function', name: 'castVote', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'bool' }], outputs: [] },
     { type: 'function', name: 'execute', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }], outputs: [] },
   ],
-  // Read-only compatibility for the test stack deployed before general DAO proposals.
-  daoLegacy: [
-    { type: 'function', name: 'proposalCount', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
-    { type: 'function', name: 'QUORUM_BPS', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
-    { type: 'function', name: 'VOTING_PERIOD', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
-    { type: 'function', name: 'proposals', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [
-      { name: 'feeLimitUsd', type: 'uint256' }, { name: 'snapshotBlock', type: 'uint256' },
-      { name: 'snapshotSupply', type: 'uint256' }, { name: 'deadline', type: 'uint256' },
-      { name: 'forVotes', type: 'uint256' }, { name: 'againstVotes', type: 'uint256' },
-      { name: 'executed', type: 'bool' },
-    ] },
-    { type: 'function', name: 'state', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint8' }] },
-    { type: 'function', name: 'hasVoted', stateMutability: 'view', inputs: [{ type: 'uint256' }, { type: 'address' }], outputs: [{ type: 'bool' }] },
-    { type: 'function', name: 'propose', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }] },
-    { type: 'function', name: 'castVote', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'bool' }], outputs: [] },
-    { type: 'function', name: 'execute', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }], outputs: [] },
-  ],
   counter: [
     { type: 'function', name: 'count', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
     { type: 'function', name: 'bump', stateMutability: 'nonpayable', inputs: [], outputs: [] },

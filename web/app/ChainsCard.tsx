@@ -308,7 +308,7 @@ function Detail({ chain, onBack }: { chain: ChainRow; onBack: () => void }) {
                         <Copyable value={a.address} short />
                       </span>
                       {a.address.toLowerCase() === nftMarket && <a className={styles.chainLink} href="/market">Open market ↗</a>}
-                      {chain.id === chainOneDex.chainTokenId && dexApps.has(a.address.toLowerCase()) && <a className={styles.chainLink} href="https://voiddex-alpha.vercel.app" target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Open DEX ↗</a>}
+                      {chain.id === chainOneDex.chainTokenId && dexApps.has(a.address.toLowerCase()) && <a className={styles.chainLink} href="https://voiddex.voidshub.com" target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Open DEX ↗</a>}
                       <span className={styles.note}>by <Copyable value={a.publisher} short /></span>
                     </li>
                   ))}

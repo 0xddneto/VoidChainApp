@@ -685,7 +685,7 @@
 .fact,
 .numbers > div { background: color-mix(in srgb, var(--surface) 97%, var(--ground)); }
 
-/* Legacy empty/feed rules remain available to chains that need a compact state. */
+/* Compact empty/feed states for chains without indexed activity. */
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .empty { padding: 34px 18px; text-align: center; }
 .emptyGlyph { color: var(--ink-3); font: 10px var(--mono); letter-spacing: 0.16em; margin-bottom: 12px; }

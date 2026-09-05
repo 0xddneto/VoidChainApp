@@ -24,8 +24,17 @@ if (deployment.network.chainId !== 46630 || genesis.network.chainId !== 46630) {
 for (const [key, address] of Object.entries(canonical)) {
   if (!sameAddress(address, genesis.contracts[key])) throw new Error(`Manifest mismatch for ${key}.`);
 }
-for (const file of ['app/contracts/page.tsx', 'app/docs/page.tsx', 'app/security/page.tsx', 'app/mint/page.tsx', 'app/market/page.tsx']) {
-  const content = fs.readFileSync(path.join(root, file), 'utf8');
-  if (/\bV(?:7|8|9|10)\b/.test(content)) throw new Error(`Retired public release label found in ${file}.`);
+function sourceFiles(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const target = path.join(directory, entry.name);
+    return entry.isDirectory() ? sourceFiles(target) : /\.(?:ts|tsx)$/.test(entry.name) ? [target] : [];
+  });
 }
-console.log('Canonical release manifests and public routes agree.');
+for (const absolute of sourceFiles(path.join(root, 'app'))) {
+  const file = path.relative(root, absolute);
+  const content = fs.readFileSync(absolute, 'utf8');
+  if (/\bV(?:1|2|3|4|5|6|7|8|9|10)\b/.test(content)) {
+    throw new Error(`Retired public version found in ${file}.`);
+  }
+}
+console.log('Canonical release manifests agree and no retired version exists in public routes.');

@@ -17,7 +17,6 @@ import styles from './page.module.css';
 
 const rpc = createPublicClient({ transport: rhTransport() });
 const STATES = ['Pending', 'Active', 'Defeated', 'Succeeded', 'Executed'] as const;
-const GENERIC_DAO = Boolean((DEPLOY as { governance?: unknown }).governance);
 
 type WalletProvider = {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
@@ -95,30 +94,15 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
     const dao = await rpc.readContract({
       address: factory, abi: ABI.daoFactory, functionName: 'daoOf', args: [BigInt(tokenId)],
     }) as Address;
-    const daoAbi = GENERIC_DAO ? ABI.dao : ABI.daoLegacy;
     const [count, quorumBps, votingPeriod] = await Promise.all([
-      rpc.readContract({ address: dao, abi: daoAbi, functionName: 'proposalCount' }) as Promise<bigint>,
-      rpc.readContract({ address: dao, abi: daoAbi, functionName: 'QUORUM_BPS' }) as Promise<bigint>,
-      rpc.readContract({ address: dao, abi: daoAbi, functionName: 'VOTING_PERIOD' }) as Promise<bigint>,
+      rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'proposalCount' }) as Promise<bigint>,
+      rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'QUORUM_BPS' }) as Promise<bigint>,
+      rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'VOTING_PERIOD' }) as Promise<bigint>,
     ]);
 
     const latest = Math.min(Number(count), 25);
     const ids = Array.from({ length: latest }, (_, i) => Number(count) - i);
     const proposals = await Promise.all(ids.map(async (id) => {
-      if (!GENERIC_DAO) {
-        const [p, state, voted] = await Promise.all([
-          rpc.readContract({ address: dao, abi: ABI.daoLegacy, functionName: 'proposals', args: [BigInt(id)] }) as Promise<readonly [bigint, bigint, bigint, bigint, bigint, bigint, boolean]>,
-          rpc.readContract({ address: dao, abi: ABI.daoLegacy, functionName: 'state', args: [BigInt(id)] }) as Promise<number>,
-          who
-            ? rpc.readContract({ address: dao, abi: ABI.daoLegacy, functionName: 'hasVoted', args: [BigInt(id), who] }) as Promise<boolean>
-            : Promise.resolve(false),
-        ]);
-        return {
-          id, description: `Set transaction fee limit to $${fmt(p[0], 18, 4)}`, actionCount: 1n,
-          snapshotBlock: p[1], snapshotSupply: p[2], deadline: p[3], forVotes: p[4], againstVotes: p[5], state, voted,
-        };
-      }
-
       const [p, state, voted, proposalDescription] = await Promise.all([
         rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'proposals', args: [BigInt(id)] }) as Promise<readonly [Hex, Hex, bigint, bigint, bigint, bigint, bigint, bigint, boolean]>,
         rpc.readContract({ address: dao, abi: ABI.dao, functionName: 'state', args: [BigInt(id)] }) as Promise<number>,
@@ -174,7 +158,7 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
     try {
       const { provider, account: sender } = await connectedWallet();
       const client = createWalletClient({ account: sender, transport: custom(provider as never) });
-      const callData = encodeFunctionData({ abi: GENERIC_DAO ? ABI.dao : ABI.daoLegacy, functionName, args } as never);
+      const callData = encodeFunctionData({ abi: ABI.dao, functionName, args } as never);
       if (await rpc.getChainId() !== RH_TESTNET.chainId) throw new Error('The RPC returned the wrong network.');
       await rpc.call({ account: sender, to: data.dao, data: callData });
       const hash = await client.sendTransaction({
@@ -269,8 +253,7 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
         <div><dt>Voting period</dt><dd>{days(data.votingPeriod)}</dd></div>
       </dl>
 
-      {GENERIC_DAO ? (
-        <div className={styles.daoCompose}>
+      <div className={styles.daoCompose}>
           <div>
             <h4>Create proposal</h4>
             <p>Only the current NFT holder creates it. Voting never locks or approves VOID.</p>
@@ -319,10 +302,7 @@ export function DaoPanel({ tokenId }: { tokenId: number }) {
           <button type="button" className={styles.daoPrimary} disabled={busy !== null} onClick={propose}>
             {busy === 'propose' ? 'Creating…' : account ? 'Create proposal' : 'Connect to create'}
           </button>
-        </div>
-      ) : (
-        <p className={styles.daoNotice}>This testnet deployment uses the previous fee-only DAO. The general proposal interface activates with the replacement testnet deployment.</p>
-      )}
+      </div>
 
       {notice && <p className={styles.daoNotice} role="status">{notice}</p>}
 
