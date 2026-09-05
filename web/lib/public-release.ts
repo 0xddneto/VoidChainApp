@@ -1,11 +1,11 @@
 import { getAddress, keccak256, toHex } from 'viem';
 import deployment from './deployment.json';
-import genesis from './genesis-v10.json';
+import genesis from './genesis-v11.json';
 
 export const EXPLORER = 'https://explorer.testnet.chain.robinhood.com';
 export const RELEASE = deployment.version;
 export const CONTRACTS = {
-  'ETH mint': deployment.production.VoidEthGenesisMintV10,
+  'ETH mint': deployment.production.VoidEthGenesisMintV11,
   'Deed NFT': deployment.production.VoidChainDeed,
   'VOID token': deployment.testnet.VoidTestToken,
   Runtime: deployment.production.VoidChainAppRuntime,

@@ -58,6 +58,16 @@ contract MockVoid is IRuntimeERC20 {
     }
 }
 
+/// @notice Mirrors V11 VOID: frozen protocol operators move funds without
+/// consuming an ERC-20 allowance after validating the signed request upstream.
+contract MockVoidOperator is MockVoid {
+    function protocolTransferFrom(address from, address to, uint256 amount) external returns (bool) {
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}
+
 /// @notice VOID with EIP-2612, which is what mainnet needs to have.
 /// @dev    It verifies the signature for real: a mock that accepted any permit
 ///         would prove the test passes, not that the mechanism works.
@@ -189,7 +199,7 @@ contract PaymasterTest is Test {
 
     VoidChainAppRuntime runtime;
     VoidPaymaster paymaster;
-    MockVoid voidToken;
+    MockVoidOperator voidToken;
     MockTreasury treasury;
     FakeDeed deed;
     Recorder app;
@@ -211,7 +221,7 @@ contract PaymasterTest is Test {
     function setUp() public {
         user = vm.addr(userPk);
 
-        voidToken = new MockVoid();
+        voidToken = new MockVoidOperator();
         deed = new FakeDeed();
         treasury = new MockTreasury(voidToken, protocolSink);
         oracle = new MockOracle();
@@ -253,6 +263,40 @@ contract PaymasterTest is Test {
         // The paymaster reserve and a relayer with ETH to front.
         vm.deal(address(paymaster), 10 ether);
         vm.deal(relayer, 10 ether);
+    }
+
+    function test_importsPaymasterAccountingExactlyOnce() public {
+        voidToken.mint(address(paymaster), 125e18);
+
+        vm.prank(governor);
+        paymaster.initializeMigrationAccounting(100e18, 20e18);
+
+        assertTrue(paymaster.migrationAccountingInitialized());
+        assertEq(paymaster.reimbursableVoid(), 100e18);
+        assertEq(paymaster.surplusVoid(), 20e18);
+        assertEq(voidToken.balanceOf(address(paymaster)), 125e18);
+
+        vm.prank(governor);
+        vm.expectRevert(VoidPaymaster.MigrationAccountingAlreadyInitialized.selector);
+        paymaster.initializeMigrationAccounting(1, 1);
+    }
+
+    function test_rejectsPaymasterAccountingAboveHeldBalance() public {
+        voidToken.mint(address(paymaster), 10e18);
+        vm.prank(governor);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VoidPaymaster.InvalidMigrationAccounting.selector, 11e18, 10e18
+            )
+        );
+        paymaster.initializeMigrationAccounting(8e18, 3e18);
+    }
+
+    function test_onlyGovernorMayImportPaymasterAccounting() public {
+        voidToken.mint(address(paymaster), 10e18);
+        vm.prank(address(0xBAD));
+        vm.expectRevert(abi.encodeWithSelector(VoidPaymaster.NotGovernor.selector, address(0xBAD)));
+        paymaster.initializeMigrationAccounting(9e18, 1e18);
     }
 
     // ---------------------------------------------------------------------
@@ -359,6 +403,16 @@ contract PaymasterTest is Test {
             spent - TOLL,
             paymaster.reimbursableVoid() + paymaster.surplusVoid(),
             "what left the user has to match what entered the accounts"
+        );
+    }
+
+    function test_operadorV11NaoCriaDeficitNaContabilidadeDoPaymaster() public {
+        _relay(_call(user));
+
+        assertEq(
+            voidToken.balanceOf(address(paymaster)),
+            paymaster.reimbursableVoid() + paymaster.surplusVoid(),
+            "every accounted VOID must still be held by the paymaster"
         );
     }
 

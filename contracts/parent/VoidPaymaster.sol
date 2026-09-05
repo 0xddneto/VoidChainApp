@@ -378,6 +378,10 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     /// @notice Accrued margin. This one is genuinely burnable.
     uint256 public surplusVoid;
 
+    /// @notice Set exactly once when a replacement Paymaster imports an
+    ///         existing reserve. Fresh deployments leave this false forever.
+    bool public migrationAccountingInitialized;
+
     mapping(address user => uint256) public nonces;
 
     event Sponsored(
@@ -410,6 +414,7 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     event GovernorTransferred(address previous, address next);
     event RunwayTreasuryUpdated(address previous, address next);
     event DailyChainLimitUpdated(uint256 limit);
+    event MigrationAccountingInitialized(uint256 reimbursableVoid, uint256 surplusVoid);
 
     error NotGovernor(address who);
     error ZeroAddress();
@@ -448,6 +453,8 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     error TollChanged(uint256 signed, uint256 current);
     error ChainDailyLimitNotSet();
     error ChainDailyBudgetExceeded(uint256 tokenId, uint256 wanted, uint256 limit);
+    error MigrationAccountingAlreadyInitialized();
+    error InvalidMigrationAccounting(uint256 accounted, uint256 held);
 
     constructor(
         IERC20 voidToken_,
@@ -482,6 +489,28 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     modifier onlyGovernor() {
         if (msg.sender != governor) revert NotGovernor(msg.sender);
         _;
+    }
+
+    /// @notice Imports the two Paymaster accounting buckets during a versioned
+    ///         replacement deployment.
+    /// @dev The token balance must already be present. The function is
+    ///      governor-only, one-shot, and refuses to overwrite any live accrual.
+    ///      Any excess balance remains explicitly unaccounted and can only be
+    ///      recovered through the governed `sweepUnaccounted` path.
+    function initializeMigrationAccounting(uint256 reimbursable, uint256 surplus)
+        external
+        onlyGovernor
+    {
+        if (migrationAccountingInitialized || reimbursableVoid != 0 || surplusVoid != 0) {
+            revert MigrationAccountingAlreadyInitialized();
+        }
+        uint256 accounted = reimbursable + surplus;
+        uint256 held = voidToken.balanceOf(address(this));
+        if (accounted > held) revert InvalidMigrationAccounting(accounted, held);
+        migrationAccountingInitialized = true;
+        reimbursableVoid = reimbursable;
+        surplusVoid = surplus;
+        emit MigrationAccountingInitialized(reimbursable, surplus);
     }
 
     // ---------------------------------------------------------------------
@@ -656,7 +685,7 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         // Here nothing expensive runs before payment is secured, and once it is
         // secured nothing reverts any more.
         // =================================================================
-        uint256 worstEth = _validate(req, signature);
+        (uint256 worstEth, uint256 liveToll) = _validate(req, signature);
 
         // =================================================================
         // PREFUND — the worst case leaves the user before execution runs.
@@ -672,7 +701,15 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         _requireSpendAllowances(req.user, req.spends);
         _pull(req.user, prefund);
 
+        // Pin the live toll before entering the application. V11 VOID lets the
+        // frozen Runtime move the toll without consuming an ERC-20 allowance,
+        // so allowance delta is not a valid receipt. Balance delta is not safe
+        // either because an application can transfer its own VOID here. The
+        // Runtime either completes atomically at this exact live toll or its
+        // entire call (including the toll transfer) reverts.
         if (req.maxToll > 0) {
+            // Retained for backward-compatible tokens whose Runtime path still
+            // uses transferFrom. The frozen V11 token ignores this allowance.
             if (!voidToken.approve(address(runtime), req.maxToll)) revert TransferFailed();
         }
 
@@ -686,14 +723,8 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         // =================================================================
         (executed, result) = _run(req);
 
-        // How much of the toll was actually consumed — measured by the leftover
-        // allowance, not by balance. Measuring by balance left the accounting at
-        // the mercy of an app that transferred VOID to the paymaster mid-execution.
-        uint256 tollPaid;
-        if (req.maxToll > 0) {
-            tollPaid = req.maxToll - voidToken.allowance(address(this), address(runtime));
-            if (!voidToken.approve(address(runtime), 0)) revert TransferFailed();
-        }
+        uint256 tollPaid = executed ? liveToll : 0;
+        if (req.maxToll > 0 && !voidToken.approve(address(runtime), 0)) revert TransferFailed();
 
         // =================================================================
         // SETTLEMENT — nothing here may revert, and nothing exceeds the prefund.
@@ -730,9 +761,10 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
     /// @notice Everything that can refuse the sponsorship, before executing
     ///         anything at all. Past this point, nothing reverts any more.
     /// @return worstEth The most ETH this call can cost the reserve.
+    /// @return liveToll The exact chain toll pinned before execution.
     function _validate(SponsoredCall calldata req, bytes calldata signature)
         private
-        returns (uint256 worstEth)
+        returns (uint256 worstEth, uint256 liveToll)
     {
         if (voidPerEth() == 0) revert RateNotSet();
         if (tx.gasprice > maxGasPrice) revert GasPriceAboveLimit(tx.gasprice, maxGasPrice);
@@ -742,6 +774,9 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         if (req.nonce != expected) revert BadNonce(req.nonce, expected);
 
         _requireSignedByUser(req, signature);
+
+        liveToll = runtime.feeOf(req.tokenId);
+        if (liveToll > req.maxToll) revert TollChanged(req.maxToll, liveToll);
 
         // The worst case INCLUDES THE CALLDATA. It is chosen by whoever signs,
         // leftover bytes are discarded during decoding, and the window measured

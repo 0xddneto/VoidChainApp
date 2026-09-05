@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     const [count, randomQuote, specificQuote, sellQuote, fee, minted] = await Promise.all([
       query('inventoryCount'), query('randomBuyQuote'), query('specificBuyQuote'), query('sellQuote'),
       rpc.readContract({ address: getAddress(DEPLOY.production.VoidChainAppRuntime), abi: runtimeAbi, functionName: 'feeOf', args: [1n] }).catch(() => null),
-      rpc.readContract({ address: getAddress(DEPLOY.production.VoidEthGenesisMintV6), abi: mintAbi, functionName: 'totalMinted' }),
+      rpc.readContract({ address: getAddress(DEPLOY.production.VoidEthGenesisMintV11), abi: mintAbi, functionName: 'totalMinted' }),
     ]);
     const inventory = await Promise.all(Array.from({ length: Number(count) }, (_, index) => query('inventoryAt', [BigInt(index)])));
     const [chain, registered, reserve, threshold] = await Promise.all([
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       sellable: owned.map(String),
     }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch (error) {
-    console.error('V6 market state failed', error);
+    console.error('V11 market state failed', error);
     return NextResponse.json({ error: 'Could not read the NFT/VOID market.' }, { status: 502 });
   }
 }

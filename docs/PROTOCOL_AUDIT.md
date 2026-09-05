@@ -2,14 +2,14 @@
 
 Follow-up findings and validation: [2026-09-05 review](ASTRA_REVIEW_2026_09_05.md).
 Rows below describing V11 emergency controls, 1% quorum, emission vault or L3
-registry are source changes, not active V10 protections. Emission and per-chain
+registry are active in the canonical V11 testnet deployment. Emission and per-chain
 budgets use fixed epochs, not rolling windows. L3 ID uniqueness is local to the
 registry, not a global EIP-155 reservation authority.
 
-## V10 deployment and V11 source hardening
+## Canonical V11 deployment
 
-The current public deployment supersedes the earlier V8 testnet control plane.
-V10 makes the Runtime oracle one-time and immutable,
+The current public deployment supersedes the earlier V8/V10 testnet control
+planes. V11 makes the Runtime oracle one-time and immutable,
 places Paymaster and Treasury administration behind a public 48-hour timelock,
 preserves the block-pinned Deed owners and the exact one-billion-token ledger,
 and verifies all 22 deployed contracts in the explorer. The proposer remains a
@@ -26,7 +26,7 @@ Evidence collected after the changes:
 
 - Foundry validation includes fuzz, invariant, red-team and scale suites; the V11 validation record tracks the current run.
 - VoidScan and VoidDEX production builds pass; script and indexer typechecks pass.
-- The V10 migration tests reconcile the exact token ledger, migrated Deeds,
+- The V11 migration tests reconcile the exact token ledger, migrated Deeds,
   resumed VOID/ETH pool and non-duplicated escrow liabilities.
 - Two consecutive swaps through the production HTTP relay succeeded. The setup
   call supplied two missing token permits; the repeat call supplied zero permits
@@ -68,7 +68,7 @@ chain, app, calldata, exact fungible/NFT budgets, fee cap, gas cap, nonce and
 deadline. The Runtime creates those spend budgets only for the duration of that
 call.
 
-V10 VOID grants authority only to the permanently frozen Runtime and Paymaster,
+V11 VOID grants authority only to the permanently frozen Runtime and Paymaster,
 so a VOID-only first use needs no approval and only the SponsoredCall signature.
 External EIP-2612 tokens have independent signing domains and still require a
 permit when allowance is absent. NFT sales still require a Deed-specific
@@ -114,13 +114,11 @@ These are not presented as solved:
    Production indexing needs a reviewed confirmation/reorg policy.
 7. A universal first-use single prompt for arbitrary ERC-20 and ERC-721 assets
    requires a separately audited Permit2, account-abstraction or native
-   intent-token design. V10 safely removes VOID setup prompts; it does not pretend
+   intent-token design. V11 safely removes VOID setup prompts; it does not pretend
    different token signature domains are one signature.
 
 ## Release decision
 
-The currently published V10 addresses remain suitable for continued public
-**testnet** testing. V11 source is not a live deployment yet and must pass a new
-snapshot, deployment, explorer verification and live acceptance run before the
-site points at it. Neither version is approved for mainnet or for marketing as
+The canonical V11 addresses are suitable for continued public **testnet**
+testing. Neither version is approved for mainnet or for marketing as
 1,111 independent blockchains.

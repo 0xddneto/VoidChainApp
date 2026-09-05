@@ -1,8 +1,8 @@
-# V11 hardening status — 2026-09-04
+# V11 testnet validation — 2026-09-05
 
 ## Verified locally
 
-- Full Foundry suite: 323 tests across 38 suites passed, including the 1,111-chain
+- Full Foundry suite: 338 tests across 40 suites passed, including the 1,111-chain
   isolation/revenue tests, 256 users making 1,024 signed actions without ETH or
   allowances, and 128,000 invariant actions in this run.
 - Three additional claim integration tests use the real Runtime and Treasury:
@@ -31,11 +31,13 @@ The fresh block-pinned inventory at block 113118929 reconciled all 1 billion
 VOID and six minted Deeds. It is an inventory, not a complete migration bundle:
 LP shares, app custody, staking and proposal payloads still require adapters.
 
-The published manifest still identifies V10. V11 Runtime emergency roles,
-1% circulating-supply DAO quorum, Treasury `claimFor`, the claim aggregator,
-emission vault and L3 registry are source changes awaiting deployment and live
-acceptance. The Paymaster source removes its unused legacy prepaid endpoint;
-`sponsor`, `sponsorWithPermit` and the official `sponsorWithAssetPermits` remain.
+The canonical V11 manifest is now the only public manifest used by VoidScan,
+VoidDEX and the indexer; the superseded V10 deployment remains historical and
+unpublished. V11 Runtime emergency roles, 1% circulating-supply DAO quorum,
+Treasury `claimFor`, the claim aggregator, emission vault and L3 registry are
+deployed, verified and covered by the live acceptance audit. The Paymaster
+keeps the bounded `sponsor`, `sponsorWithPermit` and
+`sponsorWithAssetPermits` paths.
 
 The Paymaster daily budget uses the smaller of its configured absolute ceiling
 and one quarter of the current ETH reserve. Usage reserves the signed worst
@@ -44,23 +46,16 @@ case, so it is conservative. Epochs are aligned to UTC days, not rolling
 must explicitly calibrate the ceiling to actual funded capacity. Zero is
 rejected by the setter.
 
-## Work still required before V11 cutover
+## Operational gates that remain before mainnet
 
-1. Build a fresh, block-pinned migration from the currently live V10 owners,
-   balances, app custody, pool reserves, claims and active proposals. Do not
-   replay the older V9/V10 deployment snapshots.
-2. Deploy and verify the V11 contracts, connect emergency roles, aggregator,
-   emission policy and L3 registry, then run live acceptance before changing
-   public manifests. A registration alone does not deploy an external L3.
-3. Retire the legacy DEX pool gateways whose publisher is the old factory.
-   The current deployer cannot unregister another publisher's apps; the new
-   emergency controls are not present in the immutable live Runtime.
-4. Historical Paymaster backfill completed: 13 receipts scanned through block
+1. A registration alone does not deploy an external L3; each holder still
+   funds and operates that optional rollup migration separately.
+2. Historical Paymaster backfill completed: 13 receipts scanned through block
    113115513 without changing the live indexer cursor. Both indexers correlate
    failures within each sponsorship log window, including batched relayers.
-5. Confirm provider PITR and encrypted off-provider backups. CI and the local
+3. Confirm provider PITR and encrypted off-provider backups. CI and the local
    restore drill validate the procedure only.
-6. Complete independent audit, production signer setup and real-liquidity
+4. Complete independent audit, production signer setup and real-liquidity
    oracle review before mainnet. No mainnet readiness is claimed.
 
 For third-party external assets, the existing first-use permit requirement

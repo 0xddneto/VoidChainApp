@@ -12,6 +12,8 @@ const block = await rpc.getBlock({ blockNumber });
 const token = source.testnet.VoidTestToken as Address;
 const tokenAbi = parseAbi(['function totalSupply() view returns(uint256)', 'function balanceOf(address) view returns(uint256)']);
 const transfer = parseAbiItem('event Transfer(address indexed from,address indexed to,uint256 value)');
+const appRegistered = parseAbiItem('event AppRegistered(uint256 indexed tokenId,address app,address publisher)');
+const appUnregistered = parseAbiItem('event AppUnregistered(uint256 indexed tokenId,address app,address publisher)');
 const balances = new Map<string, bigint>();
 for (let fromBlock = BigInt(source.network.deployBlock); fromBlock <= blockNumber; fromBlock += 10_000n) {
   const toBlock = fromBlock + 9_999n < blockNumber ? fromBlock + 9_999n : blockNumber;
@@ -90,6 +92,29 @@ const stakingState = await uintState(stakingAddress, ['totalWeight', 'rewardRate
 const ethPool = source.testnet.VoidEthPoolV6 as Address;
 const liquidityState = await uintState(ethPool, ['reserveVoid', 'reserveEth', 'totalLiquidity', 'lastTimestamp', 'voidPerEthCumulative']);
 const runtimeAccounting = await uintState(source.production.VoidChainAppRuntime, ['protocolAccrued']);
+const paymasterAccounting = await uintState(source.production.VoidPaymaster, [
+  'reimbursableVoid', 'surplusVoid', 'marginBps', 'ethFloor', 'gasOverhead',
+  'maxGasPrice', 'maxEthPerBlock', 'refillThreshold', 'refillTarget', 'refillSlippageBps',
+]);
+const appEvents: Array<{ blockNumber: bigint; logIndex: number; registered: boolean; tokenId: bigint; app: Address; publisher: Address }> = [];
+for (let fromBlock = BigInt(source.network.deployBlock); fromBlock <= blockNumber; fromBlock += 10_000n) {
+  const toBlock = fromBlock + 9_999n < blockNumber ? fromBlock + 9_999n : blockNumber;
+  for (const [registered, event] of [[true, appRegistered], [false, appUnregistered]] as const) {
+    for (const log of await rpc.getLogs({ address: source.production.VoidChainAppRuntime, event, fromBlock, toBlock })) {
+      appEvents.push({
+        blockNumber: log.blockNumber!, logIndex: log.logIndex!, registered,
+        tokenId: log.args.tokenId!, app: log.args.app!, publisher: log.args.publisher!,
+      });
+    }
+  }
+}
+appEvents.sort((a, b) => a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1);
+const registeredApps = new Map<string, typeof appEvents[number]>();
+for (const event of appEvents) {
+  const key = `${event.tokenId}:${event.app.toLowerCase()}`;
+  if (event.registered) registeredApps.set(key, event);
+  else registeredApps.delete(key);
+}
 const custody = [];
 for (const address of new Set<string>([...Object.values<string>(source.production), ...Object.values<string>(source.testnet)])) {
   custody.push({ address, eth: await rpc.getBalance({ address: address as Address, blockNumber }),
@@ -98,7 +123,8 @@ for (const address of new Set<string>([...Object.values<string>(source.productio
 if ((await rpc.getBlock({ blockNumber })).hash !== block.hash) throw Error('Snapshot block reorganized');
 const snapshot = {
   version: 'v11-read-only-migration-inventory', source, blockNumber, blockHash: block.hash,
-  totalSupply, holders, deeds, stakingPositions, stakingState, liquidityState, runtimeAccounting, custody,
+  totalSupply, holders, deeds, stakingPositions, stakingState, liquidityState, runtimeAccounting,
+  paymasterAccounting, registeredApps: [...registeredApps.values()], custody,
   limitations: ['Inventory is not a migration authorization or complete app-state export.',
     'DEX LP shares, external asset custody, staking rewards and proposal payloads need explicit migration adapters.',
     'Frozen VOID operators require a new token to use a replacement Runtime/Paymaster without approvals.'],
@@ -106,4 +132,7 @@ const snapshot = {
 mkdirSync('deployments', { recursive: true });
 const path = `deployments/testnet-v11-inventory-${blockNumber}.json`;
 writeFileSync(path, JSON.stringify(snapshot, (_key, value) => typeof value === 'bigint' ? value.toString() : value, 2) + '\n', { flag: 'wx' });
-console.log(JSON.stringify({ path, block: blockNumber.toString(), totalSupply: totalSupply.toString(), holders: holders.length, minted: minted.toString() }));
+console.log(JSON.stringify({
+  path, block: blockNumber.toString(), totalSupply: totalSupply.toString(), holders: holders.length,
+  minted: minted.toString(), registeredApps: registeredApps.size,
+}));

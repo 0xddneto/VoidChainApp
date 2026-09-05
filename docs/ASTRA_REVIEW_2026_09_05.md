@@ -1,7 +1,8 @@
 # Engineering review — 2026-09-05
 
 This is an internal review, not an independent audit or a mainnet approval.
-The public contract deployment remains V10. V11 migration is still incomplete.
+The canonical public contract deployment is V11. Earlier V10 findings below
+are retained as historical review context; they are not active addresses.
 
 ## Confirmed findings and changes
 
@@ -30,7 +31,7 @@ The public contract deployment remains V10. V11 migration is still incomplete.
 
 ## Feedback verification
 
-A fresh browser load of the public mint displayed V10, then six minted Deeds,
+A fresh browser load of the public mint displayed V11, then six minted Deeds,
 960,620 VOID pool reserve and ready price status. The initial placeholders did
 match the developer's report. No V7 response was observed in that check; that is
 not proof that every CDN cache or old browser session was current.

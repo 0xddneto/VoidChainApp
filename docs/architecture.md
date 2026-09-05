@@ -42,7 +42,7 @@ VOID, and the paymaster charges a bounded VOID gas reimbursement. The user
 must never be routed by an official app to a bare token faucet, pool, or
 runtime call that bypasses the chain fee or asks them to supply ETH.
 
-VOID-only actions need no allowance: V10 permanently freezes the Runtime and
+VOID-only actions need no allowance: V11 permanently freezes the Runtime and
 Paymaster as token operators, while the signed `SponsoredCall` supplies the
 exact one-call budget. External assets retain their own authorization rules. An
 EIP-2612 asset can supply a permit; a non-compliant ERC-20 needs an ordinary
@@ -76,7 +76,7 @@ changing a label or social link does not rewrite execution rules or custody.
 
 The collection genesis mint is protocol infrastructure, outside every deed's
 runtime. It takes ETH because it creates the Deed and starts the VOID economy;
-the chain is still inactive, so no chain transaction fee exists yet. The V10
+the chain is still inactive, so no chain transaction fee exists yet. The V11
 mint imported block-pinned ownership and the exact prior VOID ledger, then
 continued a one-mint-per-wallet supply from the next Deed ID. Mint proceeds are
 split by the immutable genesis rules into liquidity and time-locked protocol

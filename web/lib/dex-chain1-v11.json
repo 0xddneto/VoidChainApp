@@ -1,0 +1,16 @@
+{
+  "version": "v11-canonical-chainapp-testnet",
+  "chainTokenId": 1,
+  "runtime": "0xe3eb435e7c9f9d16b1e8b669e271726a37543239",
+  "paymaster": "0x9b0160fd8f503a435f2dcef9dd2bbaed23422aaa",
+  "appFactory": "0x77c4a76b4d5d70c472a929a8b681649440311025",
+  "factory": "0xdFECCb81cD71537232cAd9e96850079BC2BdB243",
+  "factoryImplementation": "0x3dd8dae05c29a28f4aae6b03079dd3c1386bfdfc",
+  "baseToken": "0x2284709a956c9d6c7f0cbf981f6ff9933410fc50",
+  "pools": [
+    { "address": "0xDDDF85BD0332582F077AB45FB38AD6C343b82621", "label": "VOID / tUSD", "asset": "0x9e3999b7245da27fe5819a5949c3915e865ac29a", "token0": "0x2284709A956C9d6c7f0CbF981f6ff9933410Fc50", "token1": "0x9E3999B7245Da27fE5819a5949C3915e865aC29a" },
+    { "address": "0xf9a9B8b4177c01F42FE9cB20430916f14137CD38", "label": "VOID / tLINK", "asset": "0xfc99e7c7f7d43f1097ec2ec115870227236e0a65", "token0": "0x2284709A956C9d6c7f0CbF981f6ff9933410Fc50", "token1": "0xFC99E7C7f7d43f1097Ec2EC115870227236E0A65" }
+  ],
+  "faucet": "0x3606B0a66B9a705F81CEfeec21b9dcEb06208991",
+  "faucetImplementation": "0xa04d7b0dcdc92c84da316fe319df2ddd2865a928"
+}

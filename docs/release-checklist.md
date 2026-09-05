@@ -5,13 +5,13 @@
 - [ ] Install exactly the locked Node and Solidity dependencies from a clean clone.
 - [ ] Run `forge build` and `forge test`, including `MegaLoadTest`.
 - [ ] Snapshot the currently published supply, deploy with
-  `script/deploy-testnet-v10.ts`, and require every staged proof before updating
+  `script/deploy-testnet-v11.ts`, and require every staged proof before updating
   `web/lib/deployment.json`.
 - [ ] Confirm the deployment creates the runtime, fixes the DAO factory once,
   and creates all 1,111 deterministic DAO clones before user activation.
 - [ ] Verify deployed source and constructor arguments in the parent-chain
   explorer; compare the generated deployment file with the web configuration.
-- [ ] Run `npm run verify:testnet-v10`, require all contracts to pass explorer
+- [ ] Run `npm run verify:testnet-v11`, require all contracts to pass explorer
   recompilation, then reconcile supply, owners, 1,111 DAOs,
   runtime custody, owner revenue, protocol revenue and Paymaster reserve.
 - [ ] Run the indexer against that deployment and exercise VoidScan's registry,
