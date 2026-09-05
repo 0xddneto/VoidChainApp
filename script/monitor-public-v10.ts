@@ -1,6 +1,7 @@
 /** Public availability, reserve and bytecode integrity monitor. */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createPublicClient, fallback, getAddress, http, keccak256, parseAbi, type Address } from 'viem';
+import { MANIFEST_HASH, RELEASE } from '../web/lib/public-release';
 
 const deployment = JSON.parse(readFileSync('../web/lib/deployment.json', 'utf8'));
 const integrity = JSON.parse(readFileSync('public-v10-integrity.json', 'utf8')) as { chainId: number; contracts: Record<string, string> };
@@ -100,10 +101,16 @@ async function main() {
   await Promise.all([
     checkPage(VOIDSCAN),
     checkPage(`${VOIDSCAN}/docs`),
+    checkPage(`${VOIDSCAN}/contracts`),
+    checkPage(`${VOIDSCAN}/security`),
     checkPage(`${VOIDSCAN}/mint`),
     checkPage(`${VOIDSCAN}/market`),
     checkPage(VOIDDEX),
   ]);
+  const release = await checkJson(`${VOIDSCAN}/api/release`) as { chainId?: number; version?: string; manifestHash?: string; commit?: string };
+  requireState(release.chainId === 46_630 && release.version === RELEASE && release.manifestHash === MANIFEST_HASH,
+    'Public release disagrees with the checked-in deployment manifest');
+  requireState(Boolean(release.commit), 'Production release does not identify its Git commit');
   const [market, activity, dexState, chainOne] = await Promise.all([
     checkJson(`${VOIDSCAN}/api/market/state`),
     checkJson(`${VOIDSCAN}/api/activity`),
@@ -120,7 +127,8 @@ async function main() {
         abi: parseAbi(['function implementation() view returns(address)']),
         functionName: 'implementation',
       });
-      requireState((await rpc.getCode({ address: implementation })) !== '0x', `App implementation missing at ${implementation}`);
+      const implementationCode = await rpc.getCode({ address: implementation });
+      requireState(implementationCode && implementationCode !== '0x', `App implementation missing at ${implementation}`);
       await requireVerified(implementation);
       const response = await fetch(`${explorer}/api/v2/addresses/${gateway}`, { signal: AbortSignal.timeout(15_000) });
       const record = response.ok ? await response.json() as { implementations?: Array<{ address_hash: string }> } : {};
@@ -139,6 +147,9 @@ async function main() {
     ok: true,
     checkedAt: new Date().toISOString(),
     chainId: 46_630,
+    release: release.version,
+    commit: release.commit,
+    manifestHash: release.manifestHash,
     contracts: new Set(core.map((address) => address.toLowerCase())).size,
     voidPerEth: rate.toString(),
     paymasterEthWei: reserve.toString(),

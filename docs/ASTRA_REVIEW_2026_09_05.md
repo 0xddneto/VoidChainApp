@@ -20,6 +20,7 @@ The public contract deployment remains V10. V11 migration is still incomplete.
 | RPC log/block disagreement could persist mixed-fork events. | Refuse a batch when any event hash differs from its retrieved block. | Does not replace parent-chain finality |
 | Excluded governance reserves still returned voting power. | Zero voting power for constructor-excluded addresses. | V11 source only; live adapter remains unchanged |
 | Receipt timeout told the user to sign again after broadcast. | Return the broadcast hash with submitted status instead. | The receipt remains the execution authority |
+| A forged wallet signature could reserve a victim's relay nonce before rejection. | Authenticate the typed-data signer before database reservation in both products. | Contract replay protection remains authoritative |
 | Private vulnerability reporting was documented but disabled. | Enabled on protocol and DEX repositories. | GitHub setting |
 
 ## Feedback verification
@@ -44,6 +45,16 @@ including the 0.5% protocol fee, before the ChainApp transaction/gas charge.
   manifest consistency and NFT sale ABI regressions.
 - Production database migration 008 only adds tables/indexes; no balances,
   profiles, tokens or NFTs were reset.
+- GitHub's heavy Foundry run passed with 4,096 fuzz runs and the additional
+  1,024-run RedTeam4 invariant job. The disposable database restore drill passed.
+- The separately triggered security-nightly workflow **did not pass**. Slither
+  reported 336 findings across active, reference, legacy and dependency code;
+  findings still require individual classification. Examples include intentional
+  gateway delegation and a JSON encoder flagged as a signature collision, but
+  also unchecked token return values in the optional L3 controller. No blanket
+  suppression was added. Gitleaks also failed on 65 historical generic-key
+  matches, predominantly public addresses; this is not yet a clean secret scan.
+  See [the recorded workflow](https://github.com/0xddneto/VoidChainApp/actions/runs/33945741192).
 
 ## Remaining work and recommended order
 
@@ -66,6 +77,9 @@ including the 0.5% protocol fee, before the ChainApp transaction/gas charge.
 8. Obtain independent contract review and economic/oracle stress testing before
    real-value liquidity. Compiler or OpenZeppelin major upgrades require their
    own bytecode review; they are not routine dependency merges.
+9. Complete static-analysis and historical secret-scan triage, with narrow,
+   documented exceptions only for proven false positives. Keep the failing
+   security check visible until the remaining findings are resolved.
 
 The shared gateway cannot sanitize arbitrary malicious application logic.
 It gates entry and scopes user budgets; builders must still audit their apps.
