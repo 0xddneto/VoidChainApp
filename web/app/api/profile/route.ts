@@ -13,6 +13,7 @@ import { canonicalProfile, profileMessage } from '@/lib/profile-signature';
 import { pool } from '@/lib/db';
 import { relayClientId } from '@/lib/relay-guard';
 import { rhTransport } from '@/lib/testnet';
+import { BodyError, readJsonObject } from '@/lib/request-body';
 
 const MAX_AVATAR_BYTES = 650_000;
 const MAX_REQUEST_BYTES = 950_000;
@@ -86,17 +87,14 @@ export async function POST(req: Request) {
   };
 
   try {
-    const raw = Buffer.from(await req.arrayBuffer());
-    if (raw.byteLength > MAX_REQUEST_BYTES) {
-      return NextResponse.json({ error: 'profile request is too large' }, { status: 413 });
-    }
-    body = JSON.parse(raw.toString('utf8'));
-  } catch {
+    body = await readJsonObject(req, MAX_REQUEST_BYTES);
+  } catch (error) {
+    if (error instanceof BodyError) return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json({ error: 'malformed body' }, { status: 400 });
   }
 
   const { address, nonce, signature } = body;
-  if (!address || !isAddress(address) || !nonce || !signature) {
+  if (typeof address !== 'string' || !isAddress(address) || typeof nonce !== 'string' || !/^\d{13}\.[a-zA-Z0-9-]{1,80}$/.test(nonce) || typeof signature !== 'string' || !/^0x[0-9a-fA-F]+$/.test(signature)) {
     return NextResponse.json({ error: 'address, nonce and signature are required' }, { status: 400 });
   }
 
@@ -132,12 +130,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'profile image must be a real PNG, JPEG or WEBP under 650 KB' }, { status: 400 });
   }
 
-  await saveProfile(address, {
+  try { await saveProfile(address, {
     displayName: profile.displayName,
     avatarUri,
     bio: profile.bio,
     socials: profile.socials,
-  });
+  }, nonce); } catch (error) {
+    if (error instanceof Error && error.message === 'PROFILE_NONCE_USED') return NextResponse.json({ error: 'This signature has already been used. Sign a new update.' }, { status: 409 });
+    return NextResponse.json({ error: 'Profile storage is unavailable. Try again later.' }, { status: 503 });
+  }
 
   return NextResponse.json({ ok: true });
 }

@@ -46,6 +46,8 @@ contract VoidLiquidityVault {
     }
 
     /// @notice Seeds only the previously pinned liquidity contract.
+    // Destination is the one-time pinned pool, never a caller-provided wallet.
+    // slither-disable-next-line arbitrary-send-eth
     function seed(IVoidLiquidityToken token, uint256 tokenAmount, uint256 ethAmount) external {
         address target = pool;
         if (target == address(0)) revert PoolNotPinned();

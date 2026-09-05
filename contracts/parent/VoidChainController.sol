@@ -110,6 +110,8 @@ contract VoidChainController {
     error ZeroAddress();
     error InsufficientTicketValue();
     error SameExecutor(address executor);
+    error TokenTransferFailed();
+    error InvalidFeeBounds();
 
     constructor(IVoidChainDeed deed_, IGasToken gasToken_, address governance_) {
         if (
@@ -179,6 +181,7 @@ contract VoidChainController {
         // Found by test: without this clause, `currentBaseFee` starts at zero
         // and ANY initial value counts as an increase.
         if (newFee <= currentBaseFee[tokenId] || currentBaseFee[tokenId] == 0) {
+            delete pendingBaseFee[tokenId];
             _pushMinBaseFee(tokenId, newFee, ticketFee);
         } else {
             uint256 executableAt = block.timestamp + FEE_INCREASE_DELAY;
@@ -210,8 +213,7 @@ contract VoidChainController {
         currentBaseFee[tokenId] = newFee;
 
         if (ticketFee == 0) revert InsufficientTicketValue();
-        gasToken.transferFrom(msg.sender, address(this), ticketFee);
-        gasToken.approve(address(chain.inbox), ticketFee);
+        _fundTicket(address(chain.inbox), ticketFee);
 
         bytes memory payload = abi.encodeWithSignature("applyMinBaseFee(uint256)", newFee);
 
@@ -226,12 +228,18 @@ contract VoidChainController {
             tokenTotalFeeAmount: ticketFee,
             data: payload
         });
+        if (!gasToken.approve(address(chain.inbox), 0)) revert TokenTransferFailed();
 
         emit BaseFeeApplied(tokenId, newFee);
     }
 
     function _requireActivated(uint256 tokenId) internal view {
         if (!chains[tokenId].activated) revert VoidChainNotActivated(tokenId);
+    }
+
+    function _fundTicket(address inbox, uint256 amount) private {
+        if (!gasToken.transferFrom(msg.sender, address(this), amount)) revert TokenTransferFailed();
+        if (!gasToken.approve(inbox, 0) || !gasToken.approve(inbox, amount)) revert TokenTransferFailed();
     }
 
     // ---------------------------------------------------------------------
@@ -257,8 +265,7 @@ contract VoidChainController {
 
         VoidChain memory chain = chains[tokenId];
 
-        gasToken.transferFrom(msg.sender, address(this), ticketFee);
-        gasToken.approve(address(chain.inbox), ticketFee);
+        _fundTicket(address(chain.inbox), ticketFee);
 
         chain.inbox.createRetryableTicket({
             to: chain.executor,
@@ -271,6 +278,7 @@ contract VoidChainController {
             tokenTotalFeeAmount: ticketFee,
             data: abi.encodeWithSignature("bindFeeAccounts()")
         });
+        if (!gasToken.approve(address(chain.inbox), 0)) revert TokenTransferFailed();
 
         emit FeeAccountsBound(tokenId, chain.executor);
     }
@@ -327,11 +335,13 @@ contract VoidChainController {
         // becomes immediate again, instead of waiting three days for an
         // "increase" that exists only in this contract's bookkeeping.
         currentBaseFee[tokenId] = 0;
+        delete pendingBaseFee[tokenId];
 
         emit ExecutorMigrated(tokenId, previous, newExecutor);
     }
 
     function setFeeBounds(uint256 floor, uint256 ceiling) external onlyGovernance {
+        if (floor == 0 || floor > ceiling) revert InvalidFeeBounds();
         minBaseFeeFloor = floor;
         minBaseFeeCeiling = ceiling;
     }

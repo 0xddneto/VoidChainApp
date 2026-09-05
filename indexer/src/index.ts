@@ -94,6 +94,7 @@ async function blocks(logs: Log[]): Promise<Map<bigint, BlockInfo>> {
   // exactly what makes the public RPC start refusing requests.
   for (const n of wanted) {
     const b = await client.getBlock({ blockNumber: n });
+    if (logs.some((log) => log.blockNumber === n && log.blockHash !== b.hash)) throw new Error('RPC logs and block hash disagree; refusing mixed-fork events.');
     out.set(n, { timestamp: Number(b.timestamp), hash: b.hash!, parentHash: b.parentHash });
   }
   return out;
@@ -185,13 +186,14 @@ async function scan(): Promise<number> {
     statuses,
     calls,
     registered.map((l) => ({
+      blockNumber: l.blockNumber!, logIndex: l.logIndex!,
       chain: Number(l.args.tokenId!),
       app: l.args.app!,
       publisher: l.args.publisher!,
       hash: l.transactionHash!,
       timestamp: info.get(l.blockNumber!)!.timestamp,
     })),
-    unregistered.map((l) => ({ chain: Number(l.args.tokenId!), app: l.args.app! })),
+    unregistered.map((l) => ({ blockNumber: l.blockNumber!, logIndex: l.logIndex!, chain: Number(l.args.tokenId!), app: l.args.app! })),
     revenue.map((l) => ({ chain: Number(l.args.tokenId!), holder: l.args.deedHolder!, gross: l.args.gross!, protocolFee: l.args.protocolFee!, holderShare: l.args.holderShare!, hash: l.transactionHash!, logIndex: l.logIndex!, timestamp: info.get(l.blockNumber!)!.timestamp })),
     sponsored.map((log) => {
       const previous = sponsored.filter((other) => other.transactionHash === log.transactionHash && other.logIndex! < log.logIndex!)

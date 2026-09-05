@@ -24,6 +24,9 @@ contract VoidChainAppGateway {
     error InitialisationFailed(bytes reason);
     error QueryFailed(bytes reason);
 
+    // Builder-selected logic initializes this NEW gateway's isolated storage.
+    // Authority and implementation are immutable; registration follows construction.
+    // slither-disable-next-line controlled-delegatecall
     constructor(address runtime_, uint256 chainId_, address implementation_, bytes memory initialiseData) {
         if (runtime_ == address(0) || chainId_ == 0 || implementation_.code.length == 0) {
             revert InvalidImplementation();

@@ -24,6 +24,23 @@ export interface RelayerSubmission {
 const bytes = (hex: string): Buffer => Buffer.from(hex.slice(2), 'hex');
 const digest = (value: string): Buffer => createHash('sha256').update(value).digest();
 
+/** Cheap shared admission gate before signature recovery, RPC reads or simulation. */
+export async function admitRelayIngress(clientId: string): Promise<void> {
+  try {
+    await pool.query("DELETE FROM relay_ingress WHERE window_start < now() - interval '1 day'");
+    const result = await pool.query<{ attempts: number }>(
+      `INSERT INTO relay_ingress(client_hash) VALUES($1)
+       ON CONFLICT(client_hash) DO UPDATE SET
+         attempts=CASE WHEN relay_ingress.window_start <= now()-interval '1 minute' THEN 1 ELSE LEAST(relay_ingress.attempts+1,61) END,
+         window_start=CASE WHEN relay_ingress.window_start <= now()-interval '1 minute' THEN now() ELSE relay_ingress.window_start END
+       RETURNING attempts`, [digest(clientId)]);
+    if (result.rows[0].attempts > 60) throw new RelayAdmissionError('Too many relay requests. Retry shortly.', 429);
+  } catch (error) {
+    if (error instanceof RelayAdmissionError) throw error;
+    throw new RelayAdmissionError('Relay admission control is unavailable.', 503);
+  }
+}
+
 export function relayClientId(request: Request): string {
   const vercel = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim();
   if (process.env.VERCEL === '1' && vercel) return vercel;
@@ -54,9 +71,11 @@ export async function reserveRelay(
   try {
     await client.query('BEGIN');
     await client.query("DELETE FROM relay_requests WHERE created_at < now() - interval '7 days'");
+    await client.query("DELETE FROM relay_attempts WHERE created_at < now() - interval '10 minutes'");
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`relay-client:${clientHash.toString('hex')}`]);
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`relay-user:${paymaster.toLowerCase()}:${user.toLowerCase()}`]);
     const { rows } = await client.query<{ requests: string }>(
-      `SELECT count(*) AS requests FROM relay_requests
+      `SELECT count(*) AS requests FROM relay_attempts
        WHERE created_at > now() - interval '1 minute'
          AND (user_address = $1 OR client_hash = $2)`,
       [userBytes, clientHash],
@@ -66,6 +85,7 @@ export async function reserveRelay(
       throw new RelayAdmissionError('Too many relay requests. Wait one minute and try again.', 429);
     }
 
+    await client.query('INSERT INTO relay_attempts(user_address,client_hash) VALUES($1,$2)', [userBytes, clientHash]);
     const claim = await client.query(
       `INSERT INTO relay_requests
          (surface, paymaster_address, user_address, user_nonce, client_hash, request_hash)
@@ -82,7 +102,7 @@ export async function reserveRelay(
       [surface, paymasterBytes, userBytes, nonce.toString(), clientHash, requestHash],
     );
     if (claim.rowCount !== 1) {
-      await client.query('ROLLBACK');
+      await client.query('COMMIT');
       throw new RelayAdmissionError('This signed nonce is already being relayed.', 409);
     }
     await client.query('COMMIT');

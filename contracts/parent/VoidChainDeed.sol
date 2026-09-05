@@ -273,6 +273,9 @@ contract VoidChainDeed is ERC721Enumerable, ERC2981, IERC4906, IERC4494, EIP712 
 
     /// @notice Standard ERC-721 metadata. It remains available without a
     ///         centralized API, while holder edits are reflected immediately.
+    // JSON rendering, not a hash/signature preimage. Holder strings are escaped
+    // and separated by literal JSON field delimiters.
+    // slither-disable-next-line encode-packed-collision
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         _requireOwned(tokenId);
         Identity storage id = _identity[tokenId];

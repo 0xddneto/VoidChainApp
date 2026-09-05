@@ -124,6 +124,15 @@ contract RevenueTest is Test {
         vm.deal(address(vault), address(vault).balance + amount);
     }
 
+    function test_RouterFailedApprovalDoesNotRecordRevenue() public {
+        voidToken.mint(address(router), 100 ether);
+        vm.mockCall(address(voidToken), abi.encodeWithSelector(IRouterERC20.approve.selector), abi.encode(false));
+        vm.expectRevert(VoidChainRevenueRouter.TokenApprovalFailed.selector);
+        router.flush();
+        assertEq(router.lifetimeRouted(), 0);
+        assertEq(voidToken.balanceOf(address(router)), 100 ether);
+    }
+
     // -----------------------------------------------------------------------
     // Hop 1: from the chain to the bridge
     // -----------------------------------------------------------------------

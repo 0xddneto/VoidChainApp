@@ -11,10 +11,10 @@ export type SignedProfile = {
 /** One canonical payload for both the browser signature and server write. */
 export function canonicalProfile(value: Partial<SignedProfile>): SignedProfile {
   return {
-    displayName: (value.displayName ?? '').slice(0, 64),
-    avatarUri: value.avatarUri ?? '',
-    bio: (value.bio ?? '').slice(0, 500),
-    socials: (value.socials ?? []).slice(0, 8).map((social) => ({
+    displayName: (typeof value.displayName === 'string' ? value.displayName : '').slice(0, 64),
+    avatarUri: typeof value.avatarUri === 'string' ? value.avatarUri : '',
+    bio: (typeof value.bio === 'string' ? value.bio : '').slice(0, 500),
+    socials: (Array.isArray(value.socials) ? value.socials : []).slice(0, 8).filter((social) => social && typeof social.platform === 'string' && typeof social.handle === 'string').map((social) => ({
       platform: social.platform.trim().slice(0, 32),
       handle: social.handle.trim().slice(0, 64),
     })).filter((social) => social.platform && social.handle),

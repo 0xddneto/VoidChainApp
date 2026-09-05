@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createPublicClient, createWalletClient, custom, encodeFunctionData, formatEther,
   parseEther, type Address, type Hex,
@@ -9,6 +9,8 @@ import { RH_TESTNET, rhTransport } from '@/lib/testnet';
 import GENESIS from '@/lib/genesis-v10.json';
 import { WalletProfileButton } from '../WalletProfileButton';
 import styles from './page.module.css';
+import { TransactionIdentity } from '../TransactionIdentity';
+import { MANIFEST_HASH } from '@/lib/public-release';
 
 const rpc = createPublicClient({ transport: rhTransport() });
 const C = GENESIS.contracts as Record<string, Address>;
@@ -35,6 +37,10 @@ export default function MintPage() {
   const [chainOk, setChainOk] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [readHealthy, setReadHealthy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [checkedAt, setCheckedAt] = useState(0);
+  const [clock, setClock] = useState(Date.now());
+  const generation = useRef(0);
   const [message, setMessage] = useState<Message>(null);
   const [minted, setMinted] = useState<bigint | null>(null);
   const [hasMinted, setHasMinted] = useState(false);
@@ -51,31 +57,44 @@ export default function MintPage() {
   const onboardingQuote = effectiveOnboarding > 0n && reserveEth > 0n ? effectiveOnboarding * reserveVoid / (reserveEth + effectiveOnboarding) : 0n;
 
   const refresh = useCallback(async (wallet: Address | null) => {
+    const requestId = ++generation.current;
     setReadHealthy(false);
+    setLoading(true);
+    const release = await fetch('/api/release', { cache: 'no-store' }).then((response) => response.json());
+    if (release.manifestHash !== MANIFEST_HASH) throw new Error('The app was updated. Reload before signing.');
     const [supply, price, voidReserve, ethReserve] = await Promise.all([
       rpc.readContract({ address: C.mint, abi: mintAbi, functionName: 'totalMinted' }),
       rpc.readContract({ address: C.mint, abi: mintAbi, functionName: 'mintPriceWei' }),
       rpc.readContract({ address: C.pool, abi: poolAbi, functionName: 'reserveVoid' }),
       rpc.readContract({ address: C.pool, abi: poolAbi, functionName: 'reserveEth' }),
     ]);
+    if (requestId !== generation.current) return;
     setMinted(supply); setMintPrice(price); setReserveVoid(voidReserve); setReserveEth(ethReserve);
     try {
       const rate = await rpc.readContract({ address: C.oracle, abi: oracleAbi, functionName: 'voidPerEth' });
+      if (requestId !== generation.current) return;
       setTwapRate(rate);
     } catch {
       // A stale price pauses sponsorship, but it must never hide mint supply,
       // wallet balances, or the locked pool from the user.
+      if (requestId !== generation.current) return;
       setTwapRate(0n);
     }
-    if (!wallet) { setHasMinted(false); setEthBalance(0n); setVoidBalance(0n); setReadHealthy(true); return; }
+    if (!wallet) { setHasMinted(false); setEthBalance(0n); setVoidBalance(0n); setReadHealthy(true); setLoading(false); setCheckedAt(Date.now()); return; }
     const [already, eth, token] = await Promise.all([
       rpc.readContract({ address: C.mint, abi: mintAbi, functionName: 'hasMinted', args: [wallet] }),
       rpc.getBalance({ address: wallet }),
       rpc.readContract({ address: C.token, abi: tokenAbi, functionName: 'balanceOf', args: [wallet] }),
     ]);
-    setHasMinted(already); setEthBalance(eth); setVoidBalance(token); setReadHealthy(true);
+    if (requestId !== generation.current) return;
+    setHasMinted(already); setEthBalance(eth); setVoidBalance(token); setReadHealthy(true); setLoading(false); setCheckedAt(Date.now());
   }, []);
-  useEffect(() => { void refresh(account).catch(() => setMessage({ kind: 'err', text: 'Could not read the testnet. Try again shortly.' })); }, [account, refresh]);
+  useEffect(() => {
+    const update = () => { void refresh(account).catch(() => { setReadHealthy(false); setLoading(false); setMessage({ kind: 'err', text: 'Could not verify the current testnet state. Transactions are disabled. Refresh to retry.' }); }); };
+    update(); const timer = setInterval(update, 30_000);
+    return () => { clearInterval(timer); generation.current++; };
+  }, [account, refresh]);
+  useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 1_000); return () => clearInterval(timer); }, []);
 
   const provider = () => typeof window === 'undefined' ? undefined : (window as any).ethereum;
   useEffect(() => {
@@ -106,6 +125,10 @@ export default function MintPage() {
     const eth = provider(); if (!eth || !account) return;
     setBusy(label); setMessage({ kind: 'info', text: `Review ${label === 'mint' ? 'mint()' : 'swapEthForVoid()'} · Robinhood Testnet 46630 · ${to} · ${ethText(value, 6)} ETH.` });
     try {
+      if (!readHealthy || Date.now() - checkedAt > 60_000 || twapRate <= 0n || reserveVoid <= 0n || reserveEth <= 0n) throw new Error('Current pool and price checks are required before signing.');
+      const release = await fetch('/api/release', { cache: 'no-store' }).then((response) => response.json());
+      if (release.manifestHash !== MANIFEST_HASH) throw new Error('The app was updated. Reload before signing.');
+      if (await rpc.readContract({ address: C.oracle, abi: oracleAbi, functionName: 'voidPerEth' }) <= 0n) throw new Error('Price unavailable. Transactions are paused.');
       const current = await eth.request({ method: 'eth_chainId' });
       if (typeof current !== 'string' || current.toLowerCase() !== RH_TESTNET.chainIdHex) throw new Error('Switch your wallet to Robinhood Chain Testnet.');
       if (await rpc.getChainId() !== RH_TESTNET.chainId) throw new Error('The RPC returned the wrong network.');
@@ -141,7 +164,8 @@ export default function MintPage() {
       'VOID acquired from the locked genesis pool. Future app actions use signed VOID through the Paymaster.');
   };
   const connected = Boolean(account && chainOk); const twapReady = twapRate > 0n;
-  const soldOut = minted !== null && minted >= BigInt(P.maxSupply); const canMint = readHealthy && minted !== null && connected && !hasMinted && !soldOut && ethBalance >= mintPrice && busy === null;
+  const healthy = readHealthy && clock - checkedAt < 60_000 && twapReady && reserveVoid > 0n && reserveEth > 0n;
+  const soldOut = minted !== null && minted >= BigInt(P.maxSupply); const canMint = healthy && minted !== null && connected && !hasMinted && !soldOut && ethBalance >= mintPrice && busy === null;
 
   return <>
     <header className={styles.header}><div className={styles.bar}><div className={styles.logo}>Void<span>Scan</span></div><a className={styles.back} href="/">← explorer</a><a className={styles.docsLink} href="/docs">Docs</a><WalletProfileButton /></div></header>
@@ -150,16 +174,18 @@ export default function MintPage() {
       <dl className={styles.facts}>
         <div className={styles.fact}><dt>Minted</dt><dd>{minted?.toString() ?? '—'}<small> / {P.maxSupply}</small></dd></div>
         <div className={styles.fact}><dt>Mint price</dt><dd>{ethText(mintPrice, 4)}<small> ETH</small></dd></div>
-        <div className={styles.fact}><dt>Locked pool</dt><dd>{voidText(reserveVoid)}<small> VOID</small></dd></div>
-        <div className={styles.fact}><dt>TWAP</dt><dd>{twapReady ? 'ready' : 'unavailable'}<small>{twapReady ? ' · price available' : ' · sponsorship paused'}</small></dd></div>
+        <div className={styles.fact}><dt>Locked pool</dt><dd>{minted === null ? 'Loading…' : voidText(reserveVoid)}<small> VOID</small></dd></div>
+        <div className={styles.fact}><dt>Price status</dt><dd>{loading ? 'Checking…' : healthy ? 'Ready' : 'Unavailable'}<small>{loading ? ' · reading testnet' : healthy ? ' · price available' : ' · transactions paused'}</small></dd></div>
       </dl>
+      <TransactionIdentity address={C.mint} action="mint()" value={`${ethText(mintPrice, 6)} ETH + wallet network gas`} />
+      {!healthy && <p role="status">{loading ? 'Checking contracts, pool and price. Transactions are disabled until checks complete.' : 'Transactions are paused until pool and price checks succeed.'} <button onClick={() => void refresh(account).catch(() => { setReadHealthy(false); setLoading(false); })} disabled={loading}>Refresh</button></p>}
       <div className={styles.steps}>
         <section className={styles.step} data-done={connected}><div className={styles.num}>{connected ? '✓' : '1'}</div><div className={styles.stepBody}><h2>Connect wallet</h2><p>Use Robinhood Chain testnet. Connecting never spends anything.</p><button className={styles.btn} onClick={connect} disabled={busy !== null || connected}>{connected ? `${account!.slice(0, 6)}…${account!.slice(-4)}` : 'Connect wallet'}</button></div></section>
         <section className={styles.step} data-done={hasMinted} data-blocked={!connected}><div className={styles.num}>{hasMinted ? '✓' : '2'}</div><div className={styles.stepBody}><h2>Mint</h2><p>Your wallet will show exactly <b>{ethText(mintPrice, 4)} ETH</b> sent to the genesis mint contract. There is no VOID approval and no hidden relayer fee. One Deed per wallet.</p>{connected && <p className={ethBalance < mintPrice ? styles.noEth : undefined}>Wallet balance: <b className={styles.mono}>{ethText(ethBalance, 5)} ETH</b>{ethBalance < mintPrice && ' — insufficient for the mint.'}</p>}<div className={styles.row}><button className={styles.btn} onClick={mint} disabled={!canMint}>{busy === 'mint' ? 'Minting…' : hasMinted ? 'Mint complete' : soldOut ? 'Sold out' : 'Mint'}</button><span className={styles.mono}>40% locked LP · 20% Paymaster · 40% protocol</span></div></div></section>
-        <section id="get-void" className={styles.step} data-done={voidBalance > 0n} data-blocked={!twapReady}><div className={styles.num}>{voidBalance > 0n ? '✓' : '3'}</div><div className={styles.stepBody}><h2>Get VOID for apps</h2><p>Optional onboarding swap from the locked VOID/ETH pool. This intentionally uses ETH because it acquires the token that pays later sponsored app transactions. Pool fee: {P.poolFeeBps / 100}%.</p>{connected && <p>Your VOID: <b className={styles.mono}>{voidText(voidBalance)} VOID</b></p>}<label className={styles.swapAmount}>ETH amount<input value={onboardingEth} onChange={(event) => setOnboardingEth(event.target.value)} inputMode="decimal" aria-label="ETH to swap for VOID" /></label><p>Estimated output: <b>{voidText(onboardingQuote, 2)} VOID</b> · 2% max slippage. Large swaps have price impact.</p><button className={`${styles.btn} ${styles.btnGhost}`} onClick={buyVoid} disabled={!connected || !twapReady || busy !== null || onboardingWei <= 0n || ethBalance <= onboardingWei || reserveVoid === 0n}>Buy VOID</button></div></section>
+        <section id="get-void" className={styles.step} data-done={voidBalance > 0n} data-blocked={!twapReady}><div className={styles.num}>{voidBalance > 0n ? '✓' : '3'}</div><div className={styles.stepBody}><h2>Get VOID for apps</h2><p>Optional onboarding swap from the locked VOID/ETH pool. This intentionally uses ETH because it acquires the token that pays later sponsored app transactions. Pool fee: {P.poolFeeBps / 100}%.</p>{connected && <p>Your VOID: <b className={styles.mono}>{voidText(voidBalance)} VOID</b></p>}<label className={styles.swapAmount}>ETH amount<input value={onboardingEth} onChange={(event) => setOnboardingEth(event.target.value)} inputMode="decimal" aria-label="ETH to swap for VOID" /></label><p>Estimated output: <b>{healthy ? `${voidText(onboardingQuote, 2)} VOID` : 'Unavailable'}</b> · 2% max slippage. Large swaps have price impact.</p><button className={`${styles.btn} ${styles.btnGhost}`} onClick={buyVoid} disabled={!connected || !healthy || busy !== null || onboardingQuote <= 0n || onboardingWei <= 0n || ethBalance <= onboardingWei}>Buy VOID</button></div></section>
       </div>
       {message && <div className={`${styles.msg} ${message.kind === 'ok' ? styles.msgOk : message.kind === 'err' ? styles.msgErr : styles.msgInfo}`}>{message.text}</div>}
-      <div className={styles.note}><p><strong>Testnet only.</strong> V10 preserves the block-pinned Deed ownership and exact 1,000,000,000 VOID ledger from the preceding testnet deployment. It does not duplicate supply or charge existing holders again.</p><p>The NFT/VOID pool runs inside Chain #1. Buy random: 1%. Buy selected: 2%. Sell: 1.5%. Each fee includes a 0.5% protocol share. NFTs can be bought and sold repeatedly; their 500,000 VOID backing is released only once.</p></div>
+      <div className={styles.note}><p><strong>Testnet only.</strong> V10 preserves the block-pinned Deed ownership and exact 1,000,000,000 VOID ledger from the preceding testnet deployment. It does not duplicate supply or charge existing holders again.</p><p>The NFT/VOID pool runs inside Chain #1. Buy random: 1.5%. Buy selected: 2.5%. Sell: 1.5%. These totals include the 0.5% protocol fee. NFTs can be bought and sold repeatedly; their 500,000 VOID backing is released only once.</p></div>
     </main>
   </>;
 }

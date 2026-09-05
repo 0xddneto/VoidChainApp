@@ -1,0 +1,2 @@
+# Solidity byte offsets used by static analysis must agree across platforms.
+*.sol text eol=lf

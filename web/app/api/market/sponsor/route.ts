@@ -5,8 +5,11 @@ import {
   type Address, type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { BodyError, readJsonObject } from '@/lib/request-body';
+import { authenticSponsored } from '@/lib/verify-sponsored';
 import { DEPLOY, rhTransport } from '@/lib/testnet';
-import { RelayAdmissionError, relayClientId, reserveRelay, submitWithRelayerLock } from '@/lib/relay-guard';
+import { RelayAdmissionError, relayClientId, reserveRelay, admitRelayIngress } from '@/lib/relay-guard';
+import { submitDurably } from '@/lib/durable-relay';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,7 +29,7 @@ const marketAbi = parseAbi([
   'function specificBuyQuote() view returns(uint256)',
   'function buyRandom(uint256) returns(uint256)',
   'function buySpecific(uint256,uint256)',
-  'function sellWithPermit(uint256,uint256,uint8,bytes32,bytes32)',
+  'function sellWithPermit(uint256,uint256,bytes)',
 ]);
 const readAbi = parseAbi(['function nonces(address) view returns(uint256)', 'function feeOf(uint256) view returns(uint256)']);
 const paymasterAbi = parseAbi([
@@ -37,7 +40,7 @@ const gatewayAbi = parseAbi(['function query(bytes) view returns(bytes)']);
 type Raw = Record<string, unknown>;
 const reject = (error: string, status = 400) => NextResponse.json({ error }, { status });
 const asAddress = (value: unknown): Address | null => typeof value === 'string' && isAddress(value) ? getAddress(value) : null;
-const asUint = (value: unknown): bigint | null => typeof value === 'string' && /^\d+$/.test(value) ? BigInt(value) : null;
+const asUint = (value: unknown): bigint | null => typeof value === 'string' && /^\d{1,78}$/.test(value) && BigInt(value) < (1n << 256n) ? BigInt(value) : null;
 const asHex = (value: unknown): Hex | null => typeof value === 'string' && /^0x[0-9a-fA-F]*$/.test(value) ? value as Hex : null;
 
 async function quote(functionName: 'randomBuyQuote' | 'specificBuyQuote') {
@@ -54,7 +57,7 @@ export async function POST(request: Request) {
   if (!Number.isFinite(contentLength) || contentLength > 65_536) return reject('Relay request is too large.', 413);
 
   let body: Raw;
-  try { body = await request.json() as Raw; } catch { return reject('Malformed relay request.'); }
+  try { body = await readJsonObject(request, 65_536); } catch (error) { return reject(error instanceof BodyError ? error.message : 'Malformed relay request.', error instanceof BodyError ? error.status : 400); }
   const raw = body.request as Raw | undefined;
   const signature = asHex(body.signature);
   const rawPermits = body.permits;
@@ -69,7 +72,7 @@ export async function POST(request: Request) {
 
   const spends = [] as Array<{ token: Address; amount: bigint }>;
   for (const item of Array.isArray(raw.spends) ? raw.spends : []) {
-    const value = item as Raw; const token = asAddress(value.token); const amount = asUint(value.amount);
+    if (!item || typeof item !== 'object') return reject('Invalid request item.'); const value = item as Raw; const token = asAddress(value.token); const amount = asUint(value.amount);
     if (!token || amount === null || amount === 0n || spends.length >= 1) return reject('Invalid VOID budget.');
     spends.push({ token, amount });
   }
@@ -80,6 +83,10 @@ export async function POST(request: Request) {
     nftSpends.push({ collection, tokenId: id });
   }
 
+  const sponsored = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
+  try { await admitRelayIngress(relayClientId(request)); }
+  catch (error) { return reject(error instanceof Error ? error.message : 'Relay unavailable.', error instanceof RelayAdmissionError ? error.status : 503); }
+  if (!await authenticSponsored(sponsored, signature, PAYMASTER)) return reject('Invalid action signature.', 401);
   let decoded: ReturnType<typeof decodeFunctionData<typeof marketAbi>>;
   try { decoded = decodeFunctionData({ abi: marketAbi, data }); } catch { return reject('Unknown market action.'); }
   if (decoded.functionName === 'buyRandom' || decoded.functionName === 'buySpecific') {
@@ -97,7 +104,7 @@ export async function POST(request: Request) {
     const value = item as Raw; const token = asAddress(value.token); const spender = asAddress(value.spender);
     const amount = asUint(value.value); const permitDeadline = asUint(value.deadline);
     const r = asHex(value.r); const s = asHex(value.s); const v = value.v;
-    if (!token || !spender || amount === null || permitDeadline !== deadline || !r || !s || typeof v !== 'number' || (v !== 27 && v !== 28)) return reject('Invalid token permit.');
+    if (!token || !spender || amount === null || permitDeadline !== deadline || !r || r.length !== 66 || !s || s.length !== 66 || typeof v !== 'number' || (v !== 27 && v !== 28)) return reject('Invalid token permit.');
     if (permits.some((known) => known.token === token && known.spender === spender)) return reject('Duplicate token permit.');
     permits.push({ token, spender, value: amount, deadline: permitDeadline, v, r, s });
   }
@@ -120,6 +127,7 @@ export async function POST(request: Request) {
 
   let reservation: Awaited<ReturnType<typeof reserveRelay>>;
   let broadcast = false;
+  let broadcastHash: Hex | null = null;
   try {
     reservation = await reserveRelay('voidscan-market', PAYMASTER, user, nonce, signature, relayClientId(request));
   } catch (error) {
@@ -129,7 +137,6 @@ export async function POST(request: Request) {
   try {
     const account = privateKeyToAccount(key as Hex);
     const wallet = createWalletClient({ account, transport: rhTransport() });
-    const sponsored = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
     // The Paymaster catches app reverts. Estimating transaction gas alone
     // therefore cannot establish that the requested trade will execute.
     const simulation = await rpc.simulateContract({
@@ -140,14 +147,23 @@ export async function POST(request: Request) {
       await reservation.failed();
       return reject('The market operation would fail. No transaction was sent.', 409);
     }
-    const submission = await submitWithRelayerLock(account.address, 'voidscan-market', () => wallet.sendTransaction({ account, chain: null, to: PAYMASTER, data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }) }));
+    const submission = await submitDurably(account.address, 'voidscan-market', {
+      nonce: (blockTag) => rpc.getTransactionCount({ address: account.address, blockTag }),
+      prepare: async (nonce) => wallet.signTransaction({ ...await wallet.prepareTransactionRequest({
+        account, chain: null, nonce, to: PAYMASTER,
+        data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }),
+      }), account, chain: null }),
+      broadcast: (serializedTransaction) => rpc.sendRawTransaction({ serializedTransaction }),
+    });
     broadcast = true;
-    await reservation.submitted(submission.hash);
+    broadcastHash = submission.hash;
+    await reservation.submitted(submission.hash).catch(() => undefined);
     const receipt = await rpc.waitForTransactionReceipt({ hash: submission.hash, timeout: 45_000 });
     await submission.confirmed(receipt.status === 'success');
     if (receipt.status !== 'success') return reject('Sponsored market transaction reverted.', 502);
     return NextResponse.json({ hash: submission.hash });
   } catch (error) {
+    if (broadcastHash) return NextResponse.json({ hash: broadcastHash, status: 'submitted' }, { status: 202 });
     if (!broadcast) await reservation.failed().catch(() => undefined);
     console.error('Market relay failed', error instanceof Error ? error.name : 'UnknownError');
     return reject('Relay refused the signed market action.', 502);

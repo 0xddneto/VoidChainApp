@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IERC20 {
     function approve(address spender, uint256 amount) external returns (bool);
@@ -30,7 +31,7 @@ interface IVoidChainTreasury {
 ///         `immutable`, and the only thing it does is push what it received into
 ///         the treasury under that number. The address the chain withdraws to is
 ///         itself the proof of where the money came from.
-contract VoidChainRevenueRouter {
+contract VoidChainRevenueRouter is ReentrancyGuard {
     /// @notice The chain whose revenue passes through here. Never changes.
     uint256 public immutable tokenId;
 
@@ -44,6 +45,7 @@ contract VoidChainRevenueRouter {
 
     error NothingToRoute();
     error ZeroAddress();
+    error TokenApprovalFailed();
 
     constructor(uint256 tokenId_, IVoidChainTreasury treasury_, IERC20 voidToken_) {
         if (address(treasury_) == address(0) || address(voidToken_) == address(0)) {
@@ -61,7 +63,7 @@ contract VoidChainRevenueRouter {
     ///         has no choice to make — they only pay the gas for a transfer that
     ///         was already decided. Restricting it would create a chain whose
     ///         income locks up if the operator stops showing up.
-    function flush() external returns (uint256 amount) {
+    function flush() external nonReentrant returns (uint256 amount) {
         amount = voidToken.balanceOf(address(this));
         if (amount == 0) revert NothingToRoute();
 
@@ -70,7 +72,7 @@ contract VoidChainRevenueRouter {
         // An exact approval on every transfer: an infinite allowance here would
         // gain nothing and would leave a permanent authorization standing over a
         // contract whose only purpose is to empty itself.
-        voidToken.approve(address(treasury), amount);
+        if (!voidToken.approve(address(treasury), amount)) revert TokenApprovalFailed();
         treasury.settle(tokenId, amount);
 
         emit Routed(tokenId, amount, msg.sender);

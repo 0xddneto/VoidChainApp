@@ -10,8 +10,11 @@ import {
   type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { BodyError, readJsonObject } from '@/lib/request-body';
+import { authenticSponsored } from '@/lib/verify-sponsored';
 import { DEPLOY, rhTransport } from '@/lib/testnet';
-import { RelayAdmissionError, relayClientId, reserveRelay, submitWithRelayerLock } from '@/lib/relay-guard';
+import { RelayAdmissionError, relayClientId, reserveRelay, admitRelayIngress } from '@/lib/relay-guard';
+import { submitDurably } from '@/lib/durable-relay';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,7 +39,7 @@ type NftSpend = { collection: Address; tokenId: bigint };
 type AssetPermit = { token: Address; spender: Address; value: bigint; deadline: bigint; v: number; r: Hex; s: Hex };
 
 const asAddress = (value: unknown): Address | null => typeof value === 'string' && isAddress(value) ? getAddress(value) : null;
-const asUint = (value: unknown): bigint | null => typeof value === 'string' && /^\d+$/.test(value) ? BigInt(value) : null;
+const asUint = (value: unknown): bigint | null => typeof value === 'string' && /^\d{1,78}$/.test(value) && BigInt(value) < (1n << 256n) ? BigInt(value) : null;
 const asHex = (value: unknown): Hex | null => typeof value === 'string' && /^0x[0-9a-fA-F]*$/.test(value) ? value as Hex : null;
 const reject = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
@@ -55,7 +58,7 @@ export async function POST(httpRequest: Request) {
   if (!Number.isFinite(contentLength) || contentLength > 65_536) return reject('Relay request is too large.', 413);
 
   let body: Raw;
-  try { body = await httpRequest.json() as Raw; } catch { return reject('Malformed relay request.'); }
+  try { body = await readJsonObject(httpRequest, 65_536); } catch (error) { return reject(error instanceof BodyError ? error.message : 'Malformed relay request.', error instanceof BodyError ? error.status : 400); }
   const rawRequest = body.request as Raw | undefined;
   const rawPermits = body.permits;
   const signature = asHex(body.signature);
@@ -72,7 +75,7 @@ export async function POST(httpRequest: Request) {
 
   const spends: Spend[] = [];
   for (const item of rawSpends) {
-    const value = item as Raw; const token = asAddress(value.token); const amount = asUint(value.amount);
+    if (!item || typeof item !== 'object') return reject('Invalid request item.'); const value = item as Raw; const token = asAddress(value.token); const amount = asUint(value.amount);
     if (!token || amount === null || amount === 0n || spends.some((known) => known.token === token)) return reject('Invalid app token budget.');
     spends.push({ token, amount });
   }
@@ -91,10 +94,11 @@ export async function POST(httpRequest: Request) {
   const voidToken = getAddress(DEPLOY.testnet.VoidTestToken);
   const permits: AssetPermit[] = [];
   for (const item of rawPermits) {
+    if (!item || typeof item !== 'object') return reject('Invalid asset permit.');
     const value = item as Raw;
     const token = asAddress(value.token); const spender = asAddress(value.spender); const amount = asUint(value.value); const permitDeadline = asUint(value.deadline);
     const r = asHex(value.r); const s = asHex(value.s); const v = value.v;
-    if (!token || !spender || amount === null || permitDeadline !== deadline || !r || !s || typeof v !== 'number' || (v !== 27 && v !== 28)) return reject('Invalid asset permit.');
+    if (!token || !spender || amount === null || permitDeadline !== deadline || !r || r.length !== 66 || !s || s.length !== 66 || typeof v !== 'number' || (v !== 27 && v !== 28)) return reject('Invalid asset permit.');
     if (permits.some((known) => known.token === token && known.spender === spender)) return reject('Duplicate asset permit.');
     permits.push({ token, spender, value: amount, deadline: permitDeadline, v, r, s });
   }
@@ -105,6 +109,10 @@ export async function POST(httpRequest: Request) {
     return needed === undefined || permit.value < needed;
   })) return reject('An asset permit does not cover a signed VOID or app budget.');
 
+  const request = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
+  try { await admitRelayIngress(relayClientId(httpRequest)); }
+  catch (error) { return reject(error instanceof Error ? error.message : 'Relay unavailable.', error instanceof RelayAdmissionError ? error.status : 503); }
+  if (!await authenticSponsored(request, signature, paymaster)) return reject('Invalid action signature.', 401);
   const [chainNonce, currentFee, registered] = await Promise.all([
     publicClient.readContract({ address: paymaster, abi: PAYMASTER_ABI, functionName: 'nonces', args: [user] }),
     publicClient.readContract({ address: runtime, abi: RUNTIME_ABI, functionName: 'feeOf', args: [tokenId] }),
@@ -113,9 +121,9 @@ export async function POST(httpRequest: Request) {
   if (!registered) return reject('Target is not a registered app of this VoidChain.');
   if (nonce !== chainNonce || maxToll !== currentFee) return reject('Fee or nonce changed; sign again.', 409);
 
-  const request = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
   let reservation: Awaited<ReturnType<typeof reserveRelay>>;
   let broadcast = false;
+  let broadcastHash: Hex | null = null;
   try {
     reservation = await reserveRelay('voidscan-app', paymaster, user, nonce, signature, relayClientId(httpRequest));
   } catch (error) {
@@ -136,19 +144,23 @@ export async function POST(httpRequest: Request) {
       await reservation.failed();
       return reject('The application action would fail. No transaction was sent.', 409);
     }
-    const submission = await submitWithRelayerLock(account.address, 'voidscan-app', () => wallet.sendTransaction({
-      account,
-      chain: null,
-      to: paymaster,
-      data: encodeFunctionData({ abi: PAYMASTER_ABI, functionName: 'sponsorWithAssetPermits', args: [request, signature, permits] }),
-    }));
+    const submission = await submitDurably(account.address, 'voidscan-app', {
+      nonce: (blockTag) => publicClient.getTransactionCount({ address: account.address, blockTag }),
+      prepare: async (nonce) => wallet.signTransaction({ ...await wallet.prepareTransactionRequest({
+        account, chain: null, nonce, to: paymaster,
+        data: encodeFunctionData({ abi: PAYMASTER_ABI, functionName: 'sponsorWithAssetPermits', args: [request, signature, permits] }),
+      }), account, chain: null }),
+      broadcast: (serializedTransaction) => publicClient.sendRawTransaction({ serializedTransaction }),
+    });
     broadcast = true;
-    await reservation.submitted(submission.hash);
+    broadcastHash = submission.hash;
+    await reservation.submitted(submission.hash).catch(() => undefined);
     const receipt = await publicClient.waitForTransactionReceipt({ hash: submission.hash, timeout: 45_000 });
     await submission.confirmed(receipt.status === 'success');
     if (receipt.status !== 'success') return reject('Sponsored transaction reverted.', 502);
     return NextResponse.json({ hash: submission.hash });
   } catch {
+    if (broadcastHash) return NextResponse.json({ hash: broadcastHash, status: 'submitted' }, { status: 202 });
     if (!broadcast) await reservation.failed().catch(() => undefined);
     return reject('Relay refused the signed action. Sign a fresh request and try again.', 502);
   }

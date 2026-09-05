@@ -2,6 +2,8 @@
 pragma solidity 0.8.28;
 
 import {ChainAppBase, IVoidChainAppRuntime} from "./ChainAppBase.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 value) external returns (bool);
@@ -21,7 +23,7 @@ interface IERC20 {
 ///         from a disguised withdrawal: if the creator could withdraw during it,
 ///         they would take the early buyers' money and deliver nothing to the
 ///         later ones.
-contract ChainAppLaunchpad is ChainAppBase {
+contract ChainAppLaunchpad is ChainAppBase, ReentrancyGuard {
     IERC20 public immutable paymentToken;
 
     struct Sale {
@@ -41,6 +43,8 @@ contract ChainAppLaunchpad is ChainAppBase {
     uint256 public saleCount;
     mapping(uint256 saleId => Sale) public sales;
     mapping(uint256 saleId => mapping(address buyer => uint256)) public bought;
+    /// @notice Stock belongs to a sale, never to another sale using the same token.
+    mapping(uint256 saleId => uint256) public remainingStock;
 
     event SaleCreated(uint256 indexed saleId, address indexed creator, uint256 price, uint256 cap);
     event Bought(uint256 indexed saleId, address indexed buyer, uint256 paid, uint256 received);
@@ -56,6 +60,8 @@ contract ChainAppLaunchpad is ChainAppBase {
     error CapExceeded(uint256 wanted, uint256 room);
     error NotTheCreator(address who);
     error TransferFailed();
+    error UnsupportedToken();
+    error ZeroOutput();
 
     constructor(IVoidChainAppRuntime runtime_, uint256 chainId_, IERC20 paymentToken_)
         ChainAppBase(runtime_, chainId_)
@@ -69,19 +75,28 @@ contract ChainAppLaunchpad is ChainAppBase {
     ///         tokens the creator has not yet delivered is a promise, not a sale
     ///         — and the one who finds out is the buyer, when they try to
     ///         collect.
+    // The before/after delta deliberately rejects short-paying tokens. It is
+    // not used as an authorization balance; all mutating entrypoints are locked.
+    // slither-disable-next-line reentrancy-balance
     function createSale(IERC20 token, uint256 price, uint256 cap, uint256 deadline)
         external
         onlyFromMyChain
+        nonReentrant
         returns (uint256 saleId)
     {
         if (price == 0) revert ZeroPrice();
         if (cap == 0) revert ZeroCap();
         if (deadline <= block.timestamp) revert DeadlineInPast();
 
-        uint256 stock = (cap * 1e18) / price;
+        if (address(token).code.length == 0) revert UnsupportedToken();
+        uint256 stock = Math.mulDiv(cap, 1e18, price);
+        if (stock == 0) revert ZeroOutput();
+        uint256 beforeBalance = token.balanceOf(address(this));
         spend(address(token), address(this), stock);
+        if (token.balanceOf(address(this)) != beforeBalance + stock) revert UnsupportedToken();
 
         saleId = ++saleCount;
+        remainingStock[saleId] = stock;
         sales[saleId] = Sale({
             creator: caller(),
             token: token,
@@ -94,7 +109,10 @@ contract ChainAppLaunchpad is ChainAppBase {
         emit SaleCreated(saleId, caller(), price, cap);
     }
 
-    function buy(uint256 saleId, uint256 amount) external onlyFromMyChain returns (uint256 out) {
+    // Exact payment delta rejects fee-on-transfer tokens; runtime-only and
+    // nonReentrant prevent callbacks from entering a second sale operation.
+    // slither-disable-next-line reentrancy-balance
+    function buy(uint256 saleId, uint256 amount) external onlyFromMyChain nonReentrant returns (uint256 out) {
         Sale storage s = sales[saleId];
         if (s.creator == address(0)) revert NoSuchSale(saleId);
         if (block.timestamp > s.deadline || s.finalized) revert SaleOver(saleId);
@@ -102,11 +120,15 @@ contract ChainAppLaunchpad is ChainAppBase {
         uint256 room = s.cap - s.raised;
         if (amount > room) revert CapExceeded(amount, room);
 
-        spend(address(paymentToken), address(this), amount);
-
-        out = (amount * 1e18) / s.price;
+        out = Math.mulDiv(amount, 1e18, s.price);
+        if (out == 0) revert ZeroOutput();
         s.raised += amount;
+        remainingStock[saleId] -= out;
         bought[saleId][caller()] += out;
+
+        uint256 beforeBalance = paymentToken.balanceOf(address(this));
+        spend(address(paymentToken), address(this), amount);
+        if (paymentToken.balanceOf(address(this)) != beforeBalance + amount) revert UnsupportedToken();
 
         if (!s.token.transfer(caller(), out)) revert TransferFailed();
         emit Bought(saleId, caller(), amount, out);
@@ -116,7 +138,7 @@ contract ChainAppLaunchpad is ChainAppBase {
     /// @dev    Only after the deadline OR the cap. Leftover stock goes back with
     ///         it: tokens nobody bought do not belong to the contract, they
     ///         belong to whoever deposited them.
-    function finalize(uint256 saleId) external onlyFromMyChain {
+    function finalize(uint256 saleId) external onlyFromMyChain nonReentrant {
         Sale storage s = sales[saleId];
         if (s.creator == address(0)) revert NoSuchSale(saleId);
         if (s.finalized) revert AlreadyFinalized(saleId);
@@ -125,7 +147,8 @@ contract ChainAppLaunchpad is ChainAppBase {
 
         s.finalized = true;
         uint256 raised = s.raised;
-        uint256 leftover = s.token.balanceOf(address(this));
+        uint256 leftover = remainingStock[saleId];
+        remainingStock[saleId] = 0;
 
         if (raised > 0 && !paymentToken.transfer(s.creator, raised)) revert TransferFailed();
         if (leftover > 0 && !s.token.transfer(s.creator, leftover)) revert TransferFailed();

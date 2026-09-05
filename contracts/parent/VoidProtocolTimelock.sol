@@ -74,6 +74,9 @@ contract VoidProtocolTimelock is ReentrancyGuard {
         emit Cancelled(operation);
     }
 
+    // Exact target/value/data/salt must have been scheduled by proposer and aged
+    // through delay. Permissionless execution does not choose a new destination.
+    // slither-disable-next-line arbitrary-send-eth
     function execute(address target, uint256 value, bytes calldata data, bytes32 salt)
         external
         nonReentrant

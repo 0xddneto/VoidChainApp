@@ -1,6 +1,8 @@
 /** Public availability, reserve and bytecode integrity monitor. */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { createPublicClient, fallback, getAddress, http, keccak256, parseAbi, type Address } from 'viem';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { createPublicClient, fallback, getAddress, http, keccak256, parseAbi, parseAbiItem, type Address, type Hex } from 'viem';
+import { MANIFEST_HASH, RELEASE } from '../web/lib/public-release';
 
 const deployment = JSON.parse(readFileSync('../web/lib/deployment.json', 'utf8'));
 const integrity = JSON.parse(readFileSync('public-v10-integrity.json', 'utf8')) as { chainId: number; contracts: Record<string, string> };
@@ -19,6 +21,38 @@ const paymasterAbi = parseAbi(['function refillThreshold() view returns(uint256)
 const poolAbi = parseAbi(['function reserveVoid() view returns(uint112)', 'function reserveEth() view returns(uint112)']);
 const explorer = 'https://explorer.testnet.chain.robinhood.com';
 const statePath = process.env.MONITOR_STATE_PATH ?? 'deployments/paymaster-monitor-state.json';
+type RegistryState = { cursor: string; hash: Hex; runtime: string; apps: Array<{ chain: number; address: Address }> };
+type MonitorState = { checkedAt: string; reserveWei: string; registry?: RegistryState };
+
+async function readRegistry(previous?: RegistryState): Promise<RegistryState> {
+  const runtime = getAddress(deployment.production.VoidChainAppRuntime);
+  const latest = await rpc.getBlockNumber();
+  const confirmed = latest - 20n;
+  let from = BigInt(deployment.network.deployBlock);
+  const apps = new Map<string, { chain: number; address: Address }>();
+  if (previous?.runtime.toLowerCase() === runtime.toLowerCase() && BigInt(previous.cursor) <= confirmed) {
+    const oldBlock = await rpc.getBlock({ blockNumber: BigInt(previous.cursor) });
+    if (oldBlock.hash === previous.hash) {
+      from = BigInt(previous.cursor) + 1n;
+      for (const app of previous.apps) apps.set(app.address.toLowerCase(), app);
+    }
+  }
+  const pinned = await rpc.getBlock({ blockNumber: confirmed });
+  const events = [parseAbiItem('event AppRegistered(uint256 indexed tokenId,address app,address publisher)'),
+    parseAbiItem('event AppUnregistered(uint256 indexed tokenId,address app)')];
+  for (; from <= confirmed; from += 10_000n) {
+    const end = from + 9_999n < confirmed ? from + 9_999n : confirmed;
+    const logs = await rpc.getLogs({ address: runtime, events, fromBlock: from, toBlock: end, strict: true });
+    logs.sort((a, b) => a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1);
+    for (const log of logs) {
+      const address = getAddress(log.args.app!);
+      if (log.eventName === 'AppRegistered') apps.set(address.toLowerCase(), { chain: Number(log.args.tokenId!), address });
+      else apps.delete(address.toLowerCase());
+    }
+  }
+  requireState((await rpc.getBlock({ blockNumber: confirmed })).hash === pinned.hash, 'Registry scan reorganized; retry required');
+  return { cursor: confirmed.toString(), hash: pinned.hash, runtime, apps: [...apps.values()] };
+}
 
 function requireState(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -87,8 +121,8 @@ async function main() {
   const divergenceBps = spot > rate ? (spot - rate) * 10_000n / rate : (rate - spot) * 10_000n / rate;
   requireState(divergenceBps <= 2_000n, `VOID/ETH spot diverged ${divergenceBps} bps from TWAP`);
 
-  if (existsSync(statePath)) {
-    const previous = JSON.parse(readFileSync(statePath, 'utf8')) as { checkedAt: string; reserveWei: string };
+  const previous = existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) as MonitorState : undefined;
+  if (previous) {
     const age = Date.now() - Date.parse(previous.checkedAt);
     const before = BigInt(previous.reserveWei);
     if (age > 0 && age <= 2 * 60 * 60 * 1_000 && before > reserve) {
@@ -100,17 +134,30 @@ async function main() {
   await Promise.all([
     checkPage(VOIDSCAN),
     checkPage(`${VOIDSCAN}/docs`),
+    checkPage(`${VOIDSCAN}/contracts`),
+    checkPage(`${VOIDSCAN}/security`),
     checkPage(`${VOIDSCAN}/mint`),
     checkPage(`${VOIDSCAN}/market`),
     checkPage(VOIDDEX),
   ]);
-  const [market, activity, dexState, chainOne] = await Promise.all([
+  const release = await checkJson(`${VOIDSCAN}/api/release`) as { chainId?: number; version?: string; manifestHash?: string; commit?: string };
+  requireState(release.chainId === 46_630 && release.version === RELEASE && release.manifestHash === MANIFEST_HASH,
+    'Public release disagrees with the checked-in deployment manifest');
+  requireState(Boolean(release.commit), 'Production release does not identify its Git commit');
+  const [market, activity, dexState, registry] = await Promise.all([
     checkJson(`${VOIDSCAN}/api/market/state`),
     checkJson(`${VOIDSCAN}/api/activity`),
     checkJson(`${VOIDDEX}/state`),
-    checkJson(`${VOIDSCAN}/api/chain/1`),
+    readRegistry(previous?.registry),
   ]);
-  for (const app of (chainOne as { apps?: Array<{ address: string }> }).apps ?? []) {
+  for (const chain of new Set(registry.apps.map((app) => app.chain))) {
+    const detail = await checkJson(`${VOIDSCAN}/api/chain/${chain}`) as { apps?: Array<{ address: string }> };
+    const indexed = new Set((detail.apps ?? []).map((app) => app.address.toLowerCase()));
+    for (const app of registry.apps.filter((app) => app.chain === chain)) {
+      requireState(indexed.has(app.address.toLowerCase()), `Chain ${chain} app ${app.address} is missing from VoidScan`);
+    }
+  }
+  for (const app of registry.apps) {
     const gateway = getAddress(app.address);
     const code = await rpc.getCode({ address: gateway });
     requireState(code && code !== '0x', `Registered app has no bytecode at ${gateway}`);
@@ -120,7 +167,8 @@ async function main() {
         abi: parseAbi(['function implementation() view returns(address)']),
         functionName: 'implementation',
       });
-      requireState((await rpc.getCode({ address: implementation })) !== '0x', `App implementation missing at ${implementation}`);
+      const implementationCode = await rpc.getCode({ address: implementation });
+      requireState(implementationCode && implementationCode !== '0x', `App implementation missing at ${implementation}`);
       await requireVerified(implementation);
       const response = await fetch(`${explorer}/api/v2/addresses/${gateway}`, { signal: AbortSignal.timeout(15_000) });
       const record = response.ok ? await response.json() as { implementations?: Array<{ address_hash: string }> } : {};
@@ -133,12 +181,18 @@ async function main() {
     }
   }
 
-  writeFileSync(statePath, JSON.stringify({ checkedAt: new Date().toISOString(), reserveWei: reserve.toString() }, null, 2) + '\n');
+  mkdirSync(dirname(statePath), { recursive: true });
+  writeFileSync(statePath, JSON.stringify({ checkedAt: new Date().toISOString(), reserveWei: reserve.toString(), registry }, null, 2) + '\n');
 
   console.log(JSON.stringify({
     ok: true,
     checkedAt: new Date().toISOString(),
     chainId: 46_630,
+    release: release.version,
+    commit: release.commit,
+    manifestHash: release.manifestHash,
+    registeredAppsChecked: registry.apps.length,
+    registryBlock: registry.cursor,
     contracts: new Set(core.map((address) => address.toLowerCase())).size,
     voidPerEth: rate.toString(),
     paymasterEthWei: reserve.toString(),
