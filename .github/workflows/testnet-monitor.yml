@@ -33,7 +33,7 @@ jobs:
           path: script/deployments/paymaster-monitor-state.json
           key: paymaster-monitor-${{ github.run_id }}
           restore-keys: paymaster-monitor-
-      - run: npm run monitor:testnet-v10
+      - run: npm run monitor:testnet-v11
         working-directory: script
       - uses: actions/cache/save@v5
         if: success()

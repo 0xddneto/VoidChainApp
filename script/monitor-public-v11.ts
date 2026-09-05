@@ -5,9 +5,9 @@ import { createPublicClient, fallback, getAddress, http, keccak256, parseAbi, pa
 import { MANIFEST_HASH, RELEASE } from '../web/lib/public-release';
 
 const deployment = JSON.parse(readFileSync('../web/lib/deployment.json', 'utf8'));
-const integrity = JSON.parse(readFileSync('public-v10-integrity.json', 'utf8')) as { chainId: number; contracts: Record<string, string> };
-const VOIDSCAN = process.env.VOIDSCAN_URL ?? 'https://voidscan-nu.vercel.app';
-const VOIDDEX = process.env.VOIDDEX_URL ?? 'https://voiddex-alpha.vercel.app';
+const integrity = JSON.parse(readFileSync('public-v11-integrity.json', 'utf8')) as { chainId: number; version: string; contracts: Record<string, string> };
+const VOIDSCAN = process.env.VOIDSCAN_URL ?? 'https://voidscan.voidshub.com';
+const VOIDDEX = process.env.VOIDDEX_URL ?? 'https://voiddex.voidshub.com';
 const rpc = createPublicClient({
   transport: fallback([
     http(deployment.network.rpc),
@@ -80,8 +80,30 @@ async function requireVerified(address: Address) {
   requireState(Boolean(record.is_verified), `Explorer verification missing at ${address}`);
 }
 
+async function requireVerifiedOrInspectableProxy(address: Address) {
+  const response = await fetch(`${explorer}/api/v2/addresses/${address}`, { signal: AbortSignal.timeout(15_000) });
+  const record = response.ok ? await response.json() as {
+    is_verified?: boolean;
+    implementations?: Array<{ address_hash: string }>;
+  } : {};
+  if (record.is_verified) return;
+
+  const implementation = await rpc.readContract({
+    address,
+    abi: parseAbi(['function implementation() view returns(address)']),
+    functionName: 'implementation',
+  }).catch(() => null);
+  requireState(implementation, `Explorer verification missing at ${address}`);
+  requireState(
+    record.implementations?.some((item) => item.address_hash.toLowerCase() === implementation.toLowerCase()),
+    `Explorer proxy link is missing or wrong at ${address}`,
+  );
+  await requireVerified(implementation);
+}
+
 async function main() {
   requireState(await rpc.getChainId() === 46_630, 'RPC returned the wrong chain ID');
+  requireState(integrity.chainId === 46_630 && integrity.version === RELEASE, 'Integrity manifest is not the active V11 release');
 
   const core = [
     ...Object.values(deployment.production),
@@ -92,7 +114,7 @@ async function main() {
     requireState(code && code !== '0x', `Missing bytecode at ${raw}`);
     const expected = integrity.contracts[raw.toLowerCase()];
     requireState(expected && keccak256(code) === expected, `Runtime bytecode changed at ${raw}`);
-    await requireVerified(raw);
+    await requireVerifiedOrInspectableProxy(raw);
   }
 
   const [rate, delay, reserve, threshold, target, reserveVoid, reserveEth] = await Promise.all([
@@ -140,10 +162,13 @@ async function main() {
     checkPage(`${VOIDSCAN}/market`),
     checkPage(VOIDDEX),
   ]);
-  const release = await checkJson(`${VOIDSCAN}/api/release`) as { chainId?: number; version?: string; manifestHash?: string; commit?: string };
+  const release = await checkJson(`${VOIDSCAN}/api/release`) as { chainId?: number; version?: string; manifestHash?: string; commit?: string; canonicalOrigin?: string };
   requireState(release.chainId === 46_630 && release.version === RELEASE && release.manifestHash === MANIFEST_HASH,
     'Public release disagrees with the checked-in deployment manifest');
   requireState(Boolean(release.commit), 'Production release does not identify its Git commit');
+  requireState(release.canonicalOrigin === VOIDSCAN, 'Public release canonical origin changed');
+  const security = await checkJson(`${VOIDSCAN}/api/security`) as { checked?: boolean };
+  requireState(security.checked, 'Live public authority or bytecode check failed');
   const [market, activity, dexState, registry] = await Promise.all([
     checkJson(`${VOIDSCAN}/api/market/state`),
     checkJson(`${VOIDSCAN}/api/activity`),
@@ -205,6 +230,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`PUBLIC V10 MONITOR FAILED: ${error instanceof Error ? error.message : 'unknown error'}`);
+  console.error(`PUBLIC V11 MONITOR FAILED: ${error instanceof Error ? error.message : 'unknown error'}`);
   process.exitCode = 1;
 });
