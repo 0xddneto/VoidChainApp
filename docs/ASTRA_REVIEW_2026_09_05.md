@@ -41,8 +41,8 @@ including the 0.5% protocol fee, before the ChainApp transaction/gas charge.
 
 ## Validation
 
-- Baseline local Foundry suite: 323 passing tests in 38 suites; security
-  regressions add sale isolation, failed approvals and feed validation cases.
+- Full local Foundry suite: 334 passing tests in 39 suites, including sale
+  isolation, failed approvals, feed validation, 1,111 spaces and 256 sponsored users.
 - Web, script and standalone indexer typechecks; production builds for both sites.
 - Disposable Postgres regression tests: cross-product duplicate nonce,
   repeated failed attempts, 30 concurrent client requests with a 20-request cap,
@@ -60,7 +60,8 @@ including the 0.5% protocol fee, before the ChainApp transaction/gas charge.
   required. Slither's high-severity gate passes after fixes and individually
   documented intentional-operation annotations. Dependency internals are kept
   out of this first-party code gate, not removed from dependency audits.
-  The original failed run remains [recorded](https://github.com/0xddneto/VoidChainApp/actions/runs/33945741192).
+  The original failed run remains [recorded](https://github.com/0xddneto/VoidChainApp/actions/runs/33945741192),
+  and the corrected heavy security run [passes](https://github.com/0xddneto/VoidChainApp/actions/runs/33946944501).
 
 ## Remaining work and recommended order
 
