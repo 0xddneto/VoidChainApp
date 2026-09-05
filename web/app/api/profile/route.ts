@@ -7,20 +7,32 @@
  */
 import { NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
-import { verifyMessage, isAddress } from 'viem';
+import { createPublicClient, getAddress, isAddress } from 'viem';
 import { profileIdentity, saveProfile, type Social } from '@/lib/chains';
 import { canonicalProfile, profileMessage } from '@/lib/profile-signature';
 import { pool } from '@/lib/db';
 import { relayClientId } from '@/lib/relay-guard';
+import { rhTransport } from '@/lib/testnet';
 
 const MAX_AVATAR_BYTES = 650_000;
 const MAX_REQUEST_BYTES = 950_000;
+const signatureClient = createPublicClient({ transport: rhTransport() });
+
+function isSupportedImage(bytes: Buffer): boolean {
+  const png = bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
+  const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const webp = bytes.length >= 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF'
+    && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+  return png || jpeg || webp;
+}
 
 function validAvatarUri(value: string): boolean {
   if (!value) return true;
   if (value.startsWith('https://')) return value.length <= 400;
-  const match = value.match(/^data:image\/(?:png|jpeg|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$/);
-  return Boolean(match && Buffer.from(match[1], 'base64').byteLength <= MAX_AVATAR_BYTES);
+  const match = value.match(/^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match) return false;
+  const decoded = Buffer.from(match[1], 'base64');
+  return decoded.byteLength <= MAX_AVATAR_BYTES && isSupportedImage(decoded);
 }
 
 async function admitProfileWrite(req: Request, address: string): Promise<boolean> {
@@ -30,6 +42,8 @@ async function admitProfileWrite(req: Request, address: string): Promise<boolean
   if (!client) return false;
   try {
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`profile-client:${clientHash.toString('hex')}`]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`profile-user:${address.toLowerCase()}`]);
     await client.query("DELETE FROM profile_requests WHERE created_at < now() - interval '7 days'");
     const count = await client.query<{ n: string }>(
       `SELECT count(*) AS n FROM profile_requests
@@ -72,7 +86,11 @@ export async function POST(req: Request) {
   };
 
   try {
-    body = await req.json();
+    const raw = Buffer.from(await req.arrayBuffer());
+    if (raw.byteLength > MAX_REQUEST_BYTES) {
+      return NextResponse.json({ error: 'profile request is too large' }, { status: 413 });
+    }
+    body = JSON.parse(raw.toString('utf8'));
   } catch {
     return NextResponse.json({ error: 'malformed body' }, { status: 400 });
   }
@@ -95,8 +113,9 @@ export async function POST(req: Request) {
     bio: body.bio,
     socials: body.socials,
   });
-  const ok = await verifyMessage({
-    address,
+  // viem's client action supports EOAs and ERC-1271 smart-contract wallets.
+  const ok = await signatureClient.verifyMessage({
+    address: getAddress(address),
     message: profileMessage(address, nonce, profile),
     signature,
   }).catch(() => false);
@@ -110,7 +129,7 @@ export async function POST(req: Request) {
 
   const avatarUri = profile.avatarUri;
   if (!validAvatarUri(avatarUri)) {
-    return NextResponse.json({ error: 'profile image must be a PNG, JPEG, WEBP or GIF under 650 KB' }, { status: 400 });
+    return NextResponse.json({ error: 'profile image must be a real PNG, JPEG or WEBP under 650 KB' }, { status: 400 });
   }
 
   await saveProfile(address, {

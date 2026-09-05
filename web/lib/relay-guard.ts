@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Address, Hex } from 'viem';
 
-import { pool } from './db';
+import { pool, sessionPool } from './db';
 
 const REQUESTS_PER_MINUTE = 20;
 
@@ -16,12 +16,17 @@ export interface RelayReservation {
   failed(): Promise<void>;
 }
 
+export interface RelayerSubmission {
+  hash: Hex;
+  confirmed(success: boolean): Promise<void>;
+}
+
 const bytes = (hex: string): Buffer => Buffer.from(hex.slice(2), 'hex');
 const digest = (value: string): Buffer => createHash('sha256').update(value).digest();
 
 export function relayClientId(request: Request): string {
   const vercel = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim();
-  if (vercel) return vercel;
+  if (process.env.VERCEL === '1' && vercel) return vercel;
   if (process.env.TRUST_PROXY_HEADERS === 'true') {
     return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
       ?? request.headers.get('x-real-ip')
@@ -33,6 +38,7 @@ export function relayClientId(request: Request): string {
 /** Atomically reserves one signed user nonce across every serverless instance. */
 export async function reserveRelay(
   surface: string,
+  paymaster: Address,
   user: Address,
   nonce: bigint,
   signature: Hex,
@@ -42,12 +48,13 @@ export async function reserveRelay(
   if (!client) throw new RelayAdmissionError('Relay admission control is unavailable.', 503);
 
   const userBytes = bytes(user);
+  const paymasterBytes = bytes(paymaster);
   const clientHash = digest(clientId);
   const requestHash = digest(signature);
   try {
     await client.query('BEGIN');
     await client.query("DELETE FROM relay_requests WHERE created_at < now() - interval '7 days'");
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`${surface}:${user.toLowerCase()}:${clientHash.toString('hex')}`]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`relay-user:${paymaster.toLowerCase()}:${user.toLowerCase()}`]);
     const { rows } = await client.query<{ requests: string }>(
       `SELECT count(*) AS requests FROM relay_requests
        WHERE created_at > now() - interval '1 minute'
@@ -61,9 +68,10 @@ export async function reserveRelay(
 
     const claim = await client.query(
       `INSERT INTO relay_requests
-         (surface, user_address, user_nonce, client_hash, request_hash)
-       VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (surface, user_address, user_nonce) DO UPDATE SET
+         (surface, paymaster_address, user_address, user_nonce, client_hash, request_hash)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (paymaster_address, user_address, user_nonce) WHERE paymaster_address IS NOT NULL DO UPDATE SET
+         surface = EXCLUDED.surface,
          client_hash = EXCLUDED.client_hash,
          request_hash = EXCLUDED.request_hash,
          status = 'pending', tx_hash = NULL,
@@ -71,7 +79,7 @@ export async function reserveRelay(
          expires_at = now() + interval '10 minutes'
        WHERE relay_requests.expires_at < now()
        RETURNING user_nonce`,
-      [surface, userBytes, nonce.toString(), clientHash, requestHash],
+      [surface, paymasterBytes, userBytes, nonce.toString(), clientHash, requestHash],
     );
     if (claim.rowCount !== 1) {
       await client.query('ROLLBACK');
@@ -90,12 +98,44 @@ export async function reserveRelay(
     await pool.query(
       `UPDATE relay_requests SET status = $4, tx_hash = $5, updated_at = now(),
          expires_at = CASE WHEN $4 = 'failed' THEN now() ELSE expires_at END
-       WHERE surface = $1 AND user_address = $2 AND user_nonce = $3 AND request_hash = $6`,
-      [surface, userBytes, nonce.toString(), status, hash ? bytes(hash) : null, requestHash],
+       WHERE paymaster_address = $1 AND user_address = $2 AND user_nonce = $3 AND request_hash = $6`,
+      [paymasterBytes, userBytes, nonce.toString(), status, hash ? bytes(hash) : null, requestHash],
     );
   };
   return {
     submitted: (hash) => update('submitted', hash),
     failed: () => update('failed'),
   };
+}
+
+/** Serializes EOA nonce selection and broadcast across all serverless workers. */
+export async function submitWithRelayerLock(
+  relayer: Address,
+  surface: string,
+  submit: () => Promise<Hex>,
+): Promise<RelayerSubmission> {
+  const client = await sessionPool.connect().catch(() => null);
+  if (!client) throw new RelayAdmissionError('Relayer coordination is unavailable.', 503);
+  const lockName = `void-relayer:${relayer.toLowerCase()}`;
+  try {
+    await client.query('SELECT pg_advisory_lock(hashtextextended($1, 0))', [lockName]);
+    const hash = await submit();
+    await client.query(
+      `INSERT INTO relayer_transactions (tx_hash, relayer_address, surface)
+       VALUES ($1,$2,$3) ON CONFLICT (tx_hash) DO NOTHING`,
+      [bytes(hash), bytes(relayer), surface],
+    ).catch(() => { console.error('Relayer broadcast audit write failed', { hash, surface }); });
+    return {
+      hash,
+      confirmed: async (success) => {
+        await pool.query(
+          `UPDATE relayer_transactions SET status = $2, updated_at = now() WHERE tx_hash = $1`,
+          [bytes(hash), success ? 'confirmed' : 'reverted'],
+        );
+      },
+    };
+  } finally {
+    await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [lockName]).catch(() => undefined);
+    client.release(true);
+  }
 }

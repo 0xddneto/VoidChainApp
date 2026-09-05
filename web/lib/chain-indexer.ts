@@ -2,7 +2,7 @@ import pg from 'pg';
 import { createPublicClient, fallback, http, parseAbi, parseAbiItem, type Address, type Log, type PublicClient } from 'viem';
 
 import deployment from './deployment.json';
-import { pool } from './db';
+import { pool, sessionPool } from './db';
 
 const TOTAL_CHAINS = 1_111;
 const MAX_BLOCKS_PER_PASS = 10_000n;
@@ -17,6 +17,7 @@ const INDEXER_LOCK = 4_662_011;
 const RUNTIME = deployment.production.VoidChainAppRuntime as Address;
 const DEED = deployment.production.VoidChainDeed as Address;
 const TREASURY = deployment.production.VoidChainTreasury as Address;
+const PAYMASTER = deployment.production.VoidPaymaster as Address;
 const FIRST_BLOCK = BigInt(deployment.network.deployBlock ?? 0);
 const CHAIN_ID_BASE = BigInt(deployment.chainIdBase);
 const DEED_ABI = parseAbi([
@@ -39,12 +40,33 @@ const EVENTS = {
   registered: parseAbiItem('event AppRegistered(uint256 indexed tokenId, address app, address publisher)'),
   unregistered: parseAbiItem('event AppUnregistered(uint256 indexed tokenId, address app)'),
   revenue: parseAbiItem('event RevenueSettled(uint256 indexed tokenId, address indexed deedHolder, uint256 gross, uint256 protocolFee, uint256 holderShare)'),
+  sponsored: parseAbiItem('event Sponsored(address indexed user,address indexed relayer,uint256 indexed tokenId,uint256 toll,uint256 gasVoid,uint256 marginVoid,uint256 ethReimbursed)'),
+  executionFailed: parseAbiItem('event ExecutionFailed(address indexed user,uint256 indexed tokenId,address target,bytes reason)'),
   transfer: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
   renamed: parseAbiItem('event VoidChainRenamed(uint256 indexed tokenId, string previousName, string newName)'),
 } as const;
 
 const bytes = (hex: string | null | undefined): Buffer | null =>
   hex ? Buffer.from(hex.slice(2), 'hex') : null;
+
+async function resetProjection(client: pg.PoolClient): Promise<void> {
+  await client.query('DELETE FROM blocks');
+  await client.query('DELETE FROM transactions');
+  await client.query('DELETE FROM contracts');
+  await client.query('DELETE FROM chain_daily_stats');
+  await client.query('DELETE FROM proposals');
+  await client.query('DELETE FROM chain_revenue');
+  await client.query('DELETE FROM sponsored_transactions');
+  await client.query(
+    `UPDATE chains SET name=NULL,description=NULL,image_uri=NULL,external_url=NULL,
+       owner_address=NULL,status='reserved',activated_at=NULL,is_hot=FALSE,
+       last_indexed_block=0,last_indexed_hash=NULL,updated_at=now()`,
+  );
+  await client.query(
+    `UPDATE chain_summary SET total_txs=0,total_contracts=0,total_addresses=0,
+       txs_24h=0,activity_score=0,last_block_at=NULL,updated_at=now()`,
+  );
+}
 
 interface BlockInfo {
   timestamp: number;
@@ -86,7 +108,7 @@ async function alignDeployment(): Promise<boolean> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('TRUNCATE TABLE chains CASCADE');
+    await resetProjection(client);
     await client.query('DELETE FROM indexer_state WHERE id = TRUE');
     await client.query(
       `INSERT INTO indexer_deployment (id, runtime_address, deed_address, deploy_block)
@@ -183,7 +205,7 @@ async function ensureCanonicalCursor(client: PublicClient): Promise<boolean> {
   const reset = await pool.connect();
   try {
     await reset.query('BEGIN');
-    await reset.query('TRUNCATE TABLE chains CASCADE');
+    await resetProjection(reset);
     await reset.query('DELETE FROM indexer_state WHERE id = TRUE');
     await reset.query('COMMIT');
   } catch (error) {
@@ -247,6 +269,7 @@ async function writePass(args: {
   apps: Array<{ chain: number; app: string; publisher: string; hash: string; timestamp: number }>;
   removedApps: Array<{ chain: number; app: string }>;
   revenue: Array<{ chain: number; holder: string; gross: bigint; protocolFee: bigint; holderShare: bigint; hash: string; logIndex: number; timestamp: number }>;
+  sponsored: Array<{ chain: number; hash: string; logIndex: number; blockNumber: bigint; user: string; relayer: string; target: string | null; success: boolean; toll: bigint; gasVoid: bigint; marginVoid: bigint; ethReimbursed: bigint; reason: string | null; timestamp: number }>;
   owners: Array<{ chain: number; owner: string }>;
   names: Array<{ chain: number; name: string }>;
   head: bigint;
@@ -298,6 +321,19 @@ async function writePass(args: {
         [revenue.chain, revenue.timestamp, bytes(revenue.hash), revenue.logIndex, revenue.gross.toString(), revenue.protocolFee.toString(), revenue.holderShare.toString(), bytes(revenue.holder)],
       );
     }
+    for (const sponsored of args.sponsored) {
+      await client.query(
+        `INSERT INTO sponsored_transactions
+           (chain_id,tx_hash,log_index,block_number,user_address,relayer_address,target_address,
+            success,toll,gas_void,margin_void,eth_reimbursed,failure_reason,timestamp)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,to_timestamp($14))
+         ON CONFLICT (chain_id,tx_hash,log_index) DO NOTHING`,
+        [sponsored.chain, bytes(sponsored.hash), sponsored.logIndex, sponsored.blockNumber.toString(),
+          bytes(sponsored.user), bytes(sponsored.relayer), bytes(sponsored.target), sponsored.success,
+          sponsored.toll.toString(), sponsored.gasVoid.toString(), sponsored.marginVoid.toString(),
+          sponsored.ethReimbursed.toString(), bytes(sponsored.reason), sponsored.timestamp],
+      );
+    }
 
     const blockCounts = new Map<string, { chain: number; number: bigint; block: BlockInfo; count: number }>();
     for (const call of args.calls) {
@@ -330,7 +366,7 @@ async function writePass(args: {
 
 /** One bounded, idempotent index pass. Vercel Cron calls this once per minute. */
 export async function indexOnePass(): Promise<IndexerResult> {
-  const lock = await pool.connect();
+  const lock = await sessionPool.connect();
   try {
     const acquired = (await lock.query<{ locked: boolean }>('SELECT pg_try_advisory_lock($1) AS locked', [INDEXER_LOCK])).rows[0].locked;
     if (!acquired) return { status: 'busy' };
@@ -365,7 +401,9 @@ export async function indexOnePass(): Promise<IndexerResult> {
     const revenue = await client.getLogs({ address: TREASURY, event: EVENTS.revenue, ...range });
     const transfers = await client.getLogs({ address: DEED, event: EVENTS.transfer, ...range });
     const renamed = await client.getLogs({ address: DEED, event: EVENTS.renamed, ...range });
-    const all = [...activated, ...deactivated, ...reactivated, ...executed, ...registered, ...unregistered, ...revenue, ...transfers, ...renamed];
+    const sponsored = await client.getLogs({ address: PAYMASTER, event: EVENTS.sponsored, ...range });
+    const failures = await client.getLogs({ address: PAYMASTER, event: EVENTS.executionFailed, ...range });
+    const all = [...activated, ...deactivated, ...reactivated, ...executed, ...registered, ...unregistered, ...revenue, ...transfers, ...renamed, ...sponsored, ...failures];
     const info = all.length === 0 ? new Map<bigint, BlockInfo>() : await blocks(client, all);
     await writePass({
       statuses: [
@@ -382,6 +420,20 @@ export async function indexOnePass(): Promise<IndexerResult> {
       })),
       removedApps: unregistered.map((log) => ({ chain: Number(log.args.tokenId!), app: log.args.app! })),
       revenue: revenue.map((log) => ({ chain: Number(log.args.tokenId!), holder: log.args.deedHolder!, gross: log.args.gross!, protocolFee: log.args.protocolFee!, holderShare: log.args.holderShare!, hash: log.transactionHash!, logIndex: log.logIndex!, timestamp: info.get(log.blockNumber!)!.timestamp })),
+      sponsored: sponsored.map((log) => {
+        const previous = sponsored.filter((other) => other.transactionHash === log.transactionHash && other.logIndex! < log.logIndex!)
+          .reduce((index, other) => Math.max(index, other.logIndex!), -1);
+        const failed = failures.find((other) => other.transactionHash === log.transactionHash
+          && other.args.user === log.args.user && other.args.tokenId === log.args.tokenId
+          && other.logIndex! > previous && other.logIndex! < log.logIndex!);
+        return {
+          chain: Number(log.args.tokenId!), hash: log.transactionHash!, logIndex: log.logIndex!, blockNumber: log.blockNumber!,
+          user: log.args.user!, relayer: log.args.relayer!, target: failed?.args.target ?? null, success: !failed,
+          toll: log.args.toll!, gasVoid: log.args.gasVoid!, marginVoid: log.args.marginVoid!,
+          ethReimbursed: log.args.ethReimbursed!, reason: failed?.args.reason ?? null,
+          timestamp: info.get(log.blockNumber!)!.timestamp,
+        };
+      }),
       owners: transfers.map((log) => ({ chain: Number(log.args.tokenId!), owner: log.args.to! })),
       names: renamed.map((log) => ({ chain: Number(log.args.tokenId!), name: log.args.newName! })),
       head: to,
@@ -390,6 +442,6 @@ export async function indexOnePass(): Promise<IndexerResult> {
     return { status: all.length === 0 ? 'caught-up' : 'indexed', from: from.toString(), to: to.toString(), events: all.length };
   } finally {
     await lock.query('SELECT pg_advisory_unlock($1)', [INDEXER_LOCK]).catch(() => undefined);
-    lock.release();
+    lock.release(true);
   }
 }

@@ -23,7 +23,7 @@ jobs:
       - run: npm ci
 
       - uses: foundry-rs/foundry-toolchain@v1
-      - run: forge build
+      - run: forge build --sizes
       - run: forge test
 
   web:
@@ -70,6 +70,37 @@ jobs:
         working-directory: indexer
       - run: npm run typecheck
         working-directory: indexer
+
+  relay-concurrency:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: voidscan-test-only
+          POSTGRES_DB: voidscan_check
+        ports:
+          - 15439:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:voidscan-test-only@127.0.0.1:15439/voidscan_check
+      PGPASSWORD: voidscan-test-only
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: script
+      - run: npm ci
+        working-directory: web
+      - run: psql -h 127.0.0.1 -p 15439 -U postgres -d voidscan_check -v ON_ERROR_STOP=1 -f db/schema.sql
+      - run: node --import tsx test-relay-concurrency.ts
+        working-directory: script
 
   scripts:
     name: scripts

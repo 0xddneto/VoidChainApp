@@ -37,9 +37,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
   }
 
-  const key = process.env.PAYMASTER_RELAYER_PRIVATE_KEY;
-  if (!/^0x[0-9a-fA-F]{64}$/.test(key ?? '')) {
-    return NextResponse.json({ error: 'TWAP keeper is not configured.' }, { status: 503 });
+  const twapKey = process.env.TWAP_KEEPER_PRIVATE_KEY;
+  const refillKey = process.env.REFILL_KEEPER_PRIVATE_KEY;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(twapKey ?? '') || !/^0x[0-9a-fA-F]{64}$/.test(refillKey ?? '')) {
+    return NextResponse.json({ error: 'Independent TWAP and refill keepers are not configured.' }, { status: 503 });
   }
 
   try {
@@ -49,11 +50,11 @@ export async function GET(request: NextRequest) {
       rpc.getBlock(),
     ]);
     const elapsed = block.timestamp - BigInt(lastTimestamp);
-    const account = privateKeyToAccount(key as Hex);
-    const wallet = createWalletClient({ account, transport: rhTransport() });
+    const twapAccount = privateKeyToAccount(twapKey as Hex);
+    const twapWallet = createWalletClient({ account: twapAccount, transport: rhTransport() });
     let hash: Hex | null = null;
     if (elapsed >= BigInt(minInterval)) {
-      hash = await wallet.sendTransaction({ account, chain: null, to: oracle, data: encodeFunctionData({ abi, functionName: 'update' }) });
+      hash = await twapWallet.sendTransaction({ account: twapAccount, chain: null, to: oracle, data: encodeFunctionData({ abi, functionName: 'update' }) });
       const receipt = await rpc.waitForTransactionReceipt({ hash });
       if (receipt.status !== 'success') throw new Error('TWAP update reverted.');
     }
@@ -63,8 +64,10 @@ export async function GET(request: NextRequest) {
     const [needed, amount, minimum] = await rpc.readContract({ address: paymaster, abi: refillAbi, functionName: 'refillPlan' });
     let refillHash: Hex | null = null;
     if (needed) {
-      await rpc.simulateContract({ account, address: paymaster, abi: refillAbi, functionName: 'refill', args: [amount, minimum] });
-      refillHash = await wallet.sendTransaction({ account, chain: null, to: paymaster, data: encodeFunctionData({ abi: refillAbi, functionName: 'refill', args: [amount, minimum] }) });
+      const refillAccount = privateKeyToAccount(refillKey as Hex);
+      const refillWallet = createWalletClient({ account: refillAccount, transport: rhTransport() });
+      await rpc.simulateContract({ account: refillAccount, address: paymaster, abi: refillAbi, functionName: 'refill', args: [amount, minimum] });
+      refillHash = await refillWallet.sendTransaction({ account: refillAccount, chain: null, to: paymaster, data: encodeFunctionData({ abi: refillAbi, functionName: 'refill', args: [amount, minimum] }) });
       const receipt = await rpc.waitForTransactionReceipt({ hash: refillHash });
       if (receipt.status !== 'success') throw new Error('Paymaster refill reverted.');
     }

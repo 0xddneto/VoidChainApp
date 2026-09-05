@@ -237,7 +237,7 @@ contract DaoTest is Test {
     }
 
     function test_BelowQuorumIsDefeated() public {
-        token.mintTo(carol, 9_000 ether);
+        token.mintTo(carol, 99_000 ether);
         vm.roll(block.number + 1);
         uint256 id = _propose();
         _vote(id, alice, true);

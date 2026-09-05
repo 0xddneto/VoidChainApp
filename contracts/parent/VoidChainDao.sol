@@ -23,7 +23,10 @@ interface IVoidVotes {
 ///      prevents that without staking, locking, approvals or withdrawals.
 contract VoidChainDao {
     uint256 public constant VOTING_PERIOD = 5 days;
-    uint256 public constant QUORUM_BPS = 1_000; // 10%
+    // 1% of eligible circulation. Protocol escrow, locked liquidity and the
+    // immutable reserve accounts are removed by VoidGovernanceVotes before
+    // this percentage is applied. Wallet-held VOID remains fully liquid.
+    uint256 public constant QUORUM_BPS = 100;
     uint256 public constant BPS = 10_000;
     uint256 public constant MAX_ACTIONS = 8;
     uint256 public constant MAX_ACTION_DATA_BYTES = 8_192;

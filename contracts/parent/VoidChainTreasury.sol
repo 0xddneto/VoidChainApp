@@ -282,12 +282,24 @@ contract VoidChainTreasury is ReentrancyGuard {
     ///         be the only thing between a malicious holder and the whole
     ///         treasury.
     function claim() external nonReentrant {
-        uint256 amount = claimable[msg.sender];
-        if (amount == 0) revert NothingToClaim();
-        claimable[msg.sender] = 0;
+        _claimTo(msg.sender);
+    }
 
-        if (!voidToken.transfer(msg.sender, amount)) revert TransferFailed();
-        emit Claimed(msg.sender, amount);
+    /// @notice Permissionless settlement to the beneficiary's own address.
+    /// @dev The caller can pay gas, but can never redirect another account's
+    ///      revenue. This enables one-call/sponsored claim aggregators.
+    function claimFor(address beneficiary) external nonReentrant {
+        if (beneficiary == address(0)) revert ZeroAddress();
+        _claimTo(beneficiary);
+    }
+
+    function _claimTo(address beneficiary) private {
+        uint256 amount = claimable[beneficiary];
+        if (amount == 0) revert NothingToClaim();
+        claimable[beneficiary] = 0;
+
+        if (!voidToken.transfer(beneficiary, amount)) revert TransferFailed();
+        emit Claimed(beneficiary, amount);
     }
 
     /// @notice Redirects the protocol fee to another address.

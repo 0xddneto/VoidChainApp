@@ -338,6 +338,10 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     /// @dev    Kept only for the one-time write of the forwarder and the DAO
     ///         factory. After that it grants no power at all.
     address internal immutable deployer;
+    address public emergencyGuardian;
+    address public recoveryGovernor;
+    bool public protocolPaused;
+    mapping(uint256 tokenId => mapping(address app => bool)) public emergencyAppPaused;
 
     event ChainAppActivated(uint256 indexed tokenId, address activator);
     event ChainAppDeactivated(uint256 indexed tokenId, address holder);
@@ -356,6 +360,11 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     event RevenueFlushed(uint256 indexed tokenId, uint256 amount);
     event RevenueParked(uint256 indexed tokenId, address indexed beneficiary, uint256 amount);
     event OwedClaimed(address indexed beneficiary, uint256 amount);
+    event EmergencyRolesSet(address indexed guardian, address indexed recoveryGovernor);
+    event ProtocolEmergencyPause(address indexed guardian);
+    event ProtocolEmergencyResume(address indexed recoveryGovernor);
+    event AppEmergencyPause(uint256 indexed tokenId, address indexed app, address indexed guardian);
+    event AppEmergencyResume(uint256 indexed tokenId, address indexed app, address indexed dao);
     event NftSpent(
         uint256 indexed tokenId,
         address indexed user,
@@ -404,6 +413,11 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     error DuplicateBudgetToken(address token);
     error TooManyBudgetedTokens(uint256 given, uint256 max);
     error NftNotAuthorized(address collection, uint256 tokenId);
+    error EmergencyRolesAlreadySet();
+    error NotEmergencyGuardian(address caller);
+    error NotRecoveryGovernor(address caller);
+    error ProtocolPaused();
+    error AppPaused(uint256 tokenId, address app);
 
     constructor(IVoidChainDeed deed_, IERC20 voidToken_, IVoidChainTreasury treasury_) {
         if (
@@ -469,6 +483,40 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         tollCeilingUsd[tokenId] = ceilingUsd;
         hasTollCeiling[tokenId] = true;
         emit TollCeilingSet(tokenId, ceilingUsd);
+    }
+
+    /// @notice Installs separate pause-only and recovery authorities once.
+    function setEmergencyRolesOnce(address guardian, address recovery) external {
+        if (msg.sender != deployer) revert NotTheDeployer(msg.sender);
+        if (emergencyGuardian != address(0) || recoveryGovernor != address(0)) revert EmergencyRolesAlreadySet();
+        if (guardian == address(0) || recovery == address(0)) revert ZeroAddress();
+        emergencyGuardian = guardian;
+        recoveryGovernor = recovery;
+        emit EmergencyRolesSet(guardian, recovery);
+    }
+
+    function emergencyPauseProtocol() external {
+        if (msg.sender != emergencyGuardian) revert NotEmergencyGuardian(msg.sender);
+        protocolPaused = true;
+        emit ProtocolEmergencyPause(msg.sender);
+    }
+
+    function resumeProtocol() external {
+        if (msg.sender != recoveryGovernor) revert NotRecoveryGovernor(msg.sender);
+        protocolPaused = false;
+        emit ProtocolEmergencyResume(msg.sender);
+    }
+
+    function emergencyPauseApp(uint256 tokenId, address app) external {
+        if (msg.sender != emergencyGuardian) revert NotEmergencyGuardian(msg.sender);
+        if (!belongsTo[tokenId][app]) revert NotThisChainsApp(tokenId, app);
+        emergencyAppPaused[tokenId][app] = true;
+        emit AppEmergencyPause(tokenId, app, msg.sender);
+    }
+
+    function resumeApp(uint256 tokenId, address app) external onlyThisChainsDao(tokenId) {
+        emergencyAppPaused[tokenId][app] = false;
+        emit AppEmergencyResume(tokenId, app, msg.sender);
     }
 
     /// @dev The deed follows a sale, so the current holder owns availability.
@@ -851,8 +899,10 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         uint256 maxFee
     ) private returns (bytes memory result) {
         ChainApp storage app = apps[tokenId];
+        if (protocolPaused) revert ProtocolPaused();
         if (!app.active) revert NotActive(tokenId);
         if (!belongsTo[tokenId][target]) revert NotThisChainsApp(tokenId, target);
+        if (emergencyAppPaused[tokenId][target]) revert AppPaused(tokenId, target);
 
         // An execution inside another would confuse whose turn it is; the
         // nonReentrant guard already blocks it, but the explicit check documents

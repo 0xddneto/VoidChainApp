@@ -11,7 +11,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { DEPLOY, rhTransport } from '@/lib/testnet';
-import { RelayAdmissionError, relayClientId, reserveRelay } from '@/lib/relay-guard';
+import { RelayAdmissionError, relayClientId, reserveRelay, submitWithRelayerLock } from '@/lib/relay-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,7 +49,7 @@ const reject = (error: string, status = 400) => NextResponse.json({ error }, { s
  * runtime. The browser therefore has no wallet transaction path to ETH gas.
  */
 export async function POST(httpRequest: Request) {
-  const relayerKey = process.env.PAYMASTER_RELAYER_PRIVATE_KEY;
+  const relayerKey = process.env.VOIDSCAN_RELAYER_PRIVATE_KEY;
   if (!/^0x[0-9a-fA-F]{64}$/.test(relayerKey ?? '')) return reject('VOID relay is not configured.', 503);
   const contentLength = Number(httpRequest.headers.get('content-length') ?? '0');
   if (!Number.isFinite(contentLength) || contentLength > 65_536) return reject('Relay request is too large.', 413);
@@ -115,8 +115,9 @@ export async function POST(httpRequest: Request) {
 
   const request = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
   let reservation: Awaited<ReturnType<typeof reserveRelay>>;
+  let broadcast = false;
   try {
-    reservation = await reserveRelay('voidscan-app', user, nonce, signature, relayClientId(httpRequest));
+    reservation = await reserveRelay('voidscan-app', paymaster, user, nonce, signature, relayClientId(httpRequest));
   } catch (error) {
     if (error instanceof RelayAdmissionError) return reject(error.message, error.status);
     return reject('Relay admission control is unavailable.', 503);
@@ -135,16 +136,20 @@ export async function POST(httpRequest: Request) {
       await reservation.failed();
       return reject('The application action would fail. No transaction was sent.', 409);
     }
-    const hash = await wallet.sendTransaction({
+    const submission = await submitWithRelayerLock(account.address, 'voidscan-app', () => wallet.sendTransaction({
       account,
       chain: null,
       to: paymaster,
       data: encodeFunctionData({ abi: PAYMASTER_ABI, functionName: 'sponsorWithAssetPermits', args: [request, signature, permits] }),
-    });
-    await reservation.submitted(hash);
-    return NextResponse.json({ hash });
+    }));
+    broadcast = true;
+    await reservation.submitted(submission.hash);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: submission.hash, timeout: 45_000 });
+    await submission.confirmed(receipt.status === 'success');
+    if (receipt.status !== 'success') return reject('Sponsored transaction reverted.', 502);
+    return NextResponse.json({ hash: submission.hash });
   } catch {
-    await reservation.failed().catch(() => undefined);
+    if (!broadcast) await reservation.failed().catch(() => undefined);
     return reject('Relay refused the signed action. Sign a fresh request and try again.', 502);
   }
 }

@@ -129,6 +129,29 @@ CREATE INDEX tx_recent   ON transactions (chain_id, timestamp DESC);
 CREATE INDEX tx_from     ON transactions (chain_id, from_address, timestamp DESC);
 CREATE INDEX tx_to       ON transactions (chain_id, to_address, timestamp DESC);
 
+-- Paymaster receipts, including inner application failures. A failed app call
+-- still consumed parent-chain gas and VOID gas reimbursement, so hiding it
+-- would make the explorer's cost and reliability picture incomplete.
+CREATE TABLE sponsored_transactions (
+    chain_id        SMALLINT NOT NULL REFERENCES chains(id) ON DELETE CASCADE,
+    tx_hash         BYTEA NOT NULL,
+    log_index       INTEGER NOT NULL,
+    block_number    BIGINT NOT NULL,
+    user_address    BYTEA NOT NULL,
+    relayer_address BYTEA NOT NULL,
+    target_address  BYTEA,
+    success         BOOLEAN NOT NULL,
+    toll            NUMERIC(78, 0) NOT NULL,
+    gas_void        NUMERIC(78, 0) NOT NULL,
+    margin_void     NUMERIC(78, 0) NOT NULL,
+    eth_reimbursed  NUMERIC(78, 0) NOT NULL,
+    failure_reason  BYTEA,
+    timestamp       TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (chain_id, tx_hash, log_index)
+);
+CREATE INDEX sponsored_recent ON sponsored_transactions (chain_id, timestamp DESC);
+CREATE INDEX sponsored_failures ON sponsored_transactions (success, timestamp DESC);
+
 CREATE TABLE contracts (
     chain_id        SMALLINT NOT NULL REFERENCES chains(id) ON DELETE CASCADE,
     address         BYTEA NOT NULL,
@@ -280,6 +303,7 @@ CREATE INDEX expenses_by_chain ON chain_expenses (chain_id, period_start DESC);
 -- than stored as raw visitor addresses.
 CREATE TABLE relay_requests (
     surface         TEXT NOT NULL,
+    paymaster_address BYTEA NOT NULL,
     user_address    BYTEA NOT NULL,
     user_nonce      NUMERIC(78, 0) NOT NULL,
     client_hash     BYTEA NOT NULL,
@@ -290,11 +314,23 @@ CREATE TABLE relay_requests (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at      TIMESTAMPTZ NOT NULL DEFAULT now() + interval '10 minutes',
-    PRIMARY KEY (surface, user_address, user_nonce)
+    PRIMARY KEY (paymaster_address, user_address, user_nonce)
 );
 
 CREATE INDEX relay_requests_user_recent ON relay_requests (user_address, created_at DESC);
 CREATE INDEX relay_requests_client_recent ON relay_requests (client_hash, created_at DESC);
+
+CREATE TABLE relayer_transactions (
+    tx_hash          BYTEA PRIMARY KEY,
+    relayer_address  BYTEA NOT NULL,
+    surface          TEXT NOT NULL,
+    status           TEXT NOT NULL DEFAULT 'submitted'
+                     CHECK (status IN ('submitted', 'confirmed', 'reverted')),
+    submitted_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX relayer_transactions_pending
+    ON relayer_transactions (relayer_address, status, submitted_at);
 
 CREATE TABLE profile_requests (
     client_hash     BYTEA NOT NULL,
