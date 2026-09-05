@@ -44,7 +44,7 @@ const asHex = (value: unknown): Hex | null => typeof value === 'string' && /^0x[
 const reject = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
 /**
- * Generic official execution gateway for every V3 ChainApp.
+ * Generic official execution gateway for every canonical ChainApp.
  *
  * The request is signed by the user and the contracts re-check every bound.
  * This route never chooses an app, token amount, fee, recipient or chain: it

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 
-/** The V4 holder migration is complete; old bookmarks return to the explorer. */
+/** Retired migration bookmarks return to the canonical explorer. */
 export default function RetiredMigrationRoute() {
   redirect('/');
 }
