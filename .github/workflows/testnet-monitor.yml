@@ -28,14 +28,14 @@ jobs:
       # The release fingerprint is shared with the web module, including viem.
       - run: npm ci --ignore-scripts
         working-directory: web
-      - uses: actions/cache/restore@v5
+      - uses: actions/cache/restore@v6
         with:
           path: script/deployments/paymaster-monitor-state.json
           key: paymaster-monitor-${{ github.run_id }}
           restore-keys: paymaster-monitor-
       - run: npm run monitor:testnet-v11
         working-directory: script
-      - uses: actions/cache/save@v5
+      - uses: actions/cache/save@v6
         if: success()
         with:
           path: script/deployments/paymaster-monitor-state.json
