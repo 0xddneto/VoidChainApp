@@ -14,9 +14,18 @@ export const toBytes = (hex: string | null | undefined): Buffer | null =>
 export const toHex = (bytes: Buffer | null): `0x${string}` | null =>
   bytes ? (`0x${bytes.toString('hex')}` as `0x${string}`) : null;
 
-export const pool = new pg.Pool({ connectionString: DATABASE_URL, max: 8 });
+const verifiedDatabaseUrl = (value: string): string => {
+  const url = new URL(value);
+  const sslMode = url.searchParams.get('sslmode');
+  if (sslMode === 'prefer' || sslMode === 'require' || sslMode === 'verify-ca') {
+    url.searchParams.set('sslmode', 'verify-full');
+  }
+  return url.toString();
+};
 
-const sessionUrl = new URL(process.env.DATABASE_URL_UNPOOLED ?? DATABASE_URL);
+export const pool = new pg.Pool({ connectionString: verifiedDatabaseUrl(DATABASE_URL), max: 8 });
+
+const sessionUrl = new URL(verifiedDatabaseUrl(process.env.DATABASE_URL_UNPOOLED ?? DATABASE_URL));
 if (sessionUrl.hostname.endsWith('.neon.tech')) sessionUrl.hostname = sessionUrl.hostname.replace('-pooler.', '.');
 export const sessionPool = new pg.Pool({ connectionString: sessionUrl.toString(), max: 1, connectionTimeoutMillis: 5_000 });
 
