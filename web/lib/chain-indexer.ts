@@ -218,6 +218,7 @@ async function blocks(client: PublicClient, logs: Log[]): Promise<Map<bigint, Bl
   const out = new Map<bigint, BlockInfo>();
   for (const number of new Set(logs.map((log) => log.blockNumber!))) {
     const block = await client.getBlock({ blockNumber: number });
+    if (logs.some((log) => log.blockNumber === number && log.blockHash !== block.hash)) throw new Error('RPC logs and block hash disagree; refusing mixed-fork events.');
     out.set(number, { timestamp: Number(block.timestamp), hash: block.hash!, parentHash: block.parentHash });
   }
   return out;
@@ -263,11 +264,11 @@ async function hydrateDeedMetadata(client: PublicClient): Promise<void> {
   }
 }
 
-async function writePass(args: {
+export async function writePass(args: {
   statuses: Array<{ chain: number; status: 'live' | 'paused'; initial: boolean; timestamp: number; blockNumber: bigint; logIndex: number }>;
   calls: Array<{ chain: number; hash: string; blockNumber: bigint; txIndex: number; logIndex: number; caller: string; target: string; toll: bigint; block: BlockInfo }>;
-  apps: Array<{ chain: number; app: string; publisher: string; hash: string; timestamp: number }>;
-  removedApps: Array<{ chain: number; app: string }>;
+  apps: Array<{ chain: number; app: string; publisher: string; hash: string; timestamp: number; blockNumber: bigint; logIndex: number }>;
+  removedApps: Array<{ chain: number; app: string; blockNumber: bigint; logIndex: number }>;
   revenue: Array<{ chain: number; holder: string; gross: bigint; protocolFee: bigint; holderShare: bigint; hash: string; logIndex: number; timestamp: number }>;
   sponsored: Array<{ chain: number; hash: string; logIndex: number; blockNumber: bigint; user: string; relayer: string; target: string | null; success: boolean; toll: bigint; gasVoid: bigint; marginVoid: bigint; ethReimbursed: bigint; reason: string | null; timestamp: number }>;
   owners: Array<{ chain: number; owner: string }>;
@@ -302,16 +303,15 @@ async function writePass(args: {
           bytes(call.caller), bytes(call.target), call.toll.toString(), call.block.timestamp],
       );
     }
-    for (const app of args.apps) {
+    const appChanges = [...args.apps.map((app) => ({ ...app, removed: false as const })), ...args.removedApps.map((app) => ({ ...app, removed: true as const }))].sort((a,b) => a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1);
+    for (const app of appChanges) {
+      if (app.removed) { await client.query('DELETE FROM contracts WHERE chain_id = $1 AND address = $2', [app.chain, bytes(app.app)]); continue; }
       await client.query(
         `INSERT INTO contracts (chain_id, address, deployer, deployed_at, deploy_tx)
          VALUES ($1,$2,$3,to_timestamp($4),$5)
          ON CONFLICT (chain_id, address) DO NOTHING`,
         [app.chain, bytes(app.app), bytes(app.publisher), app.timestamp, bytes(app.hash)],
       );
-    }
-    for (const app of args.removedApps) {
-      await client.query('DELETE FROM contracts WHERE chain_id = $1 AND address = $2', [app.chain, bytes(app.app)]);
     }
     for (const revenue of args.revenue) {
       await client.query(
@@ -416,9 +416,9 @@ export async function indexOnePass(): Promise<IndexerResult> {
         logIndex: log.logIndex!, caller: log.args.caller!, target: log.args.target!, toll: log.args.fee!, block: info.get(log.blockNumber!)!,
       })),
       apps: registered.map((log) => ({
-        chain: Number(log.args.tokenId!), app: log.args.app!, publisher: log.args.publisher!, hash: log.transactionHash!, timestamp: info.get(log.blockNumber!)!.timestamp,
+        blockNumber: log.blockNumber!, logIndex: log.logIndex!, chain: Number(log.args.tokenId!), app: log.args.app!, publisher: log.args.publisher!, hash: log.transactionHash!, timestamp: info.get(log.blockNumber!)!.timestamp,
       })),
-      removedApps: unregistered.map((log) => ({ chain: Number(log.args.tokenId!), app: log.args.app! })),
+      removedApps: unregistered.map((log) => ({ blockNumber: log.blockNumber!, logIndex: log.logIndex!, chain: Number(log.args.tokenId!), app: log.args.app! })),
       revenue: revenue.map((log) => ({ chain: Number(log.args.tokenId!), holder: log.args.deedHolder!, gross: log.args.gross!, protocolFee: log.args.protocolFee!, holderShare: log.args.holderShare!, hash: log.transactionHash!, logIndex: log.logIndex!, timestamp: info.get(log.blockNumber!)!.timestamp })),
       sponsored: sponsored.map((log) => {
         const previous = sponsored.filter((other) => other.transactionHash === log.transactionHash && other.logIndex! < log.logIndex!)

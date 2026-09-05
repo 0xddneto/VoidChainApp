@@ -122,9 +122,11 @@ hosting environment variables. The repository contains examples with variable
 names, never secrets.
 
 Public relays also require the shared Postgres database. Before any transaction
-is submitted, `(surface, wallet, nonce)` is reserved atomically and requests are
+is submitted, `(paymaster, wallet, nonce)` is reserved atomically and requests are
 rate-limited by wallet plus a hashed client identifier. This prevents separate
-serverless instances from racing the same signature. The relays fail closed if
+serverless instances from racing the same signature. The on-chain Paymaster
+independently validates and consumes the nonce; the database is not the replay
+security authority. The relays fail closed if
 that admission control is unavailable. VoidScan publishes events only after a
 configurable parent-chain confirmation depth (`INDEXER_CONFIRMATIONS`, default
 20), rather than treating the current tip as settled history.
@@ -145,6 +147,12 @@ uses no project wallet.
 - [Security policy](SECURITY.md)
 - [Incident response](docs/incident-response.md)
 - [Full protocol review](docs/PROTOCOL_AUDIT.md)
+- [2026-09-05 follow-up review and remaining work](docs/ASTRA_REVIEW_2026_09_05.md)
+
+Public transaction pages show the checksummed destination, chain ID, value and
+release fingerprint. `/contracts` links active addresses to the explorer;
+`/security` documents current trust limits; `/api/release` identifies the
+manifest and hosting commit. Failed or stale price reads disable transactions.
 
 The same product explanation is available in the VoidScan `/docs` page from
 the header.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createPublicClient, createWalletClient, custom, encodeFunctionData, formatEther,
   getAddress, parseAbi, type Address, type Hex,
@@ -9,6 +9,8 @@ import { DEPLOY, RH_TESTNET, rhTransport } from '@/lib/testnet';
 import { requireSponsoredSuccess } from '@/lib/sponsored-receipt';
 import { WalletProfileButton } from '../WalletProfileButton';
 import styles from './page.module.css';
+import { TransactionIdentity } from '../TransactionIdentity';
+import { MANIFEST_HASH } from '@/lib/public-release';
 
 const MARKET = getAddress(DEPLOY.testnet.VoidGenesisNftAmmV6);
 const VOID = getAddress(DEPLOY.testnet.VoidTestToken);
@@ -32,7 +34,7 @@ const sponsoredTypes = {
     { name: 'spends', type: 'Spend[]' }, { name: 'nftSpends', type: 'SpendNft[]' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' },
   ],
 } as const;
-type MarketState = { inventory: string[]; randomQuote: string; specificQuote: string; sellQuote: string; transactionFee: string | null; minted: string; balance: string; owned: string[]; sellable: string[] };
+type MarketState = { ready: boolean; checkedAt: number; manifestHash: string; inventory: string[]; randomQuote: string; specificQuote: string; sellQuote: string; transactionFee: string | null; minted: string; balance: string; owned: string[]; sellable: string[] };
 type Permit = { token: Address; spender: Address; value: bigint; deadline: bigint; v: number; r: Hex; s: Hex };
 const split = (signature: Hex) => ({ v: Number.parseInt(signature.slice(130, 132), 16), r: signature.slice(0, 66) as Hex, s: `0x${signature.slice(66, 130)}` as Hex });
 const showVoid = (value: string | bigint) => Number(formatEther(BigInt(value))).toLocaleString('en-US', { maximumFractionDigits: 2 });
@@ -44,15 +46,25 @@ export default function MarketPage() {
   const [sellId, setSellId] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const generation = useRef(0);
   const provider = () => typeof window === 'undefined' ? undefined : (window as any).ethereum;
 
   const refresh = useCallback(async (wallet: Address | null) => {
+    const id = ++generation.current;
+    setState(null);
     const response = await fetch(`/api/market/state${wallet ? `?account=${wallet}` : ''}`, { cache: 'no-store' });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error ?? 'Could not load market.');
+    if (body.manifestHash !== MANIFEST_HASH) throw new Error('The app was updated. Reload before signing.');
+    if (id !== generation.current) return;
     setState(body);
   }, []);
-  useEffect(() => { void refresh(account).catch((error) => setMessage(error.message)); }, [account, refresh]);
+  useEffect(() => {
+    const update = () => { void refresh(account).catch((error) => { setState(null); setMessage(error.message); }); };
+    update(); const timer = setInterval(update, 30_000);
+    return () => { clearInterval(timer); generation.current++; };
+  }, [account, refresh]);
+  useEffect(() => { const timer = setInterval(() => setState((current) => current && Date.now() - current.checkedAt > 60_000 ? null : current), 1_000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     const eth = provider();
     if (!eth) return;
@@ -75,10 +87,12 @@ export default function MarketPage() {
   }
 
   async function submit(kind: 'random' | 'specific' | 'sell') {
-    if (!account || !state || state.transactionFee === null) return;
+    if (!account || !state?.ready || state.transactionFee === null || Date.now() - state.checkedAt > 60_000) return;
     const eth = provider(); if (!eth) return;
     setBusy(true); setMessage('Review the VOID amounts and sign in your wallet. No ETH will be charged to you.');
     try {
+      const release = await fetch('/api/release', { cache: 'no-store' }).then((response) => response.json());
+      if (release.manifestHash !== MANIFEST_HASH) throw new Error('The app was updated. Reload before signing.');
       const price = kind === 'sell' ? 0n : BigInt(kind === 'random' ? state.randomQuote : state.specificQuote);
       const required = price + BigInt(state.transactionFee) + MAX_GAS_VOID;
       if (BigInt(state.balance) < required) throw new Error(`You need at least ${showVoid(required)} VOID for this trade, including the refundable gas budget. Get VOID before signing.`);
@@ -132,6 +146,9 @@ export default function MarketPage() {
         <div><small>Your balance</small><strong>{state ? showVoid(state.balance) : '—'} VOID</strong></div>
         <div><small>Chain transaction fee</small><strong>{state?.transactionFee != null ? `${showVoid(state.transactionFee)} VOID` : 'Unavailable'}</strong></div>
       </div>
+      <TransactionIdentity address={PAYMASTER} action="Sponsored NFT / VOID trade" value="0 ETH from your wallet · signed VOID budget" />
+      <p>Market app: <a href={`https://explorer.testnet.chain.robinhood.com/address/${MARKET}`}>{MARKET}</a></p>
+      {!state && <p role="status">Checking market inventory and current quotes. Trading is disabled until verified.</p>}
       {state?.transactionFee === null && <p className={styles.message}>Trading is paused while the fee oracle is unavailable. Inventory and mint supply remain visible.</p>}
       {!account && <button className={styles.primary} onClick={connect}>Connect wallet</button>}
       <div className={styles.grid}>

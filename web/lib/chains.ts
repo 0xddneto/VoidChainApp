@@ -355,7 +355,7 @@ export async function recentEvents(limit = 30): Promise<Event[]> {
      (SELECT 'activated' AS kind, id AS chain_id, '' AS detail, activated_at AS at
         FROM chains WHERE activated_at IS NOT NULL ORDER BY activated_at DESC LIMIT $1)
      UNION ALL
-     (SELECT 'failed' AS kind, chain_id, gas_void::text AS detail, timestamp AS at
+     (SELECT 'failed' AS kind, chain_id, (gas_void + margin_void)::text AS detail, timestamp AS at
         FROM sponsored_transactions WHERE success = FALSE ORDER BY timestamp DESC LIMIT $1)
      ORDER BY at DESC
      LIMIT $1`,
@@ -481,11 +481,16 @@ export async function profilePage(address: string): Promise<ProfilePage> {
 export async function saveProfile(
   address: string,
   p: { displayName: string; avatarUri: string; bio: string; socials: Social[] },
+  nonce?: string,
 ): Promise<void> {
   const bytes = Buffer.from(address.toLowerCase().replace(/^0x/, ''), 'hex');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    if (nonce) {
+      const consumed = await client.query('INSERT INTO profile_nonces(user_address,nonce) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING nonce', [bytes, nonce]);
+      if (consumed.rowCount !== 1) throw new Error('PROFILE_NONCE_USED');
+    }
     await client.query(
       `INSERT INTO user_profiles (address, display_name, avatar_uri, bio)
        VALUES ($1, $2, $3, $4)

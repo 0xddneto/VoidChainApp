@@ -1,4 +1,6 @@
 import deployment from '@/lib/deployment.json';
+import { getAddress } from 'viem';
+import { EXPLORER } from '@/lib/public-release';
 import styles from './page.module.css';
 import { WalletProfileButton } from '../WalletProfileButton';
 
@@ -54,7 +56,7 @@ export default function DocsPage() {
 
         <section id="l3"><h2>Path to an independent L3</h2><p>The Deed owner may choose to fund a future migration to an independent rollup. That decision is not forced by the DAO because the owner bears its infrastructure cost. A real L3 still requires a supported rollup stack, data availability, sequencing, proofs or dispute rules, RPC, explorer, bridge, monitoring and independent security review. The current runtime ID is not a wallet network ID.</p></section>
 
-        <section id="contracts"><h2>Current testnet contracts</h2><dl className={styles.contracts}>{contracts.map(([name, address]) => <div key={name}><dt>{name}</dt><dd>{address}</dd></div>)}</dl><p>Network: Robinhood Chain Testnet · EIP-155 chain ID 46630. Addresses are read from the same deployment manifest used by VoidScan.</p></section>
+        <section id="contracts"><h2>Current testnet contracts</h2><dl className={styles.contracts}>{contracts.map(([name, address]) => <div key={name}><dt>{name}</dt><dd><a href={`${EXPLORER}/address/${getAddress(address)}`} target="_blank" rel="noopener noreferrer">{getAddress(address)}</a></dd></div>)}</dl><p>Network: Robinhood Chain Testnet · EIP-155 chain ID 46630. <a href="/contracts">Contract directory</a> · <a href="/security">Security and remaining risks</a>. Addresses are read from the same deployment manifest used by VoidScan.</p></section>
 
         <section id="validation"><h2>Load validation</h2><p>The current V10 release passed 308 local EVM tests across 35 suites. The load coverage includes 1,000 provisioned users and 4,800 mixed application calls, plus a dedicated V10 run with 256 distinct zero-ETH users completing 1,024 sponsored calls without Runtime or Paymaster allowances.</p><p>Stateful accounting invariants completed 256,000 handler calls with no reverts or fee-conservation, custody, revenue-isolation or protocol-split violation. The 1,111-chain activation and independent-revenue scale checks also passed.</p><div className={styles.callout}><b>Public testnet canary</b><span>Three independent zero-ETH wallets completed the same V10 route against the deployed Paymaster and Runtime. VoidScan indexed all three transactions, and the post-run reserve, oracle, bytecode and verified-app monitor remained healthy. High-volume figures are deterministic local-EVM evidence; they are not a public-RPC throughput benchmark or an external audit.</span></div></section>
 

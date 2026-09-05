@@ -1,5 +1,11 @@
 # Protocol review — 2026-09-04
 
+Follow-up findings and validation: [2026-09-05 review](ASTRA_REVIEW_2026_09_05.md).
+Rows below describing V11 emergency controls, 1% quorum, emission vault or L3
+registry are source changes, not active V10 protections. Emission and per-chain
+budgets use fixed epochs, not rolling windows. L3 ID uniqueness is local to the
+registry, not a global EIP-155 reservation authority.
+
 ## V10 deployment and V11 source hardening
 
 The current public deployment supersedes the earlier V8 testnet control plane.

@@ -17,6 +17,7 @@ interface IVoidHistoricalVotesV9 {
 contract VoidGovernanceVotesV9 {
     IVoidHistoricalVotesV9 public immutable token;
     address[] private _excluded;
+    mapping(address => bool) public isExcluded;
 
     error ZeroAddress();
     error DuplicateExcluded(address account);
@@ -32,6 +33,7 @@ contract VoidGovernanceVotesV9 {
                 if (excluded_[j] == account) revert DuplicateExcluded(account);
             }
             _excluded.push(account);
+            isExcluded[account] = true;
         }
     }
 
@@ -40,6 +42,7 @@ contract VoidGovernanceVotesV9 {
     }
 
     function getPastVotes(address account, uint256 blockNumber) external view returns (uint256) {
+        if (isExcluded[account]) return 0;
         return token.getPastVotes(account, blockNumber);
     }
 

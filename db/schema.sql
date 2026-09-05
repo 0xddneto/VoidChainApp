@@ -57,6 +57,7 @@ CREATE TABLE indexer_state (
     -- database fail to insert, instead of silently keeping a parallel cursor.
     id                 BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
     last_indexed_block BIGINT NOT NULL DEFAULT 0,
+    last_indexed_hash  BYTEA,
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -339,3 +340,8 @@ CREATE TABLE profile_requests (
 );
 CREATE INDEX profile_requests_client_recent ON profile_requests (client_hash, created_at DESC);
 CREATE INDEX profile_requests_user_recent ON profile_requests (user_address, created_at DESC);
+
+CREATE TABLE relay_attempts (user_address BYTEA NOT NULL, client_hash BYTEA NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE INDEX relay_attempts_user_recent ON relay_attempts(user_address, created_at DESC);
+CREATE INDEX relay_attempts_client_recent ON relay_attempts(client_hash, created_at DESC);
+CREATE TABLE profile_nonces (user_address BYTEA NOT NULL, nonce TEXT NOT NULL, used_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(user_address, nonce));

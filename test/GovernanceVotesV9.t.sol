@@ -25,6 +25,8 @@ contract GovernanceVotesV9Test is Test {
 
         assertEq(votes.getPastTotalSupply(block.number - 1), 2_300_000 ether);
         assertEq(votes.getPastVotes(alice, block.number - 1), 2_300_000 ether);
+        assertEq(votes.getPastVotes(escrow, block.number - 1), 0);
+        assertEq(votes.getPastVotes(pool, block.number - 1), 0);
     }
 
     function test_ExclusionListCannotContainDuplicates() public {

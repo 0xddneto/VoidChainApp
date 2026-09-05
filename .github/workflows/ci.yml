@@ -101,6 +101,8 @@ jobs:
       - run: psql -h 127.0.0.1 -p 15439 -U postgres -d voidscan_check -v ON_ERROR_STOP=1 -f db/schema.sql
       - run: node --import tsx test-relay-concurrency.ts
         working-directory: script
+      - run: node --import tsx test-astra-regressions.ts
+        working-directory: script
 
   scripts:
     name: scripts

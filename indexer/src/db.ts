@@ -133,6 +133,8 @@ export interface StatusRow {
   logIndex: number;
 }
 export interface AppRow {
+  blockNumber: bigint;
+  logIndex: number;
   chain: number;
   app: string;
   publisher: string;
@@ -143,7 +145,7 @@ export interface OwnerRow {
   chain: number;
   owner: string;
 }
-export interface RemovedAppRow { chain: number; app: string; }
+export interface RemovedAppRow { chain: number; app: string; blockNumber: bigint; logIndex: number; }
 export interface RevenueRow { chain: number; holder: string; gross: bigint; protocolFee: bigint; holderShare: bigint; hash: string; logIndex: number; timestamp: number; }
 export interface NameRow {
   chain: number;
@@ -260,16 +262,15 @@ export async function writePass(
       );
     }
 
-    for (const a of apps) {
+    const appChanges = [...apps.map((app) => ({ ...app, removed: false as const })), ...removedApps.map((app) => ({ ...app, removed: true as const }))].sort((a,b) => a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1);
+    for (const a of appChanges) {
+      if (a.removed) { await client.query('DELETE FROM contracts WHERE chain_id = $1 AND address = $2', [a.chain, toBytes(a.app)]); continue; }
       await client.query(
         `INSERT INTO contracts (chain_id, address, deployer, deployed_at, deploy_tx)
          VALUES ($1,$2,$3,to_timestamp($4),$5)
          ON CONFLICT (chain_id, address) DO NOTHING`,
         [a.chain, toBytes(a.app), toBytes(a.publisher), a.timestamp, toBytes(a.hash)],
       );
-    }
-    for (const app of removedApps) {
-      await client.query('DELETE FROM contracts WHERE chain_id = $1 AND address = $2', [app.chain, toBytes(app.app)]);
     }
     for (const revenue of revenueRows) {
       await client.query(

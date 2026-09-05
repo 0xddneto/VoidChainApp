@@ -4,6 +4,7 @@ import {
   isAddress, parseAbi, type Address, type Hex,
 } from 'viem';
 import { DEPLOY, rhTransport } from '@/lib/testnet';
+import { MANIFEST_HASH, RELEASE } from '@/lib/public-release';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ const marketAbi = parseAbi([
   'function sellQuote() view returns(uint256)',
 ]);
 const gatewayAbi = parseAbi(['function query(bytes) view returns(bytes)']);
-const runtimeAbi = parseAbi(['function feeOf(uint256) view returns(uint256)']);
+const runtimeAbi = parseAbi(['function feeOf(uint256) view returns(uint256)', 'function apps(uint256) view returns(bool,uint256,bool,uint256,address,uint256,uint256)', 'function belongsTo(uint256,address) view returns(bool)']);
 const mintAbi = parseAbi(['function totalMinted() view returns(uint256)']);
 const tokenAbi = parseAbi(['function balanceOf(address) view returns(uint256)']);
 const deedAbi = parseAbi(['function ownerOf(uint256) view returns(address)']);
@@ -30,6 +31,7 @@ async function query(functionName: 'inventoryCount' | 'inventoryAt' | 'randomBuy
 
 export async function GET(request: NextRequest) {
   try {
+    if (await rpc.getChainId() !== 46630) throw new Error('Wrong RPC network');
     const input = request.nextUrl.searchParams.get('account');
     const account = input && isAddress(input) ? getAddress(input) : null;
     const [count, randomQuote, specificQuote, sellQuote, fee, minted] = await Promise.all([
@@ -38,6 +40,13 @@ export async function GET(request: NextRequest) {
       rpc.readContract({ address: getAddress(DEPLOY.production.VoidEthGenesisMintV6), abi: mintAbi, functionName: 'totalMinted' }),
     ]);
     const inventory = await Promise.all(Array.from({ length: Number(count) }, (_, index) => query('inventoryAt', [BigInt(index)])));
+    const [chain, registered, reserve, threshold] = await Promise.all([
+      rpc.readContract({ address: getAddress(DEPLOY.production.VoidChainAppRuntime), abi: runtimeAbi, functionName: 'apps', args: [1n] }),
+      rpc.readContract({ address: getAddress(DEPLOY.production.VoidChainAppRuntime), abi: runtimeAbi, functionName: 'belongsTo', args: [1n, MARKET] }),
+      rpc.getBalance({ address: getAddress(DEPLOY.production.VoidPaymaster) }),
+      rpc.readContract({ address: getAddress(DEPLOY.production.VoidPaymaster), abi: parseAbi(['function refillThreshold() view returns(uint256)']), functionName: 'refillThreshold' }),
+    ]);
+    const ready = fee !== null && chain[0] && registered && reserve > 0n && reserve >= threshold;
     let balance = 0n;
     let owned: bigint[] = [];
     if (account) {
@@ -48,9 +57,10 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({
       market: MARKET,
+      version: RELEASE, manifestHash: MANIFEST_HASH, checkedAt: Date.now(), ready,
       inventory: inventory.map(String),
       randomQuote: randomQuote.toString(), specificQuote: specificQuote.toString(), sellQuote: sellQuote.toString(),
-      transactionFee: fee?.toString() ?? null, minted: minted.toString(), balance: balance.toString(), owned: owned.map(String),
+      transactionFee: ready ? fee!.toString() : null, minted: minted.toString(), balance: balance.toString(), owned: owned.map(String),
       sellable: owned.map(String),
     }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch (error) {
