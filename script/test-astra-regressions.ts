@@ -10,7 +10,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 assert.equal(MANIFEST_HASH.length, 66);
 const signer = privateKeyToAccount(`0x${'0'.repeat(63)}1`);
 const paymaster = '0x2222222222222222222222222222222222222222';
-const action = {user:signer.address,tokenId:1n,target:paymaster,data:'0x' as const,maxToll:1n,maxGasVoid:2n,callGasLimit:100000n,spends:[],nftSpends:[],nonce:0n,deadline:999n};
+const action = {user:signer.address,tokenId:1n,target:paymaster as `0x${string}`,data:'0x' as const,maxToll:1n,maxGasVoid:2n,callGasLimit:100000n,spends:[],nftSpends:[],nonce:0n,deadline:999n};
 const signature = await signer.signTypedData({domain:{name:'VoidPaymaster',version:'1',chainId:46630,verifyingContract:paymaster},types:sponsoredTypes,primaryType:'SponsoredCall',message:action});
 assert(await authenticSponsored(action,signature,paymaster));
 assert(!await authenticSponsored({...action,user:paymaster},signature,paymaster));
