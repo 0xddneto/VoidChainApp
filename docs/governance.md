@@ -28,7 +28,7 @@ is explicitly changed here.
 - Voting power is the wallet's VOID balance at the last completed block before
   the proposal. This prevents the same VOID from being transferred to another
   wallet and counted twice.
-- Each vote lasts exactly five days. A proposal needs 10% quorum and more votes
+- Each vote lasts exactly five days. A proposal needs 1% of eligible circulating VOID and more votes
   for than against. Anyone can execute a passed proposal. Every action must
   succeed or the proposal remains unexecuted.
 

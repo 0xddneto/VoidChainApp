@@ -61,7 +61,7 @@ async function resetProjection(client: pg.PoolClient): Promise<void> {
   await client.query(
     `UPDATE chains SET name=NULL,description=NULL,image_uri=NULL,external_url=NULL,
        owner_address=NULL,status='reserved',activated_at=NULL,is_hot=FALSE,
-       last_indexed_block=0,last_indexed_hash=NULL,updated_at=now()`,
+       updated_at=now()`,
   );
   await client.query(
     `UPDATE chain_summary SET total_txs=0,total_contracts=0,total_addresses=0,

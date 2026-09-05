@@ -26,7 +26,7 @@ incident response.
 
 ## Recovery gate
 
-Recovery requires verified bytecode, a clean V10 audit, reconciled liabilities,
+Recovery requires verified bytecode, a clean V11 audit, reconciled liabilities,
 successful sponsored actions from a disposable wallet, healthy RPC fallbacks,
 updated manifests and public documentation of what changed. Rotate any secret
 that may have been exposed; transferring funds alone does not rotate a key.

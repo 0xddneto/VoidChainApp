@@ -8,7 +8,7 @@ import {
   type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import GENESIS from '@/lib/genesis-v10.json';
+import GENESIS from '@/lib/genesis-v11.json';
 import { rhTransport } from '@/lib/testnet';
 
 export const runtime = 'nodejs';

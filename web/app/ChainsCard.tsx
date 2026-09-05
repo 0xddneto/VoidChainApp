@@ -15,8 +15,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChainDetail, ChainRow, ChainStatus } from '@/lib/chains';
 import { DEPLOY } from '@/lib/testnet';
-import chainOneDex from '@/lib/dex-chain1-v10.json';
-import genesis from '@/lib/genesis-v10.json';
+import chainOneDex from '@/lib/dex-chain1-v11.json';
+import genesis from '@/lib/genesis-v11.json';
 import { Copyable } from './Copyable';
 import { ChainActivationEditor } from './ChainActivationEditor';
 import { ChainL3Migration } from './ChainL3Migration';

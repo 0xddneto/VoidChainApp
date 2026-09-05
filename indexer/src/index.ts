@@ -45,6 +45,7 @@ const EVENTS = {
 const client = createPublicClient({
   transport: fallback([http(PARENT_RPC), http('https://rpc.testnet.chain.robinhood.com')]),
 }) as PublicClient;
+const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11' as const;
 let running = true;
 const INDEXER_LOCK = 4_662_011;
 const RUNTIME_STATE_ABI = parseAbi([
@@ -59,6 +60,7 @@ async function hydrateImportedRuntimeState(): Promise<void> {
     const ids = Array.from({ length: Math.min(batchSize, 1_112 - start) }, (_, i) => start + i);
     const results = await client.multicall({
       allowFailure: true,
+      multicallAddress: MULTICALL3,
       contracts: ids.map((id) => ({ address: RUNTIME, abi: RUNTIME_STATE_ABI, functionName: 'configured' as const, args: [BigInt(id)] })),
     });
     results.forEach((result, i) => {
@@ -69,6 +71,7 @@ async function hydrateImportedRuntimeState(): Promise<void> {
     const ids = configuredIds.slice(start, start + batchSize);
     const results = await client.multicall({
       allowFailure: true,
+      multicallAddress: MULTICALL3,
       contracts: ids.map((id) => ({ address: RUNTIME, abi: RUNTIME_STATE_ABI, functionName: 'statsOf' as const, args: [BigInt(id)] })),
     });
     for (let i = 0; i < results.length; i += 1) {

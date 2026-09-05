@@ -12,6 +12,12 @@ runtime.
 
 ## Current testnet product
 
+Public surfaces: [VoidScan](https://voidscan.voidshub.com),
+[contracts](https://voidscan.voidshub.com/contracts),
+[live security state](https://voidscan.voidshub.com/security), and
+[VoidDEX](https://voiddex.voidshub.com). The legacy `*.vercel.app` addresses are
+deployment aliases, not the canonical addresses users should trust before signing.
+
 - **ETH genesis:** minting a Deed uses ETH because it creates the NFT and starts
   the VOID token/liquidity economy. A wallet can mint only once.
 - **VOID application fees:** every official application action enters through
@@ -35,7 +41,7 @@ runtime.
   Uniswap-V2-style pools and a test-token faucet as registered applications.
 
 VOID-only actions require one bounded `SponsoredCall` signature even on first
-use; the V10 token grants the frozen Runtime and Paymaster exact, request-scoped
+use; the V11 token grants the frozen Runtime and Paymaster exact, request-scoped
 movement instead of asking for an allowance. External ERC-20 assets still need
 their own permit or allowance because this protocol cannot rewrite another
 token's authorization rules. An NFT sale uses its ERC-4494 permit plus the
@@ -105,15 +111,16 @@ cd indexer && npm run dev
 cd ../web && npm run dev
 ```
 
-V10 testnet operations are intentionally explicit and fail closed before a
+V11 testnet operations are intentionally explicit and fail closed before a
 public manifest is changed:
 
 ```bash
 cd script
-npm run snapshot:testnet-v10
-npm run deploy:testnet-v10
-npm run verify:testnet-v10
-npm run finalize:testnet-v10
+npm run snapshot:testnet-v11
+npm run deploy:testnet-v11
+npm run verify:testnet-v11
+npm run finalize:testnet-v11
+npm run audit:testnet-v11
 npm run paymaster:keeper -- --once
 ```
 
@@ -143,16 +150,18 @@ uses no project wallet.
 - [Paymaster operations](docs/paymaster-operations.md)
 - [Repository map](docs/repository-map.md)
 - [Release checklist](docs/release-checklist.md)
-- [V10 release checklist](docs/release-checklist.md)
+- [V11 release checklist](docs/release-checklist.md)
 - [Security policy](SECURITY.md)
 - [Incident response](docs/incident-response.md)
 - [Full protocol review](docs/PROTOCOL_AUDIT.md)
 - [2026-09-05 follow-up review and remaining work](docs/ASTRA_REVIEW_2026_09_05.md)
 
 Public transaction pages show the checksummed destination, chain ID, value and
-release fingerprint. `/contracts` links active addresses to the explorer;
-`/security` documents current trust limits; `/api/release` identifies the
-manifest and hosting commit. Failed or stale price reads disable transactions.
+release fingerprint. `/contracts` links every active address to the explorer and
+the exact public source revision; `/security` reads the active authority graph
+and deployed bytecode on-chain; `/api/release` identifies the manifest, source
+repository and hosting commit. Failed or stale price, reserve, registration,
+quote or release reads disable transactions.
 
 The same product explanation is available in the VoidScan `/docs` page from
 the header.
@@ -160,7 +169,7 @@ the header.
 ## Safety status
 
 The local suite includes unit, fuzz, invariant, attack and high-load tests, and
-the current V10 deployment has live testnet acceptance evidence. V10 freezes the
+the current V11 deployment has live testnet acceptance evidence. V11 freezes the
 runtime oracle after initial configuration and places Paymaster and Treasury
 administration behind a public 48-hour timelock. Neither this evidence nor the
 timelock is an external audit. Before a value-bearing deployment the project
@@ -168,18 +177,17 @@ still requires independent security review, multisig control of the timelock
 proposer, independent monitoring, tested database backups and a fresh release
 audit.
 
-The latest [V10 load validation](docs/V10_LOAD_VALIDATION.md) covers 1,000
-provisioned users, 4,800 mixed application calls, a separate 256-user V10
+The latest [V11 validation](docs/V11_VALIDATION.md) covers 1,000
+provisioned users, 4,800 mixed application calls, a separate 256-user zero-ETH
 no-allowance run, 256,000 invariant operations and a bounded live testnet
 canary indexed by VoidScan.
 
-V11 hardening in source adds cross-service relayer nonce serialization, exact
-Paymaster receipts including failed inner calls, a per-chain daily ETH budget,
-pause-only emergency roles, permissionless revenue claiming to the beneficiary,
-bounded emission epochs and an on-chain L3 migration registry. These Solidity
-changes require a new verified testnet deployment before they are public state;
-the currently published addresses remain the verified V10 deployment until that
-acceptance gate is complete.
+V11 hardening is live in the verified testnet deployment: cross-service relayer
+nonce serialization, exact Paymaster receipts including failed inner calls, a
+per-chain daily ETH budget, pause-only emergency roles, permissionless revenue
+claiming to the beneficiary, bounded emission epochs and the on-chain L3
+migration registry. The public manifests, VoidScan and VoidDEX all point to this
+single accepted V11 deployment.
 
 Operational roles and the recommended mainnet wallet count are documented in
 [`docs/OPERATOR_WALLETS.md`](docs/OPERATOR_WALLETS.md). Backup and restore

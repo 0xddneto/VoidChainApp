@@ -1,7 +1,8 @@
 # Engineering review — 2026-09-05
 
 This is an internal review, not an independent audit or a mainnet approval.
-The public contract deployment remains V10. V11 migration is still incomplete.
+The canonical public contract deployment is V11. Earlier V10 findings below
+are retained as historical review context; they are not active addresses.
 
 ## Confirmed findings and changes
 
@@ -18,7 +19,7 @@ The public contract deployment remains V10. V11 migration is still incomplete.
 | Apps removed then registered in the same indexing batch disappeared. | Merge registration/removal events in block/log order in both indexers. | Regression verifies both event orders |
 | Fresh schema omitted `indexer_state.last_indexed_hash`. | Added missing column to canonical schema. | Existing production migration already supplied it |
 | RPC log/block disagreement could persist mixed-fork events. | Refuse a batch when any event hash differs from its retrieved block. | Does not replace parent-chain finality |
-| Excluded governance reserves still returned voting power. | Zero voting power for constructor-excluded addresses. | V11 source only; live adapter remains unchanged |
+| Excluded governance reserves still returned voting power. | Zero voting power for constructor-excluded addresses. | Active canonical V11 adapter |
 | Receipt timeout told the user to sign again after broadcast. | Return the broadcast hash with submitted status instead. | The receipt remains the execution authority |
 | A forged wallet signature could reserve a victim's relay nonce before rejection. | Authenticate the typed-data signer before database reservation in both products. | Contract replay protection remains authoritative |
 | Private vulnerability reporting was documented but disabled. | Enabled on protocol and DEX repositories. | GitHub setting |
@@ -30,7 +31,7 @@ The public contract deployment remains V10. V11 migration is still incomplete.
 
 ## Feedback verification
 
-A fresh browser load of the public mint displayed V10, then six minted Deeds,
+A fresh browser load of the public mint displayed V11, then six minted Deeds,
 960,620 VOID pool reserve and ready price status. The initial placeholders did
 match the developer's report. No V7 response was observed in that check; that is
 not proof that every CDN cache or old browser session was current.
@@ -38,6 +39,26 @@ not proof that every CDN cache or old browser session was current.
 Read-only market quotes were 507,500 VOID random buy, 512,500 VOID selected buy
 and 492,500 VOID sale payout. Total fees are therefore 1.5%, 2.5%, and 1.5%,
 including the 0.5% protocol fee, before the ChainApp transaction/gas charge.
+
+## Public release integrity follow-up
+
+- The V11 manifest is imported by `/api/release`, `/contracts`, `/docs`, mint,
+  market and the transaction identity component. The web build now rejects a
+  retired V7-V10 public release label or a disagreement between the deployment
+  and genesis manifests.
+- `/contracts` links every checksummed address to both the Robinhood explorer
+  and the exact Git revision. The public repository is the source authority;
+  `/api/release` exposes its URL and deployed commit.
+- `/security` and `/api/security` now read the timelock proposer and delay,
+  Paymaster and Treasury governors, Runtime bindings, emergency roles, frozen
+  VOID operators, daily chain budget and all canonical bytecode on-chain.
+- The public governance copy now matches the deployed 1% eligible-circulation
+  quorum. It also states the exact no-lock boundary: same-transaction reuse is
+  prevented by historical checkpoints, while concentrated or multi-block
+  borrowed voting power is not misrepresented as solved.
+- The market disables its controls unless the complete readiness result is
+  true, including active chain, registered app, non-zero quotes and a Paymaster
+  reserve at or above its configured threshold.
 
 ## Validation
 

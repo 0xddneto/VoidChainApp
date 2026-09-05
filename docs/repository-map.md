@@ -8,12 +8,12 @@ explicit so a clean clone has the same layout as the working tree.
 | Path | What belongs there |
 | --- | --- |
 | `contracts/parent/` | Deed NFT, shared runtime, Treasury, Paymaster and deterministic per-deed DAO/app factories. |
-| `contracts/genesis/` | Current V10 ETH mint, VOID allocation, migration escrow, locked VOID/ETH pool, NFT AMM, soft staking and TWAP components. |
+| `contracts/genesis/` | Current V11 ETH mint, VOID allocation, migration escrow, locked VOID/ETH pool, NFT AMM, soft staking and TWAP components. |
 | `contracts/apps/` | Protocol examples and generic test application gateways which execute through the runtime. |
 | `contracts/child/` | Research scaffold for a future independent L3; not part of the current deployment. |
-| `contracts/testnet/` | Earlier test fixtures retained only for regression tests; not public V10 entrypoints. |
+| `contracts/testnet/` | Earlier test fixtures retained only for regression tests; not public V11 entrypoints. |
 | `test/` | Foundry security, unit, integration, and load tests. |
-| `script/` | Reproducible V10 deployment, verification, audit and keeper scripts. Local `.env` keys are deliberately ignored. Versioned deployment evidence contains public data only. |
+| `script/` | Reproducible V11 deployment, verification, audit and keeper scripts. Local `.env` keys are deliberately ignored. Versioned deployment evidence contains public data only. |
 | `infra/` | Runnable local infrastructure: the Postgres compose stack and its operator notes. |
 | `db/` | Postgres schema and ordered migrations, including the indexer’s projected call records. |
 | `indexer/` | The Robinhood testnet event-indexing service. |
