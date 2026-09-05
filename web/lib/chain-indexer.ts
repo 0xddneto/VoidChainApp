@@ -18,6 +18,7 @@ const RUNTIME = deployment.production.VoidChainAppRuntime as Address;
 const DEED = deployment.production.VoidChainDeed as Address;
 const TREASURY = deployment.production.VoidChainTreasury as Address;
 const PAYMASTER = deployment.production.VoidPaymaster as Address;
+const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11' as Address;
 const FIRST_BLOCK = BigInt(deployment.network.deployBlock ?? 0);
 const CHAIN_ID_BASE = BigInt(deployment.chainIdBase);
 const DEED_ABI = parseAbi([
@@ -144,6 +145,7 @@ async function hydrateImportedRuntimeState(client: PublicClient): Promise<void> 
     const ids = Array.from({ length: Math.min(batchSize, TOTAL_CHAINS - start + 1) }, (_, i) => start + i);
     const results = await client.multicall({
       allowFailure: true,
+      multicallAddress: MULTICALL3,
       contracts: ids.map((id) => ({ address: RUNTIME, abi: RUNTIME_STATE_ABI, functionName: 'configured' as const, args: [BigInt(id)] })),
     });
     results.forEach((result, i) => {
@@ -155,6 +157,7 @@ async function hydrateImportedRuntimeState(client: PublicClient): Promise<void> 
     const ids = configuredIds.slice(start, start + batchSize);
     const results = await client.multicall({
       allowFailure: true,
+      multicallAddress: MULTICALL3,
       contracts: ids.map((id) => ({ address: RUNTIME, abi: RUNTIME_STATE_ABI, functionName: 'statsOf' as const, args: [BigInt(id)] })),
     });
     for (let i = 0; i < results.length; i += 1) {
