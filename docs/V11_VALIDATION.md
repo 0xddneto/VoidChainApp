@@ -2,9 +2,12 @@
 
 ## Verified locally
 
-- Full Foundry suite: 320 tests across 37 suites passed, including the 1,111-chain
+- Full Foundry suite: 323 tests across 38 suites passed, including the 1,111-chain
   isolation/revenue tests, 256 users making 1,024 signed actions without ETH or
   allowances, and 128,000 invariant actions in this run.
+- Three additional claim integration tests use the real Runtime and Treasury:
+  permissionless payout cannot redirect funds, sales preserve seller revenue,
+  and parked pre-sale credit remains withdrawable without a second fee split.
 - Paymaster runtime bytecode: 20,756 bytes, leaving 3,820 bytes below EIP-170.
 - VoidScan and VoidDEX production builds passed; script and indexer TypeScript
   checks passed.

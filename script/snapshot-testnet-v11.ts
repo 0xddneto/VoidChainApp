@@ -1,6 +1,6 @@
 /** Fresh read-only inventory for V11. It never changes a live manifest. */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createPublicClient, fallback, http, parseAbi, parseAbiItem, zeroAddress, type Address } from 'viem';
+import { createPublicClient, fallback, http, parseAbi, parseAbiItem, zeroAddress, encodeFunctionData, decodeFunctionResult, type Abi, type Address } from 'viem';
 
 const source = JSON.parse(readFileSync('../web/lib/deployment.json', 'utf8'));
 const rpc = createPublicClient({ transport: fallback([
@@ -58,10 +58,47 @@ for (let id = 1n; id <= minted; id++) {
   }
   deeds.push({ id, owner, identity, runtimeState: state, dao, proposals });
 }
+const stakingAddress = source.testnet.VoidSoftStakingV9 as Address;
+const stakingAbi = parseAbi([
+  'function positions(uint256) view returns(address,uint64,uint32,uint256,uint256)',
+  'function earned(uint256) view returns(uint256)',
+]);
+const stakingPositions = [];
+async function gatewayRead(address: Address, abi: Abi, functionName: string, args: readonly unknown[] = []) {
+  const data = encodeFunctionData({ abi, functionName, args });
+  const raw = await rpc.readContract({ address, abi: parseAbi(['function query(bytes) view returns(bytes)']),
+    functionName: 'query', args: [data], blockNumber });
+  return decodeFunctionResult({ abi, functionName, data: raw });
+}
+for (const deed of deeds) {
+  stakingPositions.push({ id: deed.id,
+    position: await gatewayRead(stakingAddress, stakingAbi, 'positions', [deed.id]),
+    earned: await gatewayRead(stakingAddress, stakingAbi, 'earned', [deed.id]),
+  });
+}
+async function uintState(address: Address, names: string[], gateway = false) {
+  const result: Record<string, bigint> = {};
+  for (const name of names) {
+    const abi = parseAbi([`function ${name}() view returns(uint256)`]);
+    result[name] = (gateway ? await gatewayRead(address, abi, name)
+      : await rpc.readContract({ address, abi, functionName: name, blockNumber })) as bigint;
+  }
+  return result;
+}
+const stakingState = await uintState(stakingAddress, ['totalWeight', 'rewardRate', 'periodFinish', 'lastUpdateTime',
+  'rewardPerWeightStored', 'queuedRewards', 'lifetimeRewardsReceived', 'lifetimeRewardsPaid'], true);
+const ethPool = source.testnet.VoidEthPoolV6 as Address;
+const liquidityState = await uintState(ethPool, ['reserveVoid', 'reserveEth', 'totalLiquidity', 'lastTimestamp', 'voidPerEthCumulative']);
+const runtimeAccounting = await uintState(source.production.VoidChainAppRuntime, ['protocolAccrued']);
+const custody = [];
+for (const address of new Set<string>([...Object.values<string>(source.production), ...Object.values<string>(source.testnet)])) {
+  custody.push({ address, eth: await rpc.getBalance({ address: address as Address, blockNumber }),
+    void: await rpc.readContract({ address: token, abi: tokenAbi, functionName: 'balanceOf', args: [address as Address], blockNumber }) });
+}
 if ((await rpc.getBlock({ blockNumber })).hash !== block.hash) throw Error('Snapshot block reorganized');
 const snapshot = {
   version: 'v11-read-only-migration-inventory', source, blockNumber, blockHash: block.hash,
-  totalSupply, holders, deeds,
+  totalSupply, holders, deeds, stakingPositions, stakingState, liquidityState, runtimeAccounting, custody,
   limitations: ['Inventory is not a migration authorization or complete app-state export.',
     'DEX LP shares, external asset custody, staking rewards and proposal payloads need explicit migration adapters.',
     'Frozen VOID operators require a new token to use a replacement Runtime/Paymaster without approvals.'],
