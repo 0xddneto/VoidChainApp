@@ -24,6 +24,23 @@ export interface RelayerSubmission {
 const bytes = (hex: string): Buffer => Buffer.from(hex.slice(2), 'hex');
 const digest = (value: string): Buffer => createHash('sha256').update(value).digest();
 
+/** Cheap shared admission gate before signature recovery, RPC reads or simulation. */
+export async function admitRelayIngress(clientId: string): Promise<void> {
+  try {
+    await pool.query("DELETE FROM relay_ingress WHERE window_start < now() - interval '1 day'");
+    const result = await pool.query<{ attempts: number }>(
+      `INSERT INTO relay_ingress(client_hash) VALUES($1)
+       ON CONFLICT(client_hash) DO UPDATE SET
+         attempts=CASE WHEN relay_ingress.window_start <= now()-interval '1 minute' THEN 1 ELSE LEAST(relay_ingress.attempts+1,61) END,
+         window_start=CASE WHEN relay_ingress.window_start <= now()-interval '1 minute' THEN now() ELSE relay_ingress.window_start END
+       RETURNING attempts`, [digest(clientId)]);
+    if (result.rows[0].attempts > 60) throw new RelayAdmissionError('Too many relay requests. Retry shortly.', 429);
+  } catch (error) {
+    if (error instanceof RelayAdmissionError) throw error;
+    throw new RelayAdmissionError('Relay admission control is unavailable.', 503);
+  }
+}
+
 export function relayClientId(request: Request): string {
   const vercel = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim();
   if (process.env.VERCEL === '1' && vercel) return vercel;

@@ -321,10 +321,19 @@ CREATE TABLE relay_requests (
 CREATE INDEX relay_requests_user_recent ON relay_requests (user_address, created_at DESC);
 CREATE INDEX relay_requests_client_recent ON relay_requests (client_hash, created_at DESC);
 
+CREATE TABLE relay_ingress (
+    client_hash BYTEA PRIMARY KEY,
+    window_start TIMESTAMPTZ NOT NULL DEFAULT now(),
+    attempts INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX relay_ingress_expiry ON relay_ingress(window_start);
+
 CREATE TABLE relayer_transactions (
     tx_hash          BYTEA PRIMARY KEY,
     relayer_address  BYTEA NOT NULL,
     surface          TEXT NOT NULL,
+    raw_transaction  BYTEA,
+    eoa_nonce        BIGINT,
     status           TEXT NOT NULL DEFAULT 'submitted'
                      CHECK (status IN ('submitted', 'confirmed', 'reverted')),
     submitted_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -332,6 +341,8 @@ CREATE TABLE relayer_transactions (
 );
 CREATE INDEX relayer_transactions_pending
     ON relayer_transactions (relayer_address, status, submitted_at);
+CREATE UNIQUE INDEX relayer_transactions_eoa_nonce
+    ON relayer_transactions(relayer_address,eoa_nonce) WHERE eoa_nonce IS NOT NULL;
 
 CREATE TABLE profile_requests (
     client_hash     BYTEA NOT NULL,

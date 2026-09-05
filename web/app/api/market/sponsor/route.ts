@@ -8,7 +8,8 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { BodyError, readJsonObject } from '@/lib/request-body';
 import { authenticSponsored } from '@/lib/verify-sponsored';
 import { DEPLOY, rhTransport } from '@/lib/testnet';
-import { RelayAdmissionError, relayClientId, reserveRelay, submitWithRelayerLock } from '@/lib/relay-guard';
+import { RelayAdmissionError, relayClientId, reserveRelay, admitRelayIngress } from '@/lib/relay-guard';
+import { submitDurably } from '@/lib/durable-relay';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -82,6 +83,10 @@ export async function POST(request: Request) {
     nftSpends.push({ collection, tokenId: id });
   }
 
+  const sponsored = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
+  try { await admitRelayIngress(relayClientId(request)); }
+  catch (error) { return reject(error instanceof Error ? error.message : 'Relay unavailable.', error instanceof RelayAdmissionError ? error.status : 503); }
+  if (!await authenticSponsored(sponsored, signature, PAYMASTER)) return reject('Invalid action signature.', 401);
   let decoded: ReturnType<typeof decodeFunctionData<typeof marketAbi>>;
   try { decoded = decodeFunctionData({ abi: marketAbi, data }); } catch { return reject('Unknown market action.'); }
   if (decoded.functionName === 'buyRandom' || decoded.functionName === 'buySpecific') {
@@ -120,8 +125,6 @@ export async function POST(request: Request) {
     return reject('Insufficient VOID for the NFT price, chain fee and refundable gas budget. Get VOID before signing again.', 409);
   }
 
-  const sponsored = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
-  if (!await authenticSponsored(sponsored, signature, PAYMASTER)) return reject('Invalid action signature.', 401);
   let reservation: Awaited<ReturnType<typeof reserveRelay>>;
   let broadcast = false;
   let broadcastHash: Hex | null = null;
@@ -144,7 +147,14 @@ export async function POST(request: Request) {
       await reservation.failed();
       return reject('The market operation would fail. No transaction was sent.', 409);
     }
-    const submission = await submitWithRelayerLock(account.address, 'voidscan-market', () => wallet.sendTransaction({ account, chain: null, to: PAYMASTER, data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }) }));
+    const submission = await submitDurably(account.address, 'voidscan-market', {
+      nonce: (blockTag) => rpc.getTransactionCount({ address: account.address, blockTag }),
+      prepare: async (nonce) => wallet.signTransaction({ ...await wallet.prepareTransactionRequest({
+        account, chain: null, nonce, to: PAYMASTER,
+        data: encodeFunctionData({ abi: paymasterAbi, functionName: 'sponsorWithAssetPermits', args: [sponsored, signature, permits] }),
+      }), account, chain: null }),
+      broadcast: (serializedTransaction) => rpc.sendRawTransaction({ serializedTransaction }),
+    });
     broadcast = true;
     broadcastHash = submission.hash;
     await reservation.submitted(submission.hash).catch(() => undefined);

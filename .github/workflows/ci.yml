@@ -103,6 +103,8 @@ jobs:
         working-directory: script
       - run: node --import tsx test-astra-regressions.ts
         working-directory: script
+      - run: node --import tsx test-durable-relay.ts
+        working-directory: script
 
   scripts:
     name: scripts

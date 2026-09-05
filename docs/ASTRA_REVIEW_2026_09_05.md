@@ -26,6 +26,7 @@ The public contract deployment remains V10. V11 migration is still incomplete.
 | Optional L3 controller ignored token return values and retained obsolete scheduled increases. | Check transfers/approvals, clear residual approvals and superseded schedules, validate fee bounds. | Optional L3 source |
 | Runtime and revenue router ignored approval failure. | Revert atomically before settlement; regression preserves unpaid revenue. | Replacement source, not an in-place edit of live bytecode |
 | TWAP ETH/USD conversion accepted future timestamps or incomplete rounds. | Shared strict feed validation and four oracle regression tests. | Replacement oracle source |
+| An RPC timeout after broadcast could make a worker lose transaction identity and later reuse the relayer nonce. | Write-ahead signed transaction outbox; rebroadcast identical bytes; shared pre-RPC ingress limit. | Database migration 009 and cross-worker regression |
 
 ## Feedback verification
 
@@ -73,10 +74,11 @@ including the 0.5% protocol fee, before the ChainApp transaction/gas charge.
 4. Use multisig governance before mainnet. A 48-hour EOA timelock is still a
    single-key trust dependency. Snapshot voting stops same-proposal double
    counting, but cannot eliminate concentrated/borrowed voting power.
-5. Add independent relayer failover, nonce reconciliation after RPC broadcast
-   uncertainty, pre-simulation admission limits and database availability tests.
-6. Expand monitoring from Chain 1 to a bounded registry-wide verified-app scan;
-   add alerts for indexer lag, failed sponsorship ratio and keeper wallets.
+5. Provision a second operational relayer only with a distinct EOA and explicit
+   surface assignment. The shared outbox now reconciles one EOA across workers;
+   two services must never share a signer without sharing this database.
+6. Keep the registry-wide app verification monitor within the provider's RPC
+   budget and alert on indexer lag, failed sponsorship ratio and keeper wallets.
 7. Consider a governance execution grace period and exit window. Do not change
    the five-day/no-token-lock rule without a documented product decision.
 8. Obtain independent contract review and economic/oracle stress testing before

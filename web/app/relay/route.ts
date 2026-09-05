@@ -13,7 +13,8 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { BodyError, readJsonObject } from '@/lib/request-body';
 import { authenticSponsored } from '@/lib/verify-sponsored';
 import { DEPLOY, rhTransport } from '@/lib/testnet';
-import { RelayAdmissionError, relayClientId, reserveRelay, submitWithRelayerLock } from '@/lib/relay-guard';
+import { RelayAdmissionError, relayClientId, reserveRelay, admitRelayIngress } from '@/lib/relay-guard';
+import { submitDurably } from '@/lib/durable-relay';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -93,6 +94,7 @@ export async function POST(httpRequest: Request) {
   const voidToken = getAddress(DEPLOY.testnet.VoidTestToken);
   const permits: AssetPermit[] = [];
   for (const item of rawPermits) {
+    if (!item || typeof item !== 'object') return reject('Invalid asset permit.');
     const value = item as Raw;
     const token = asAddress(value.token); const spender = asAddress(value.spender); const amount = asUint(value.value); const permitDeadline = asUint(value.deadline);
     const r = asHex(value.r); const s = asHex(value.s); const v = value.v;
@@ -107,6 +109,10 @@ export async function POST(httpRequest: Request) {
     return needed === undefined || permit.value < needed;
   })) return reject('An asset permit does not cover a signed VOID or app budget.');
 
+  const request = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
+  try { await admitRelayIngress(relayClientId(httpRequest)); }
+  catch (error) { return reject(error instanceof Error ? error.message : 'Relay unavailable.', error instanceof RelayAdmissionError ? error.status : 503); }
+  if (!await authenticSponsored(request, signature, paymaster)) return reject('Invalid action signature.', 401);
   const [chainNonce, currentFee, registered] = await Promise.all([
     publicClient.readContract({ address: paymaster, abi: PAYMASTER_ABI, functionName: 'nonces', args: [user] }),
     publicClient.readContract({ address: runtime, abi: RUNTIME_ABI, functionName: 'feeOf', args: [tokenId] }),
@@ -115,8 +121,6 @@ export async function POST(httpRequest: Request) {
   if (!registered) return reject('Target is not a registered app of this VoidChain.');
   if (nonce !== chainNonce || maxToll !== currentFee) return reject('Fee or nonce changed; sign again.', 409);
 
-  const request = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
-  if (!await authenticSponsored(request, signature, paymaster)) return reject('Invalid action signature.', 401);
   let reservation: Awaited<ReturnType<typeof reserveRelay>>;
   let broadcast = false;
   let broadcastHash: Hex | null = null;
@@ -140,12 +144,14 @@ export async function POST(httpRequest: Request) {
       await reservation.failed();
       return reject('The application action would fail. No transaction was sent.', 409);
     }
-    const submission = await submitWithRelayerLock(account.address, 'voidscan-app', () => wallet.sendTransaction({
-      account,
-      chain: null,
-      to: paymaster,
-      data: encodeFunctionData({ abi: PAYMASTER_ABI, functionName: 'sponsorWithAssetPermits', args: [request, signature, permits] }),
-    }));
+    const submission = await submitDurably(account.address, 'voidscan-app', {
+      nonce: (blockTag) => publicClient.getTransactionCount({ address: account.address, blockTag }),
+      prepare: async (nonce) => wallet.signTransaction({ ...await wallet.prepareTransactionRequest({
+        account, chain: null, nonce, to: paymaster,
+        data: encodeFunctionData({ abi: PAYMASTER_ABI, functionName: 'sponsorWithAssetPermits', args: [request, signature, permits] }),
+      }), account, chain: null }),
+      broadcast: (serializedTransaction) => publicClient.sendRawTransaction({ serializedTransaction }),
+    });
     broadcast = true;
     broadcastHash = submission.hash;
     await reservation.submitted(submission.hash).catch(() => undefined);
