@@ -28,7 +28,7 @@ jobs:
     env:
       PGPASSWORD: postgres
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Seed source database
         run: psql -h 127.0.0.1 -U postgres -d voidscan_source -v ON_ERROR_STOP=1 -f db/schema.sql
       - name: Create fixture and backup
