@@ -48,6 +48,6 @@
   "devDependencies": {
     "@types/node": "^20.19.43",
     "solc": "0.8.28",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   }
 }
