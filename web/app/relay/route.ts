@@ -11,6 +11,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { BodyError, readJsonObject } from '@/lib/request-body';
+import { authenticSponsored } from '@/lib/verify-sponsored';
 import { DEPLOY, rhTransport } from '@/lib/testnet';
 import { RelayAdmissionError, relayClientId, reserveRelay, submitWithRelayerLock } from '@/lib/relay-guard';
 
@@ -115,6 +116,7 @@ export async function POST(httpRequest: Request) {
   if (nonce !== chainNonce || maxToll !== currentFee) return reject('Fee or nonce changed; sign again.', 409);
 
   const request = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
+  if (!await authenticSponsored(request, signature, paymaster)) return reject('Invalid action signature.', 401);
   let reservation: Awaited<ReturnType<typeof reserveRelay>>;
   let broadcast = false;
   let broadcastHash: Hex | null = null;

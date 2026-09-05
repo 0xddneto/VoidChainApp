@@ -6,6 +6,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { BodyError, readJsonObject } from '@/lib/request-body';
+import { authenticSponsored } from '@/lib/verify-sponsored';
 import { DEPLOY, rhTransport } from '@/lib/testnet';
 import { RelayAdmissionError, relayClientId, reserveRelay, submitWithRelayerLock } from '@/lib/relay-guard';
 
@@ -119,6 +120,8 @@ export async function POST(request: Request) {
     return reject('Insufficient VOID for the NFT price, chain fee and refundable gas budget. Get VOID before signing again.', 409);
   }
 
+  const sponsored = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
+  if (!await authenticSponsored(sponsored, signature, PAYMASTER)) return reject('Invalid action signature.', 401);
   let reservation: Awaited<ReturnType<typeof reserveRelay>>;
   let broadcast = false;
   let broadcastHash: Hex | null = null;
@@ -131,7 +134,6 @@ export async function POST(request: Request) {
   try {
     const account = privateKeyToAccount(key as Hex);
     const wallet = createWalletClient({ account, transport: rhTransport() });
-    const sponsored = { user, tokenId, target, data, maxToll, maxGasVoid, callGasLimit, spends, nftSpends, nonce, deadline };
     // The Paymaster catches app reverts. Estimating transaction gas alone
     // therefore cannot establish that the requested trade will execute.
     const simulation = await rpc.simulateContract({

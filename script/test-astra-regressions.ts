@@ -4,8 +4,17 @@ import { parseAbi, encodeFunctionData, decodeFunctionData } from 'viem';
 import { BodyError, readJsonObject } from '../web/lib/request-body';
 import { MANIFEST_HASH, CONTRACTS } from '../web/lib/public-release';
 import { canonicalProfile } from '../web/lib/profile-signature';
+import { authenticSponsored, sponsoredTypes } from '../web/lib/verify-sponsored';
+import { privateKeyToAccount } from 'viem/accounts';
 
 assert.equal(MANIFEST_HASH.length, 66);
+const signer = privateKeyToAccount(`0x${'0'.repeat(63)}1`);
+const paymaster = '0x2222222222222222222222222222222222222222';
+const action = {user:signer.address,tokenId:1n,target:paymaster,data:'0x' as const,maxToll:1n,maxGasVoid:2n,callGasLimit:100000n,spends:[],nftSpends:[],nonce:0n,deadline:999n};
+const signature = await signer.signTypedData({domain:{name:'VoidPaymaster',version:'1',chainId:46630,verifyingContract:paymaster},types:sponsoredTypes,primaryType:'SponsoredCall',message:action});
+assert(await authenticSponsored(action,signature,paymaster));
+assert(!await authenticSponsored({...action,user:paymaster},signature,paymaster));
+assert(!await authenticSponsored({...action,tokenId:2n},signature,paymaster));
 assert.equal(CONTRACTS['ETH mint'].toLowerCase(), '0x4eaa37e811af0dd2405447e64065f57e0b4dd08b');
 const route = readFileSync('../web/app/api/market/sponsor/route.ts', 'utf8');
 assert(route.includes('function sellWithPermit(uint256,uint256,bytes)'));
