@@ -29,8 +29,10 @@ try {
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM contracts WHERE chain_id=1111')).rows[0].n,1,'remove then register must remain visible');
   await writePass({...emptyPass,apps:[app],removedApps:[{...app,logIndex:3}]});
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM contracts WHERE chain_id=1111')).rows[0].n,0,'register then remove must disappear');
-  process.env.DATABASE_URL_UNPOOLED = 'postgres://fixture:fixture@ep-fixture-pooler.us-east-2.aws.neon.tech/db';
-  assert.equal(new URL(sessionDatabaseUrl()).hostname, 'ep-fixture.us-east-2.aws.neon.tech');
+  process.env.DATABASE_URL_UNPOOLED = 'postgres://fixture:fixture@ep-fixture-pooler.us-east-2.aws.neon.tech/db?sslmode=require';
+  const sessionUrl = new URL(sessionDatabaseUrl());
+  assert.equal(sessionUrl.hostname, 'ep-fixture.us-east-2.aws.neon.tech');
+  assert.equal(sessionUrl.searchParams.get('sslmode'), 'verify-full');
   if (original === undefined) delete process.env.DATABASE_URL_UNPOOLED;
   else process.env.DATABASE_URL_UNPOOLED = original;
   const admitted = await Promise.allSettled([

@@ -13,9 +13,13 @@ if (process.env.DOTENV_CONFIG_PATH) {
 
 const migration = process.argv[2];
 if (!migration) throw new Error('Usage: node scripts/apply-migration.mjs <sql-file>');
-const connectionString = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
-if (!connectionString || connectionString === '[SENSITIVE]') throw new Error('Database URL is unavailable');
-const client = new pg.Client({ connectionString, ssl: { rejectUnauthorized: false } });
+const rawConnectionString = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
+if (!rawConnectionString || rawConnectionString === '[SENSITIVE]') throw new Error('Database URL is unavailable');
+const databaseUrl = new URL(rawConnectionString);
+if (['prefer', 'require', 'verify-ca'].includes(databaseUrl.searchParams.get('sslmode'))) {
+  databaseUrl.searchParams.set('sslmode', 'verify-full');
+}
+const client = new pg.Client({ connectionString: databaseUrl.toString() });
 await client.connect();
 try {
   await client.query(readFileSync(migration, 'utf8'));
