@@ -636,6 +636,9 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         if (IERC20(p.token).allowance(user, p.spender) < atLeast) revert PermitDidNotStick(user);
     }
 
+    // Reimburses only the submitting relayer, measured and capped by the validated
+    // signed gas budget; it is not a user-selected withdrawal destination.
+    // slither-disable-next-line arbitrary-send-eth
     function _sponsor(uint256 gasStart, SponsoredCall calldata req, bytes calldata signature)
         private
         returns (bool executed, bytes memory result)
@@ -925,6 +928,9 @@ contract VoidPaymaster is ReentrancyGuard, EIP712 {
         }
     }
 
+    // All callers use the EIP-712-authenticated user and bounded prefund after
+    // _validate consumes the on-chain nonce. Never exposed as an arbitrary pull.
+    // slither-disable-next-line arbitrary-send-erc20
     function _pull(address from, uint256 amount) private {
         // V9's frozen Paymaster operator removes the first-use approval while
         // the signed request still caps every amount and consumes a nonce. The

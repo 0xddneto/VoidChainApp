@@ -86,20 +86,23 @@ contract VoidTwapOracleV6 {
     function voidUsd() public view returns (uint256) {
         uint256 rate = twapVoidPerEth;
         if (rate == 0) return 0;
-        (, int256 answer,, uint256 updatedAt,) = ethUsdFeed.latestRoundData();
-        if (answer <= 0) revert BadEthUsdAnswer();
-        if (updatedAt == 0 || block.timestamp > updatedAt + maxFeedAge) revert StaleEthUsd(updatedAt);
-        uint256 ethUsd18 = uint256(answer) * (10 ** (18 - ethUsdDecimals));
+        uint256 ethUsd18 = _ethUsd();
         return Math.mulDiv(ethUsd18, 1e18, rate);
     }
 
     function usdToVoid(uint256 usdAmount) external view returns (uint256) {
         uint256 rate = twapVoidPerEth;
         if (rate == 0) return 0;
-        (, int256 answer,, uint256 updatedAt,) = ethUsdFeed.latestRoundData();
-        if (answer <= 0) revert BadEthUsdAnswer();
-        if (updatedAt == 0 || block.timestamp > updatedAt + maxFeedAge) revert StaleEthUsd(updatedAt);
-        uint256 ethUsd18 = uint256(answer) * (10 ** (18 - ethUsdDecimals));
+        uint256 ethUsd18 = _ethUsd();
         return Math.mulDiv(usdAmount, rate, ethUsd18);
+    }
+
+    function _ethUsd() private view returns (uint256) {
+        (uint80 roundId, int256 answer,, uint256 updatedAt, uint80 answeredInRound) = ethUsdFeed.latestRoundData();
+        if (answer <= 0 || roundId == 0 || answeredInRound < roundId) revert BadEthUsdAnswer();
+        if (updatedAt == 0 || updatedAt > block.timestamp || block.timestamp - updatedAt > maxFeedAge) {
+            revert StaleEthUsd(updatedAt);
+        }
+        return uint256(answer) * (10 ** (18 - ethUsdDecimals));
     }
 }

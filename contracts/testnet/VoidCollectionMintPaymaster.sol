@@ -106,6 +106,9 @@ contract VoidCollectionMintPaymaster is ReentrancyGuard, EIP712 {
 
     receive() external payable {}
 
+    // _validate recovers req.user from EIP-712 and consumes its nonce before
+    // the bounded prefund is pulled. This legacy endpoint cannot pick a victim.
+    // slither-disable-next-line arbitrary-send-erc20
     function sponsorMarketPrepaid(MarketPrepaidCall calldata req, bytes calldata signature)
         external
         nonReentrant
@@ -160,6 +163,9 @@ contract VoidCollectionMintPaymaster is ReentrancyGuard, EIP712 {
         nonces[req.user] = expected + 1;
     }
 
+    // Reimbursement goes to the submitting relayer, bounded by worstEth;
+    // there is no arbitrary withdrawal target in the signed request.
+    // slither-disable-next-line arbitrary-send-eth
     function _settle(
         uint256 gasStart,
         uint256 worstEth,

@@ -192,6 +192,8 @@ contract VoidSoftStakingV9 is ChainAppBase, ReentrancyGuard {
         return block.timestamp < periodFinish ? block.timestamp : periodFinish;
     }
 
+    // Integer-division dust is queued for the next stream; not random selection.
+    // slither-disable-next-line weak-prng
     function _startStream(uint256 amount) private {
         queuedRewards = amount % REWARD_DURATION;
         rewardRate = amount / REWARD_DURATION;

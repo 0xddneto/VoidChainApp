@@ -125,6 +125,35 @@ contract AuthorityTest is Test {
         controller.setMinBaseFee(TOKEN, 0.006 gwei, TICKET_FEE);
     }
 
+    function test_FailedGasTokenTransferCannotSendTicket() public {
+        vm.mockCall(address(gasToken), abi.encodeWithSelector(IGasToken.transferFrom.selector), abi.encode(false));
+        vm.expectRevert(VoidChainController.TokenTransferFailed.selector);
+        vm.prank(alice);
+        controller.setMinBaseFee(TOKEN, 0.005 gwei, TICKET_FEE);
+        assertEq(inbox.callCount(), 0);
+        assertEq(controller.currentBaseFee(TOKEN), 0);
+    }
+
+    function test_FailedGasTokenApprovalCannotBindAccounts() public {
+        vm.mockCall(address(gasToken), abi.encodeWithSelector(IGasToken.approve.selector), abi.encode(false));
+        vm.expectRevert(VoidChainController.TokenTransferFailed.selector);
+        vm.prank(governance);
+        controller.bindFeeAccounts(TOKEN, TICKET_FEE);
+        assertEq(inbox.callCount(), 0);
+    }
+
+    function test_FeeDecreaseCancelsAnOlderScheduledIncrease() public {
+        vm.startPrank(alice);
+        controller.setMinBaseFee(TOKEN, 0.005 gwei, TICKET_FEE);
+        controller.setMinBaseFee(TOKEN, 0.008 gwei, TICKET_FEE);
+        controller.setMinBaseFee(TOKEN, 0.004 gwei, TICKET_FEE);
+        vm.stopPrank();
+        vm.warp(block.timestamp + controller.FEE_INCREASE_DELAY());
+        vm.expectRevert(abi.encodeWithSelector(VoidChainController.NothingPending.selector, TOKEN));
+        controller.applyPendingBaseFee(TOKEN, TICKET_FEE);
+        assertEq(controller.currentBaseFee(TOKEN), 0.004 gwei);
+    }
+
     // -----------------------------------------------------------------------
     // Tentativas de escapar do modelo de autoridade
     // -----------------------------------------------------------------------

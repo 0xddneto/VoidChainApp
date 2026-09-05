@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 value) external returns (bool);
@@ -39,7 +40,7 @@ interface IERC721 {
 ///         What we do NOT simulate: borrowing against a deed, staking tiers, or
 ///         escrow. Those do not affect what we need to test, which is the deed
 ///         changing hands and the chain answering to its new owner.
-contract VoidNftAmm {
+contract VoidNftAmm is ReentrancyGuard {
     IERC20 public immutable token;
     IERC721 public immutable collection;
 
@@ -164,7 +165,7 @@ contract VoidNftAmm {
     /// @param  minPayout The floor the seller accepts. Without it, a parameter
     ///         change between signing and executing would charge them the
     ///         difference.
-    function sell(uint256 tokenId, uint256 minPayout) external returns (uint256 payout) {
+    function sell(uint256 tokenId, uint256 minPayout) external nonReentrant returns (uint256 payout) {
         payout = payoutToSell();
         if (payout < minPayout) revert PayoutBelowMinimum(payout, minPayout);
 
@@ -184,6 +185,7 @@ contract VoidNftAmm {
     ///      transfer from the caller, so the caller must approve this pool.
     function seed(uint256[] calldata tokenIds, uint256 minPayoutTotal)
         external
+        nonReentrant
         returns (uint256 payout)
     {
         uint256 count = tokenIds.length;
@@ -207,7 +209,7 @@ contract VoidNftAmm {
     // ---------------------------------------------------------------------
 
     /// @notice Buys the next one in line. Cheaper than choosing.
-    function buyRandom(uint256 maxCost) external returns (uint256 tokenId) {
+    function buyRandom(uint256 maxCost) external nonReentrant returns (uint256 tokenId) {
         if (msg.sender != saleOperator) revert NotSaleOperator(msg.sender);
         if (available() == 0) revert EmptyInventory();
 
@@ -229,7 +231,7 @@ contract VoidNftAmm {
     ///         swapping places with the first not-yet-sold item. That keeps the
     ///         queue contiguous without shifting everything — the cost is
     ///         constant, not linear.
-    function buySpecific(uint256 tokenId, uint256 maxCost) external {
+    function buySpecific(uint256 tokenId, uint256 maxCost) external nonReentrant {
         if (msg.sender != saleOperator) revert NotSaleOperator(msg.sender);
         uint256 slot = slotOf[tokenId];
         if (slot == 0) revert NotInInventory(tokenId);

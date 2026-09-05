@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {ChainAppBase, IVoidChainAppRuntime} from "./ChainAppBase.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 value) external returns (bool);
@@ -27,7 +28,7 @@ interface IERC20 {
 ///
 ///         Nothing else. If the comparison shows a cost difference, it comes
 ///         from the environment, which is what is on trial.
-contract ChainAppSwap is ChainAppBase {
+contract ChainAppSwap is ChainAppBase, ReentrancyGuard {
     IERC20 public immutable token0;
     IERC20 public immutable token1;
 
@@ -75,6 +76,7 @@ contract ChainAppSwap is ChainAppBase {
     function addLiquidity(uint256 amount0, uint256 amount1, uint256 minShares)
         external
         onlyFromMyChain
+        nonReentrant
         returns (uint256 minted)
     {
         if (amount0 == 0 || amount1 == 0) revert InvalidAmount();
@@ -123,6 +125,7 @@ contract ChainAppSwap is ChainAppBase {
     function removeLiquidity(uint256 shareAmount)
         external
         onlyFromMyChain
+        nonReentrant
         returns (uint256 amount0, uint256 amount1)
     {
         address who = caller();
@@ -147,6 +150,7 @@ contract ChainAppSwap is ChainAppBase {
     function swap(bool zeroForOne, uint256 amountIn, uint256 minAmountOut)
         external
         onlyFromMyChain
+        nonReentrant
         returns (uint256 amountOut)
     {
         if (amountIn == 0) revert InvalidAmount();

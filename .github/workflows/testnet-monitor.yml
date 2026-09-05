@@ -25,6 +25,9 @@ jobs:
           cache-dependency-path: script/package-lock.json
       - run: npm ci
         working-directory: script
+      # The release fingerprint is shared with the web module, including viem.
+      - run: npm ci --ignore-scripts
+        working-directory: web
       - uses: actions/cache/restore@v5
         with:
           path: script/deployments/paymaster-monitor-state.json

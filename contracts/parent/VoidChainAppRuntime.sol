@@ -389,6 +389,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
     error NotThisChainsApp(uint256 tokenId, address target);
     error ZeroAddress();
     error NothingToFlush();
+    error TokenApprovalFailed();
     error DeploymentClosed(uint256 tokenId, address who);
     error NotThePublisher(uint256 tokenId, address app, address who);
     error NotAChainApp(address target);
@@ -1015,7 +1016,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         protocolAccrued = 0;
 
         address sink = treasury.protocolTreasury();
-        voidToken.approve(address(treasury), amount);
+        if (!voidToken.approve(address(treasury), amount)) revert TokenApprovalFailed();
         treasury.creditTo(sink, amount);
 
         emit ProtocolSwept(sink, amount);
@@ -1058,7 +1059,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         if (amount == 0) revert NothingToFlush();
         owed[beneficiary] = 0;
 
-        voidToken.approve(address(treasury), amount);
+        if (!voidToken.approve(address(treasury), amount)) revert TokenApprovalFailed();
         treasury.creditTo(beneficiary, amount);
 
         emit OwedClaimed(beneficiary, amount);
@@ -1079,7 +1080,7 @@ contract VoidChainAppRuntime is ReentrancyGuard {
         app.pending = 0;
         app.pendingOwner = address(0);
 
-        voidToken.approve(address(treasury), amount);
+        if (!voidToken.approve(address(treasury), amount)) revert TokenApprovalFailed();
         treasury.creditTo(beneficiary, amount);
 
         emit RevenueFlushed(tokenId, amount);

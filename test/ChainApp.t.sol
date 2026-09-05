@@ -321,6 +321,17 @@ contract ChainAppTest is Test {
         runtime.activate(3, FEE);
     }
 
+    function test_FailedApprovalPreservesUnclaimedRevenue() public {
+        vm.prank(user);
+        runtime.execute(CHAIN1, address(appOfChain1), abi.encodeCall(Recorder.ping, ()), FEE);
+        vm.mockCall(address(voidToken), abi.encodeWithSelector(IERC20.approve.selector), abi.encode(false));
+        vm.expectRevert(VoidChainAppRuntime.TokenApprovalFailed.selector);
+        runtime.flush(CHAIN1);
+        (,, uint256 pending,,) = runtime.statsOf(CHAIN1);
+        assertEq(pending, NET);
+        assertEq(treasury.claimable(alice), 0);
+    }
+
     function test_DeedHolderCanPauseAndResumeWithoutChangingFee() public {
         vm.prank(alice);
         runtime.setActive(CHAIN1, false);

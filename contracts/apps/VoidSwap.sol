@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 value) external returns (bool);
@@ -17,7 +18,7 @@ interface IERC20 {
 ///
 ///         It follows x * y = k with a 0.3% fee, the same design as Uniswap V2,
 ///         because that is the behavior most stress tests expect to reproduce.
-contract VoidSwap {
+contract VoidSwap is ReentrancyGuard {
     IERC20 public immutable token0;
     IERC20 public immutable token1;
 
@@ -54,7 +55,7 @@ contract VoidSwap {
     /// @dev    After the first time, it requires a ratio compatible with the
     ///         reserves — otherwise the depositor would be donating value to the
     ///         pool without receiving an equivalent share.
-    function addLiquidity(uint256 amount0, uint256 amount1) external returns (uint256 minted) {
+    function addLiquidity(uint256 amount0, uint256 amount1) external nonReentrant returns (uint256 minted) {
         if (amount0 == 0 || amount1 == 0) revert InvalidAmount();
 
         if (!token0.transferFrom(msg.sender, address(this), amount0)) revert TransferFailed();
@@ -82,6 +83,7 @@ contract VoidSwap {
 
     function removeLiquidity(uint256 shareAmount)
         external
+        nonReentrant
         returns (uint256 amount0, uint256 amount1)
     {
         if (shareAmount == 0 || shares[msg.sender] < shareAmount) revert InvalidAmount();
@@ -109,6 +111,7 @@ contract VoidSwap {
     ///         executing.
     function swap(bool zeroForOne, uint256 amountIn, uint256 minAmountOut)
         external
+        nonReentrant
         returns (uint256 amountOut)
     {
         if (amountIn == 0) revert InvalidAmount();

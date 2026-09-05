@@ -107,6 +107,9 @@ contract ChainAppMarket is ChainAppBase {
         emit Listed(listingId, caller(), address(collection), tokenId, price);
     }
 
+    // Seller is authenticated by list(); caller cannot supply an arbitrary source.
+    // This is an ERC-721 transfer of that exact listed ID, not an ERC-20 allowance pull.
+    // slither-disable-next-line arbitrary-send-erc20
     function buy(uint256 listingId) external onlyFromMyChain {
         Listing storage l = listings[listingId];
         if (l.seller == address(0)) revert NoSuchListing(listingId);
