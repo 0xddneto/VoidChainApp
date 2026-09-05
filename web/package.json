@@ -13,7 +13,7 @@
     "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "viem": "^2.56.0"
+    "viem": "^2.56.3"
   },
   "devDependencies": {
     "@types/node": "^20",
